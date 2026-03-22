@@ -39,7 +39,7 @@ Download the binary for your platform from the `dist/` directory:
 **Requirements:** Go 1.23+, git
 
 ```bash
-git clone https://github.com/encedo/wg-hsm
+git clone https://github.com/encedo/encedo-wg-hsm
 cd wg-hsm
 bash build.sh
 ```
@@ -155,10 +155,10 @@ All cryptographic keys are replaced with opaque HEM key identifiers (`HEM_KID`).
 [Interface]
 Address = 10.1.1.5/24
 HEM_URL = https://my.ence.do                 # Encedo EPA or PPA endpoint
-HEM_KID = 5734bb276976fc1ae80030beafad6937  # my private key ID in HEM
+HEM_KID = <my-private-key-id>              # my private key ID in HEM
 
 [Peer]
-HEM_KID = dc9b9d3c7bd26e379e850917318394da  # peer's public key ID in HEM
+HEM_KID = <peer-public-key-id>             # peer's public key ID in HEM
 Endpoint = 203.0.113.1:51820
 AllowedIPs = 10.1.1.0/24
 PersistentKeepalive = 25

@@ -1,89 +1,89 @@
 # wg-hsm — Claude Code Session Handoff
 
-## Cel projektu
+## Project goal
 
-Fork wireguard-go integrujący Encedo HEM (EPA/PPA) jako backend kryptograficzny.
-Klucz prywatny WireGuard **nigdy nie opuszcza HEM**.
-HEM wykonuje ECDH na żądanie przy każdym handshake WireGuard (~co 3 minuty).
+Fork of wireguard-go integrating Encedo HEM (EPA/PPA) as the cryptographic backend.
+The WireGuard private key **never leaves the HEM**.
+HEM performs ECDH on demand at every WireGuard handshake (~every 3 minutes).
 
 ---
 
-## Architektura — co robimy
+## Architecture — what we're doing
 
-### Problem z oryginalnym WireGuard
-- `wg0.conf` zawiera `PrivateKey` w plaintext
-- Kernel module Linux nie pozwala na żadną ingerencję
-- Rozwiązanie: wireguard-go (userspace) + live HEM ECDH
+### Problem with standard WireGuard
+- `wg0.conf` contains `PrivateKey` in plaintext
+- Linux kernel module does not allow any interception
+- Solution: wireguard-go (userspace) + live HEM ECDH
 
-### Nasze podejście
+### Our approach
 ```
 wg-quick-encedo up wg1
   → Parse config (HEM_URL, HEM_KID, peers)
   → Checkin HEM (sync RTC)
-  → Auth hasłem lub mobile → JWT token (konfigurowalna długość, default 8h)
+  → Auth with password or mobile → JWT token (configurable duration, default 8h)
   → GetPubKey(myKID) → pub_i
-  → Inject HSMSession{pub_i, ECDH func} do wireguard-go device
+  → Inject HSMSession{pub_i, ECDH func} into wireguard-go device
   → Start wireguard-go (TUN + UAPI)
-  → HEM MUSI pozostać online — każdy handshake (~3min) = 2x ECDH call
+  → HEM MUST stay online — every handshake (~3min) = 2x ECDH call
 
 runtime:
   → handshake initiation: hsmDH(peerStaticPub) → precomputedStaticStatic
   → handshake response:   hsmDH(peerEphemeralPub) → ConsumeMessageResponse DH
-  → ECDH error: 3 próby co 2s → graceful shutdown interfejsu
+  → ECDH error: 3 retries with 2s delay → graceful interface shutdown
 ```
 
-### Dlaczego HEM musi być online cały czas
-WireGuard Noise_IKpsk2 wymaga klucza prywatnego w DWÓCH miejscach przy każdym handshake:
-1. `precomputedStaticStatic = DH(myPriv, peerStaticPub)` — przy dodaniu peera
-2. `DH(myPriv, peerEphemeralPub)` — w `ConsumeMessageResponse` z NOWYM kluczem efemerycznym
+### Why HEM must stay online at all times
+WireGuard Noise_IKpsk2 requires the private key in TWO places during every handshake:
+1. `precomputedStaticStatic = DH(myPriv, peerStaticPub)` — when adding a peer
+2. `DH(myPriv, peerEphemeralPub)` — in `ConsumeMessageResponse` with a FRESH ephemeral key
 
-Punkt 2 nie da się precompute — klucz efemeryczny serwera jest generowany świeżo przy każdym handshake.
+Point 2 cannot be precomputed — the server's ephemeral key is generated fresh on every handshake.
 
 ---
 
-## Format konfiguracji wg1.conf
+## Config format: wg1.conf
 
-Minimalny, rozszerzony o dwa pola w `[Interface]`.
-Sekcja `[Peer]` — **bez zmian**, `PublicKey` zostaje.
+Minimal, extended with two fields in `[Interface]`.
+`[Peer]` section — **unchanged**, `PublicKey` remains.
 
 ```ini
 [Interface]
 Address = 10.1.1.5/24
-HEM_URL = https://my.ence.do      # EPA lub PPA — identyczne API
-HEM_KID = 5734bb276976fc1ae80030beafad6937  # 32-char hex
+HEM_URL = https://my.ence.do      # EPA or PPA — identical API
+HEM_KID = <32-char-hex-key-id>            # 32-char hex
 
 [Peer]
 PublicKey = i14L0qgxykUZL7GVV2x/hBXwuvbcXbcv+TIEp60Pk0M=
-Endpoint = 65.21.170.222:51820
+Endpoint = 203.0.113.1:51820
 AllowedIPs = 10.1.1.0/24
 PersistentKeepalive = 25
 ```
 
-Zasady:
-- `PrivateKey` → **nigdy** w configu
-- `ListenPort` → nie ustawiać jeśli klient za NAT (używa losowego portu)
-- `HEM_URL` → jeden per plik
-- `HEM_KID` → 32-znakowy hex string
+Rules:
+- `PrivateKey` → **never** in config
+- `ListenPort` → do not set if client is behind NAT (uses a random port)
+- `HEM_URL` → one per file
+- `HEM_KID` → 32-character hex string
 
 ---
 
-## Encedo HEM API — pełna specyfikacja
+## Encedo HEM API — full specification
 
 ### Base URL
 ```
-https://<HEM_URL>     # np. https://my.ence.do (PPA) lub https://epa.company.com (EPA)
+https://<HEM_URL>     # e.g. https://my.ence.do (PPA) or https://epa.company.com (EPA)
 ```
-TLS 1.3 wymagany. HTTP 418 = brak TLS.
-EPA i PPA mają **identyczne API**.
+TLS 1.3 required. HTTP 418 = no TLS.
+EPA and PPA have **identical APIs**.
 
 ### 1. Checkin
 ```
 GET  /api/system/checkin → {"check": "JWT_challenge"}
 POST /api/system/checkin {"checked": "..."} → {"status": "OK"}
 ```
-Wide open — bez Authorization. Wymaga backendu Encedo do obliczenia `checked`.
+Wide open — no Authorization. Requires Encedo backend to compute `checked`.
 
-### 2. Auth hasłem
+### 2. Password auth
 ```
 GET  /api/auth/token → {"exp":..., "spk":"base64", "jti":"base64", "lbl":"...", "eid":"base64"}
 POST /api/auth/token {"auth": "..."} → {"token": "eyJ..."}
@@ -96,20 +96,20 @@ Authorization: Bearer TOKEN
 → {"pubkey": "base64", "type": "CURVE25519", "updated": timestamp}
 ```
 
-### 4. ECDH — kluczowa operacja
+### 4. ECDH — the key operation
 ```
 POST /api/crypto/ecdh
 Authorization: Bearer TOKEN
 {"kid": "32hex", "pubkey": "base64", "alg": ""}
 → {"ecdh": "base64_32bytes"}
 ```
-`alg: ""` = raw Curve25519, bez hash — identyczny wynik jak WireGuard DH.
+`alg: ""` = raw Curve25519, no hash — identical result to WireGuard DH.
 
 ---
 
-## Patch wireguard-go — co zmieniliśmy
+## wireguard-go patch — what we changed
 
-### Nowy plik: `device/hsm.go`
+### New file: `device/hsm.go`
 ```go
 type HSMSession struct {
     PublicKey NoisePublicKey
@@ -139,7 +139,7 @@ if ek2, err := hsmDH(pk); err == nil {
 
 ### Patch: `device/noise-protocol.go` — `ConsumeMessageResponse`
 ```go
-// zamiast: ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+// instead of: ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
 if hsmSession != nil {
     ss, err = hsmDH(msg.Ephemeral)
     if err != nil { return false }
@@ -160,83 +160,81 @@ if hsmSession != nil {
 
 ---
 
-## Struktura projektu
+## Project structure
 
 ```
 wg-hsm/
-  build.sh                        ← checkout wireguard-go + overlay patches + build dist/
-  go.mod                          ← module github.com/encedo/wg-hsm
-  README.md                       ← dokumentacja techniczna
-  PRODUCT.md                      ← podsumowanie marketingowe
-  CLAUDE.md                       ← ten plik
+  build.sh                        <- checkout wireguard-go + overlay patches + build dist/
+  go.mod                          <- module github.com/encedo/encedo-wg-hsm
+  README.md                       <- technical documentation
+  PRODUCT.md                      <- marketing summary
+  CLAUDE.md                       <- this file
 
   hem-sdk-go/
-    client.go                     ← Go SDK (package hem): Checkin, Auth, GetPubKey, ECDH
+    client.go                     <- Go SDK (package hem): Checkin, Auth, GetPubKey, ECDH
 
-  wireguard-go-encedo/            ← TYLKO nasze pliki (4 szt.) — nakładka na upstream
+  wireguard-go-encedo/            <- ONLY our files (4 files) — overlay on upstream
     device/
-      hsm.go                      ← NOWY: HSMSession + hsmDH
-      device.go                   ← PATCH: SetPrivateKey
-      peer.go                     ← PATCH: precomputedStaticStatic
-      noise-protocol.go           ← PATCH: ConsumeMessageResponse
+      hsm.go                      <- NEW: HSMSession + hsmDH
+      device.go                   <- PATCH: SetPrivateKey
+      peer.go                     <- PATCH: precomputedStaticStatic
+      noise-protocol.go           <- PATCH: ConsumeMessageResponse
 
-  wireguard-go/                   ← gitignored, generowany przez build.sh
-                                    commit: f333402 (v0.0.20250522)
+  wireguard-go/                   <- gitignored, generated by build.sh
+                                     commit: f333402 (v0.0.20250522)
 
   cmd/
     wg-quick-encedo/
-      main.go                     ← up / down / pubkey, auth interaktywna, retry ECDH
-      config.go                   ← parser wg1.conf + HEM_URL/HEM_KID
-      platform_linux.go           ← netlink, resolvectl, UAPI socket
-      platform_darwin.go          ← ifconfig, route, utun
-      platform_windows.go         ← netsh, Wintun named pipe
+      main.go                     <- up / down / pubkey, interactive auth, ECDH retry
+      config.go                   <- wg1.conf parser + HEM_URL/HEM_KID
+      platform_linux.go           <- netlink, resolvectl, UAPI socket
+      platform_darwin.go          <- ifconfig, route, utun
+      platform_windows.go         <- netsh, Wintun named pipe
 ```
 
 ---
 
-## Stan implementacji — v1
+## Implementation status — v1
 
-Przetestowane: klient Linux (XPS13, Polska) ↔ serwer Helsinki (65.21.170.222:51820)
-- HEM: Encedo PPA na `https://my.ence.do`
-- KID testowy: `5734bb276976fc1ae80030beafad6937`
-- Pubkey klienta: `hLlI99/i0j7B+sPGkfSwil/Raqxe6VUhnR+42sDuwAI=`
-- Serwer: standardowy WireGuard (kernel), klient: wg-hsm (wireguard-go + HEM)
+Tested: Linux client <-> server (remote WireGuard endpoint)
+- HEM: Encedo PPA
+- Server: standard WireGuard (kernel), client: wg-hsm (wireguard-go + HEM)
 
-## Zaimplementowane
+## Implemented
 
-- Routes (AllowedIPs → netlink/route/netsh per platform)
+- Routes (AllowedIPs -> netlink/route/netsh per platform)
 - MTU (netlink/ifconfig/netsh)
-- DNS (resolvectl na Linux, no-op na macOS z ostrzeżeniem, netsh na Windows)
-- HEM_BROKER_URL w [Interface] (fallback do `https://api.encedo.com`)
-- `pubkey <ifname>` — odczyt klucza publicznego z `/var/run/wireguard/<ifname>.pub`
+- DNS (resolvectl on Linux, no-op on macOS with warning, netsh on Windows)
+- HEM_BROKER_URL in [Interface] (fallback to `https://api.encedo.com`)
+- `pubkey <ifname>` -- reads public key from `/var/run/wireguard/<ifname>.pub`
 - Auth defaults: Enter = 8h + password
-- Zerowanie wrażliwych danych (passBytes, seed, sharedSecret)
+- Zeroing of sensitive data (passBytes, seed, sharedSecret)
 
 ## TODO
 
-- Token refresh — świadoma decyzja: nie robimy (wygaśnięcie = graceful shutdown, użytkownik restartuje ręcznie)
-- Daemonize — świadoma decyzja: nie robimy (problem auth przy restarcie daemona bez interakcji)
+- Token refresh -- deliberate decision: not implemented (expiry = graceful shutdown, user restarts manually)
+- Daemonize -- deliberate decision: not implemented (auth problem on daemon restart without user interaction)
 
 ---
 
-## Ważne fakty techniczne
+## Important technical facts
 
-- `hsmSession == nil` → oryginalne wireguard-go bez zmian (wg0 działa normalnie)
-- `wg show` nie pokazuje public key — bo private key = 0, `wg` nie może go wyliczyć. Normalne.
-- `ListenPort` w configu klienta za NAT = problem (serwer próbuje dotrzeć na stały port). Nie ustawiać.
-- DisableKeepAlives=true w HTTP kliencie (HEM embedded zamyka połączenia)
-- private_key w UAPI = 64x"0" (interceptowane przez patch SetPrivateKey)
-- Logger: LogLevelError (nie Verbose)
-- ECDH retry: 3 próby, 2s delay, potem graceful shutdown
-- Token expiry: pytanie przy starcie, default 8h, maksimum zależne od HEM
+- `hsmSession == nil` -> original wireguard-go behaviour unchanged (wg0 works normally)
+- `wg show` does not show public key -- because private key = 0, `wg` cannot derive it. Expected.
+- `ListenPort` in client config behind NAT = problem (server tries to reach a fixed port). Do not set.
+- DisableKeepAlives=true in HTTP client (HEM embedded closes connections)
+- private_key in UAPI = 64x"0" (intercepted by SetPrivateKey patch)
+- Logger: LogLevelError (not Verbose)
+- ECDH retry: 3 attempts, 2s delay, then graceful shutdown
+- Token expiry: asked at startup, default 8h, maximum depends on HEM
 
-## Zarządzanie pamięcią — wrażliwe dane
+## Memory management -- sensitive data
 
-Kolejność zerowania po `AuthPassword`:
-1. `seed []byte` (PBKDF2) — zerowane natychmiast po `buildEjwt`
-2. `sharedSecret []byte` (X25519) — zerowane w `buildEjwt` przez `defer` po HMAC
-3. `passBytes` w `main.go` — zerowane przez `defer` po powrocie z `authInteractive` (po OBU wywołaniach AuthPassword)
+Zeroing order after `AuthPassword`:
+1. `seed []byte` (PBKDF2) -- zeroed immediately after `buildEjwt`
+2. `sharedSecret []byte` (X25519) -- zeroed in `buildEjwt` via `defer` after HMAC
+3. `passBytes` in `main.go` -- zeroed via `defer` after returning from `authInteractive` (after BOTH calls to AuthPassword)
 
-`AuthPassword` przyjmuje `[]byte` (nie `string`) — brak kopii do immutable string.
-`AuthPassword` NIE zeruje `password` wewnętrznie — bo needsLookup wywołuje ją dwa razy ze wspólnym slice.
-Od momentu zwrócenia tokenów w pamięci żyją tylko JWT stringi.
+`AuthPassword` takes `[]byte` (not `string`) -- no copy to immutable string.
+`AuthPassword` does NOT zero `password` internally -- because needsLookup calls it twice with a shared slice.
+From the moment tokens are returned, only JWT strings live in memory.

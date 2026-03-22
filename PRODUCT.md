@@ -69,10 +69,10 @@ The wg-hsm config file contains no keys, no secrets, no cryptographic material o
 
 ```ini
 [Interface]
-HEM_KID = 5734bb276976fc1ae80030beafad6937
+HEM_KID = <my-private-key-id>
 
 [Peer]
-HEM_KID = dc9b9d3c7bd26e379e850917318394da
+HEM_KID = <peer-public-key-id>
 ```
 
 This has consequences that go well beyond the key itself:
