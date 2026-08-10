@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("WG:if:\x01\a\x0200\x03\x0200")
