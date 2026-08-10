@@ -1,0 +1,253 @@
+# Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
+
+Version: 1.4 (2026-08-10) · Status: ready for implementation
+Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
+HEM FW: v1.7b (current API, **zero firmware changes required**)
+SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
+
+Changes in 1.4: self-ECDH addressed by `ext_kid` rather than `pubkey` (§4, §5);
+§7 endpoint paths corrected to `/api/keymgmt/*`. No change to the DESCR format
+or to the canonical MAC message — `ENC-WG-MAC-v1` stands.
+
+## 1. Goal
+
+A WireGuard client that requires **no configuration file and no key material** on the machine.
+All state lives inside the Encedo HEM (PPA/EPA):
+
+- identity key (Curve25519 private) — HEM object, non-exportable,
+- peer (server) public keys — imported into HEM,
+- network configuration — binary-encoded (TLV) in the `descr` fields (128 B per key),
+- configuration integrity — HMAC computed and verified **inside HEM** (self-ECDH),
+- optional PSK — random 32 B, stored as an AES-KW wrap in the peer's `descr`.
+
+On the host: a single `wg-hem` binary (wrapper + forked wireguard-go) + the physical HEM. Nothing else.
+
+## 2. Architecture
+
+```
+┌─────────────┐   REST/TLS    ┌──────────────────────────────┐
+│  Encedo HEM │◄─────────────►│  wg-hem (Go, single binary)  │
+│  PPA / EPA  │               │  ├─ hemclient (API client)   │
+│             │               │  ├─ descr codec (TLV)        │
+│ keys+descr  │               │  ├─ provisioner              │
+│ ECDH/HMAC/  │               │  ├─ runtime (netlink, DNS,   │
+│ wrap inside │               │  │   routes, failover)       │
+└─────────────┘               │  └─ wireguard-go fork (device│
+                              │      → HEM ECDH per handshake)│
+                              └──────────────────────────────┘
+```
+
+Object mapping: **1 interface (if) key → N peers** (list of references in the if key's `descr`).
+A peer may be shared by multiple if keys (each if MACs it on its own side).
+Public keys in HEM are unique — a peer record exists exactly once.
+
+## 3. Data format — DESCR (128 B, binary)
+
+Common header:
+
+| offset | size | content |
+|---|---|---|
+| 0 | 6 B | ASCII magic: `WG:if:` or `WG:pr:` (exactly 6 chars — the HEM prefix-search minimum) |
+| 6 | 1 B | version = `0x01` |
+| 7 | … | TLV stream: `tag(1B) len(1B) value(len B)`; terminated by tag `0x00` or end of buffer; zero-padded |
+
+### 3.1 `WG:if:` record (identity key)
+
+| tag | name | len | value | notes |
+|---|---|---|---|---|
+| 0x01 | ADDR4 | 5 | addr(4) + prefixlen(1) | repeatable |
+| 0x02 | ADDR6 | 17 | addr(16) + prefixlen(1) | repeatable |
+| 0x03 | MTU | 2 | uint16 BE | optional (default 1420) |
+| 0x04 | DNS4 | 4 | addr(4) | repeatable, optional |
+| 0x05 | DNS6 | 16 | addr(16) | repeatable, optional |
+| 0x06 | PEER_REF | 4 | first 4 B of SHA-256(peer_pubkey) | repeatable; **order = failover priority** |
+| 0x07 | LISTEN_PORT | 2 | uint16 BE | optional |
+| 0x7F | MAC | 32 | HMAC-SHA2-256 | **always the last TLV**; see §4 |
+
+Example budget: 7 (hdr) + 5 (addr) + 2+2 (mtu) + 4+2 (dns) + 3×(4+2) (refs) + 32+2 (mac) = **74 B** ✓
+
+### 3.2 `WG:pr:` record (peer / server)
+
+| tag | name | len | value | notes |
+|---|---|---|---|---|
+| 0x10 | ENDPOINT4 | 6 | addr(4) + port(2 BE) | exactly one of 0x10/0x11/0x12 |
+| 0x11 | ENDPOINT6 | 18 | addr(16) + port(2 BE) | |
+| 0x12 | ENDPOINT_HOST | 3–62 | port(2 BE) + hostname UTF-8 | hostname max 60 B |
+| 0x13 | AIP4 | 5 | addr(4) + prefixlen(1) | AllowedIPs, repeatable |
+| 0x14 | AIP6 | 17 | addr(16) + prefixlen(1) | repeatable |
+| 0x15 | KEEPALIVE | 1 | seconds (uint8) | optional |
+| 0x16 | PSK_WRAPPED | 40 | AES-KW ciphertext (NIST KW, 32 B PSK → 40 B) | optional; see §5 |
+
+**The peer record carries NO MAC** — integrity is provided by the if key's MAC (§4).
+Budget: 7 + 8 (ep4) + 2×7 (2×aip4) + 3 (ka) + 42 (psk) = **74 B**; with a 60 B hostname instead of ep4: **130 B > 128 — therefore: the 60 B hostname limit applies ONLY without PSK; with PSK, hostname max ~56 B or use an IP endpoint**. The codec MUST validate this at encode time.
+
+## 4. Integrity — a single MAC over the whole tree
+
+**MAC key = self-ECDH of the if key, computed inside HEM.** It never exists outside the device.
+
+⚠️ **Never key the MAC with ECDH(if, peer)** — the holder of the peer's private key (or an attacker importing their own pubkey) can compute the shared secret offline and forge the MAC. Self-ECDH (the key against itself) is resistant (CDH equivalence). Confirmed: HEM performs self-ECDH without issues.
+
+Address the second operand with **`ext_kid` = `<if_kid>`**, not with `pubkey`. Both are accepted — self-ECDH works anywhere ECDH does — but `ext_kid` names the key the device already holds, whereas `pubkey` would force the client to read its own public key back out of the HEM first only to hand it straight back. It is also the form the certification suite exercises (`hem-api-tester/test_11.php`, subtest 5).
+
+Canonical message:
+
+```
+msg = "ENC-WG-MAC-v1"                      # 13 B ASCII, domain separation
+    || if_pubkey (32 B)
+    || if_descr[0..127] with the TLV 0x7F value zeroed (32 × 0x00 in place of the MAC)
+    || for each peer on the PEER_REF list, sorted ascending by full pubkey (bytes):
+         peer_pubkey (32 B) || peer_descr (128 B)
+```
+
+- Sort by **pubkey**, not by PEER_REF order (the refs order carries failover priority and is itself covered by the MAC via if_descr).
+- HEM `msg` limit = 2048 B → max **11 peers** per if (13+32+128+11×160 = 1933 B). Enormous headroom (typically 2–3).
+
+Calls (FW v1.7b, scope `keymgmt:use:<if_kid>` — the same scope already required for handshake ECDH):
+
+```
+POST /api/crypto/hmac/hash     {alg:"SHA2-256", kid:<if_kid>, ext_kid:<if_kid>, msg:b64(canonical)} → {mac}
+POST /api/crypto/hmac/verify   {alg:"SHA2-256", kid:<if_kid>, ext_kid:<if_kid>, msg:b64(canonical), mac:…} → 200/406
+```
+
+Consequences:
+- any change to any peer ⇒ re-MAC the if record (1 call, done by the provisioner),
+- forgery requires the `use` scope on the if key ⇒ every attempt lands in the HEM audit log,
+- startup verification = **one** `hmac/verify` call.
+
+## 5. PSK (optional)
+
+- API confirmed (FW v1.7b): `POST /api/crypto/cipher/wrap` / `/api/crypto/cipher/unwrap`, `alg:"AES256"`, indirect ECDH via `kid` + `ext_kid` as in §4, scope `keymgmt:use:<if_kid>`. The endpoint accepts `ctx` (HKDF argument, max 64 B) — **use: `ctx="ENC-WG-PSK-v1"`** (domain-separates the KEK from other wrap uses of the same key). Do not pass `iv` (deterministic NIST KW, default IV).
+- Provisioning: generate random 32 B (from the HEM RNG), `cipher/wrap` with kid=if, ext_kid=if (**self-ECDH** — same principle as §4; ECDH(if,peer) would expose the KEK to the server side / to a key importer), ctx as above. The 40 B raw result → TLV 0x16 in the peer's descr. The same PSK value is provisioned on the server side.
+- Startup: `cipher/unwrap` (kid=if, ext_kid=if, ctx as above) → PSK into memory → UAPI → **zeroize** buffers once the device is configured. Every argument must match the wrap call — a differing `ctx` derives a different KEK.
+- Fallback (when the infrastructure mandates a passphrase): `PSK = Argon2id(passphrase, salt=server_pubkey)` — no TLV 0x16, the user types it at startup. Deliberately reduces the PQ hedge to the passphrase's entropy.
+
+## 6. Flows
+
+### 6.1 Provisioning (`wg-hem provision`)
+
+1. Authenticate to HEM (User session; PIN/touch/ExtAuth).
+2. Create (or select) an if key of type curve25519 in HEM.
+3. Import the server pubkey(s) → `POST /api/keymgmt/import`, `descr` = encoded `WG:pr:` record.
+4. (opt.) PSK: generate, wrap, append TLV 0x16, update the peer's descr (`update a key`).
+5. Build the `WG:if:` record (addr/mtu/dns/refs, MAC=zeros), compute the MAC (`hmac/hash`), write the descr.
+6. Print the server-side provisioning data: if_pubkey, (opt.) PSK — one-shot, to stdout, never to a file.
+
+### 6.2 Client startup (`wg-hem up`)
+
+1. Authenticate to HEM. For PPA the address is known (192.168.7.1) — startup with literally no arguments; for EPA: URL from argument/env (still not a file) or discovery.
+2. `key/search` prefix `WG:if:` → if key + descr (search returns descr in results — confirmed in docs) → parse.
+3. `key/search` prefix `WG:pr:` → all peer records with descr in a single call; matched to PEER_REF by pubkey hash. **2 search calls total for the entire config.**
+4. Assemble the canonical message → `hmac/verify`. **Failure = hard stop, no fallback.**
+5. **Peer selection: interactive.** The client asks the user which peer to connect to (list from descr: label/endpoint, PEER_REF order as the suggestion). With a single peer — no prompt.
+6. (opt.) unwrap the PSK.
+7. Resolve the endpoint (DNS before the tunnel; ENDPOINT_HOST requires a working resolver). Create the interface (wireguard-go in-process), configure via UAPI in memory: privkey = sentinel (HEM), the selected peer, AllowedIPs, keepalive, PSK.
+8. Netlink: addr, mtu, routes from AllowedIPs, DNS (systemd-resolved via D-Bus / resolvconf).
+   With AllowedIPs 0.0.0.0/0: **routing exception for the endpoint IP** via the default gw.
+9. Runtime: handshake monitoring + connection-error handling (§6.4).
+
+### 6.3 Handshake (wireguard-go fork)
+
+- `ss` (static-static): precompute once per peer at configuration time — `POST /api/crypto/ecdh` (kid=if, pubkey=peer_pub).
+- `se`/`es` (static × remote ephemeral): **live HEM call during the handshake** — initiator in ConsumeMessageResponse, responder in ConsumeMessageInitiation. `e_peer` is only known from the received packet — zero lead time, precompute impossible.
+- Timing budget: REKEY_TIMEOUT = 5 s (msg1 retransmit), old session keys valid until REJECT_AFTER_TIME = 180 s with rekey every ~120 s ⇒ 60 s of overlap. PPA over USB/REST = tens of ms ⇒ ~100× margin. HTTP timeout to HEM: 3 s, 1 retry.
+- The if private key is **never** in process memory.
+
+### 6.4 Failover
+
+WG has no native failover (cryptokey routing: active peers cannot share AllowedIPs). Active = 1 peer at a time.
+
+**v1 (implement now): interactive.** No successful handshake > 15 s after initiation ⇒ report "peer X (endpoint) is not responding" and re-prompt for peer selection (marking which one failed). Action on selection: UAPI replace peer (pubkey+endpoint+PSK, same AllowedIPs), new `ss` precompute.
+
+**v2 (later, behind `--auto-failover`): automatic.** PEER_REF order = priority, auto-switch to the next peer, optional return to #1 after a health check with hysteresis.
+
+Note: concurrent peers with disjoint AllowedIPs (split routing) are legal and supported — the conflict applies only to identical ranges.
+
+## 7. HEM endpoints used (v1.7b)
+
+| Operation | Endpoint | When |
+|---|---|---|
+| Auth | `/api/auth/*` (User / ExtAuth) | startup, provisioning |
+| Search | `/api/keymgmt/search` (prefix ≥ 6 B — `WG:if:`/`WG:pr:` = exactly 6; the `^` anchor goes on the base64, and `descr` may be sent with no token when the device is configured with `allow_keysearch`) | startup |
+| Get pubkey / list | `/api/keymgmt/get/<kid>`, `/api/keymgmt/list/<offset>/<limit>` | startup, provisioning |
+| Import pubkey | `/api/keymgmt/import` (descr = TLV record) | provisioning |
+| Update descr | `/api/keymgmt/update` | provisioning, rotations |
+| Delete | `/api/keymgmt/delete/<kid>` | `wipe` |
+| ECDH | `/api/crypto/ecdh` | ss precompute + se/es per handshake |
+| HMAC | `/api/crypto/hmac/hash` + `/verify` (self-ECDH: kid + ext_kid, both `<if_kid>`) | provisioning / startup |
+| Wrap/Unwrap | `/api/crypto/cipher/wrap` + `/unwrap` (AES256 NIST KW, self-ECDH, `ctx="ENC-WG-PSK-v1"`) | PSK |
+
+## 8. Security invariants
+
+1. The private key never leaves HEM; the MAC key and the KEK (self-ECDH) never exist outside HEM.
+2. Treat DESCR as public — the only secret in a descr is the **wrapped** PSK.
+3. `hmac/verify` failure ⇒ refuse to start; no "degraded" mode.
+4. AllowedIPs and the endpoint are security-critical (routing) — hence covered by the MAC; defensive TLV parser (length bounds, tag-duplication rules, unknown tag ⇒ hard error for `ver=0x01`).
+5. Zeroization: PSK, ECDH shared secrets, UAPI buffers.
+6. Versioning: `version` in the header + `ENC-WG-MAC-v1` in domain separation — a format change ⇒ bump both.
+7. The format becomes part of a certified product (CC) — treat this spec as a controlled document.
+
+## 9. Repo layout / tasks for Claude Code
+
+```
+encedo-wg-hsm/
+├── cmd/wg-hem/            # CLI: provision | up | down | status | rotate-psk
+├── internal/hem/          # HEM REST client (auth, keys, ecdh, hmac, wrap)
+├── internal/descr/        # TLV codec + 128 B budget validation + round-trip tests
+├── internal/mac/          # canonical message + hash/verify (sort by pubkey!)
+├── internal/runtime/      # netlink, DNS, route exception, failover state machine
+├── wireguard-go/          # fork: device → HEM ECDH (ss precompute, se/es live)
+└── docs/                  # this spec
+```
+
+Implementation order:
+1. `internal/descr` — codec + tests (golden vectors, parser fuzzing).
+2. `internal/hem` — auth + ecdh + hmac + search (mock HEM for tests).
+3. `internal/mac` — canonicalization + vector tests (incl. peer ordering, MAC zeroing).
+4. `cmd provision` end-to-end against a real PPA.
+5. Device fork (ss/se) — based on the existing encedo-wg-hsm.
+6. `cmd up` + runtime + failover.
+7. Integration tests: 1 if / 3 peers, kill the active endpoint, measure failover time.
+
+## 10. CLI surface
+
+Single binary, three modes. Provisioning flags map 1:1 to the admin data set (§6.1 inputs).
+
+### 10.1 Provisioning
+
+```
+wg-hem provision \
+  --address 10.0.0.7/32 \
+  --peer pubkey=BASE64,endpoint=vpn.acme.com:51820,allowed-ips=0.0.0.0/0[,keepalive=25] \
+  [--peer …]                        # repeatable; order = PEER_REF priority
+  [--psk -]                         # infra-supplied PSK via stdin (NEVER via argv — visible in ps/history)
+  [--dns 10.0.0.1] [--mtu 1380] \
+  [--hem https://192.168.7.1]       # default PPA; EPA via flag or env WG_HEM_URL
+```
+
+- No flags → interactive wizard (prompts follow the admin data table).
+- Output: the client public key, base64, **clean on stdout** (pipeable to clipboard/Ansible); everything else on stderr.
+- Data returned to infra: **public key only** (PSK is generated by infra and passed in; the client only wraps it — §5).
+
+### 10.2 Runtime
+
+```
+wg-hem up [--peer N | --peer-pubkey PREFIX]   # no flag: interactive peer prompt when >1 peer (§6.2 step 5)
+wg-hem down
+wg-hem status                                  # active peer, last handshake, transfer, hmac/verify result
+```
+
+### 10.3 Maintenance
+
+```
+wg-hem peer add|remove|update …    # same flags as --peer; every change triggers a tree re-MAC (automatic)
+wg-hem rotate-psk --peer N --psk -
+wg-hem verify                      # standalone hmac/verify + parsed-config dump; the "has anyone touched the config" diagnostic
+wg-hem wipe                        # remove all WG:* records from HEM (with confirmation)
+```
+
+### 10.4 Conventions
+
+1. Secrets only via stdin (`-`), never argv or env.
+2. stdout = machine-readable payload only; human output = stderr.
+3. Distinct exit codes: auth failure / MAC verify failure / network failure / usage error.
+4. v2: `wg-hem provision --web` — the same provisioner logic behind an embedded (go:embed) localhost form; the browser is UI only, all HEM calls go through the same Go code path. No standalone SPA talking to the HEM REST API directly (logic duplication in a CC-bound format, CORS/TLS against the device, secrets in browser context).
