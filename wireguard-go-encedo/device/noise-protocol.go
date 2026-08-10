@@ -357,7 +357,18 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	// decrypt static key
 	var peerPK NoisePublicKey
 	var key [chacha20poly1305.KeySize]byte
-	ss, err := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+	var ss [NoisePublicKeySize]byte
+	var err error
+	if hsmSession != nil {
+		// Responder side of the handshake: the peer initiated, so its ephemeral
+		// key exists only in this packet — nothing here can be precomputed and
+		// the DH has to reach the HEM now. Without this branch the intercepted
+		// (zero) private key yields a wrong secret, the AEAD below fails to
+		// open, and the initiation is silently dropped as unauthentic.
+		ss, err = hsmDH(msg.Ephemeral)
+	} else {
+		ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+	}
 	if err != nil {
 		return nil
 	}

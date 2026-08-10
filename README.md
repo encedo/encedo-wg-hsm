@@ -253,7 +253,7 @@ When peers use `HEM_KID`, two auth prompts appear with a single password entry:
 
 ### WireGuard Noise Protocol — patched operations
 
-WireGuard uses the Noise_IKpsk2 protocol. The static private key is required in two places during every handshake:
+WireGuard uses the Noise_IKpsk2 protocol. The static private key is required in three places:
 
 **1. `precomputedStaticStatic` (peer creation)**
 ```
@@ -261,13 +261,21 @@ standard: DH(myPrivateKey, peerStaticPublicKey)
 patched:  HEM.ECDH(KID, peerStaticPublicKey)  ← same result, key stays in HEM
 ```
 
-**2. `ConsumeMessageResponse` (every handshake, ~3 min)**
+**2. `ConsumeMessageResponse` — we initiated, the peer answered (~3 min)**
 ```
 standard: DH(myPrivateKey, peerEphemeralPublicKey)
 patched:  HEM.ECDH(KID, peerEphemeralPublicKey)  ← live call, key stays in HEM
 ```
 
-The server's ephemeral key changes with every handshake — the HEM must be reachable at all times.
+**3. `ConsumeMessageInitiation` — the peer initiated**
+```
+standard: DH(myPrivateKey, peerEphemeralPublicKey)
+patched:  HEM.ECDH(KID, peerEphemeralPublicKey)  ← live call, key stays in HEM
+```
+
+Cases 2 and 3 are the same DH on opposite sides of the handshake, and neither can
+be precomputed: the peer's ephemeral key is fresh in every handshake and arrives
+in the packet itself. The HEM must be reachable at all times.
 
 ### Patched files in wireguard-go
 
@@ -275,7 +283,7 @@ The server's ephemeral key changes with every handshake — the HEM must be reac
 |------|--------|
 | `device/hsm.go` | New — `HSMSession` struct, `hsmDH()` dispatcher |
 | `device/peer.go` | `precomputedStaticStatic` via `hsmDH()` |
-| `device/noise-protocol.go` | `ConsumeMessageResponse` static DH via `hsmDH()` |
+| `device/noise-protocol.go` | `ConsumeMessageResponse` + `ConsumeMessageInitiation` static DH via `hsmDH()` |
 | `device/device.go` | `SetPrivateKey` — injects HEM public key, skips private key |
 
 When `hsmSession == nil`, all patches fall through to standard wireguard-go behaviour. Existing WireGuard interfaces are unaffected.

@@ -33,11 +33,16 @@ runtime:
 ```
 
 ### Why HEM must stay online at all times
-WireGuard Noise_IKpsk2 requires the private key in TWO places during every handshake:
+WireGuard Noise_IKpsk2 requires the private key in THREE places:
 1. `precomputedStaticStatic = DH(myPriv, peerStaticPub)` — when adding a peer
-2. `DH(myPriv, peerEphemeralPub)` — in `ConsumeMessageResponse` with a FRESH ephemeral key
+2. `DH(myPriv, peerEphemeralPub)` — in `ConsumeMessageResponse`, when WE initiated
+3. `DH(myPriv, peerEphemeralPub)` — in `ConsumeMessageInitiation`, when the PEER initiated
 
-Point 2 cannot be precomputed — the server's ephemeral key is generated fresh on every handshake.
+Points 2 and 3 cannot be precomputed — the peer's ephemeral key is generated fresh
+for every handshake and arrives in the packet. Either side of a WireGuard tunnel may
+initiate, so both paths are live; patching only point 2 leaves peer-initiated
+handshakes failing silently (the AEAD open fails and the packet is dropped as
+unauthentic, with no log).
 
 ---
 
@@ -137,7 +142,7 @@ if ek2, err := hsmDH(pk); err == nil {
 }
 ```
 
-### Patch: `device/noise-protocol.go` — `ConsumeMessageResponse`
+### Patch: `device/noise-protocol.go` — `ConsumeMessageResponse` (we initiated)
 ```go
 // instead of: ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
 if hsmSession != nil {
@@ -148,6 +153,21 @@ if hsmSession != nil {
     if err != nil { return false }
 }
 ```
+
+### Patch: `device/noise-protocol.go` — `ConsumeMessageInitiation` (peer initiated)
+Same DH, other side. `ss` must be declared up front because upstream uses `:=`.
+```go
+var ss [NoisePublicKeySize]byte
+var err error
+if hsmSession != nil {
+    ss, err = hsmDH(msg.Ephemeral)
+} else {
+    ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+}
+if err != nil { return nil }
+```
+The result decrypts `msg.Static`; with the zeroed private key the AEAD open fails
+and the peer's initiation is dropped without a log line.
 
 ### Patch: `device/device.go` — `SetPrivateKey`
 ```go
