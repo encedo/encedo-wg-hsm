@@ -1,0 +1,3 @@
+[submodule "hem-sdk-go"]
+	path = hem-sdk-go
+	url = git@github.com:encedo/hem-sdk-go.git

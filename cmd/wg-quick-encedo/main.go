@@ -19,10 +19,13 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 
-	"github.com/encedo/encedo-wg-hsm/hem-sdk-go"
+	hem "github.com/encedo/hem-sdk-go"
 )
 
-const brokerURL = "https://api.hem.com"
+// ecdhTimeout bounds a single HEM call on the handshake path. WireGuard
+// retransmits its first message after 5 s, so an ECDH that has not answered
+// well before then is better retried than waited on.
+const ecdhTimeout = 3 * time.Second
 
 func main() {
 	if len(os.Args) < 2 {
@@ -76,7 +79,6 @@ func cmdPubkey(ifname string) {
 	fmt.Print(string(data))
 }
 
-
 func cmdUp(ifname, cfgPath string) {
 	// 1. Parse config
 	cfg, err := ParseConfig(cfgPath)
@@ -87,15 +89,11 @@ func cmdUp(ifname, cfgPath string) {
 		fatal("Address is required in [Interface]")
 	}
 
-	// 2. Encedo client + checkin
-	broker := cfg.Interface.HEMBrokerURL
-	if broker == "" {
-		broker = brokerURL
-	}
-	client := hem.NewClient(cfg.Interface.HEMURL, broker, false)
+	// 2. Encedo client + checkin. An empty HEM_BROKER_URL leaves the SDK default.
+	client := hem.NewClient(cfg.Interface.HEMURL, hem.Config{Broker: cfg.Interface.HEMBrokerURL})
 
 	fmt.Fprintln(os.Stderr, "Connecting to HEM...")
-	if err := client.Checkin(); err != nil {
+	if err := client.Checkin(context.Background()); err != nil {
 		fatal("checkin: %v", err)
 	}
 	fmt.Fprintln(os.Stderr, "HEM connected")
@@ -120,16 +118,13 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 4. GetPubKey (my key) — use ecdhToken (keymgmt:use:<KID> covers own key read)
-	pubKeyB64, _, _, err := client.GetPubKey(tokens.ecdh, cfg.Interface.HEMKID)
+	myKey, err := client.GetPubKey(context.Background(), tokens.ecdh, cfg.Interface.HEMKID)
 	if err != nil {
 		fatal("GetPubKey: %v", err)
 	}
-	pubKeyRaw, err := base64.StdEncoding.DecodeString(pubKeyB64)
-	if err != nil {
-		fatal("decode pubkey: %v", err)
-	}
 	var myPubKey device.NoisePublicKey
-	copy(myPubKey[:], pubKeyRaw)
+	copy(myPubKey[:], myKey.PubKey)
+	pubKeyB64 := base64.StdEncoding.EncodeToString(myKey.PubKey)
 	fmt.Fprintf(os.Stderr, "HEM public key: %s\n", pubKeyB64)
 	_ = os.MkdirAll("/var/run/wireguard", 0755)
 	_ = os.WriteFile("/var/run/wireguard/"+ifname+".pub", []byte(pubKeyB64+"\n"), 0644)
@@ -142,17 +137,13 @@ func cmdUp(ifname, cfgPath string) {
 		if peer.HEMKID == "" {
 			continue
 		}
-		pkB64, _, _, err := client.GetPubKey(tokens.lookup, peer.HEMKID)
+		peerKey, err := client.GetPubKey(context.Background(), tokens.lookup, peer.HEMKID)
 		if err != nil {
 			fatal("GetPubKey peer HEM_KID %s...: %v", peer.HEMKID[:8], err)
 		}
-		pkRaw, err := base64.StdEncoding.DecodeString(pkB64)
-		if err != nil {
-			fatal("decode peer pubkey: %v", err)
-		}
-		cfg.Peers[i].PublicKey = pkB64
+		cfg.Peers[i].PublicKey = base64.StdEncoding.EncodeToString(peerKey.PubKey)
 		var pk device.NoisePublicKey
-		copy(pk[:], pkRaw)
+		copy(pk[:], peerKey.PubKey)
 		extKIDMap[pk] = peer.HEMKID
 	}
 
@@ -166,11 +157,10 @@ func cmdUp(ifname, cfgPath string) {
 		ECDH: func(pub device.NoisePublicKey) ([device.NoisePublicKeySize]byte, error) {
 			// Static peer key with HEM_KID: fully internal ECDH, no key bytes in software
 			if extKID, ok := extKIDMap[pub]; ok {
-				return ecdhInternalWithRetry(hsmClient, hsmToken, hsmKID, extKID)
+				return ecdhWithRetry(hsmClient, hsmToken, hsmKID, hem.CryptoOpts{ExtKID: extKID})
 			}
 			// Ephemeral key (per-handshake): standard ECDH with pubkey value
-			pubB64 := base64.StdEncoding.EncodeToString(pub[:])
-			result, err := ecdhWithRetry(hsmClient, hsmToken, hsmKID, pubB64)
+			result, err := ecdhWithRetry(hsmClient, hsmToken, hsmKID, hem.CryptoOpts{PubKey: pub[:]})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable — shutting down interface: %v\n", err)
 				select {
@@ -316,15 +306,21 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 	choice, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	choice = strings.TrimSpace(strings.ToLower(choice))
 
+	// Both tokens are held for the life of the process, so nothing is gained by
+	// leaving key material in the SDK cache once they have been issued.
+	defer client.ClearKeys()
+
 	switch choice {
 	case "m":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
+		waiting := func() { fmt.Fprintln(os.Stderr, "Waiting for mobile confirmation...") }
+		opts := hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
 		var lookupToken string
 		if needsLookup {
 			fmt.Fprintln(os.Stderr, "Mobile auth #1 — peer key lookup (Ctrl+C = cancel)...")
 			var err error
-			lookupToken, err = client.AuthRemote(ctx, "keymgmt:get", 2*time.Second, 60*time.Second)
+			lookupToken, err = client.AuthRemote(ctx, "keymgmt:get", opts)
 			if err != nil {
 				return tokenPair{}, err
 			}
@@ -334,7 +330,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		} else {
 			fmt.Fprintln(os.Stderr, "Mobile auth — ECDH (Ctrl+C = cancel)...")
 		}
-		ecdhToken, err := client.AuthRemote(ctx, ecdhScope, 2*time.Second, 60*time.Second)
+		ecdhToken, err := client.AuthRemote(ctx, ecdhScope, opts)
 		if err != nil {
 			return tokenPair{}, err
 		}
@@ -346,21 +342,30 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		if err != nil {
 			return tokenPair{}, err
 		}
-		defer func() { for i := range passBytes { passBytes[i] = 0 } }()
+		defer func() {
+			for i := range passBytes {
+				passBytes[i] = 0
+			}
+		}()
+		ctx := context.Background()
+		ecdhPass := passBytes
 		var lookupToken string
 		if needsLookup {
 			fmt.Fprintln(os.Stderr, "Auth #1 — peer key lookup...")
-			lookupToken, err = client.AuthPassword(passBytes, "keymgmt:get", 120)
+			lookupToken, err = client.AuthPassword(ctx, passBytes, "keymgmt:get", 120)
 			if err != nil {
 				return tokenPair{}, err
 			}
+			// nil password: the SDK reuses the key derived above rather than
+			// running a second 600k-round PBKDF2 over the same passphrase.
+			ecdhPass = nil
 		}
 		if needsLookup {
 			fmt.Fprintf(os.Stderr, "Auth #2 — ECDH, session %dh...\n", expSeconds/3600)
 		} else {
 			fmt.Fprintf(os.Stderr, "Auth — ECDH, session %dh...\n", expSeconds/3600)
 		}
-		ecdhToken, err := client.AuthPassword(passBytes, ecdhScope, expSeconds)
+		ecdhToken, err := client.AuthPassword(ctx, ecdhPass, ecdhScope, expSeconds)
 		if err != nil {
 			return tokenPair{}, err
 		}
@@ -368,17 +373,25 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 	}
 }
 
-// ecdhInternalWithRetry calls HSM internal ECDH (ext_kid) with up to 3 attempts on error.
-func ecdhInternalWithRetry(client *hem.Client, token, kid, extKid string) ([32]byte, error) {
+// ecdhWithRetry calls HEM ECDH with up to 3 attempts on error. opts selects the
+// peer key: ExtKID for a peer already imported into the HEM (both operands stay
+// in-device), PubKey for a key seen on the wire — an ephemeral, in practice.
+func ecdhWithRetry(client *hem.Client, token, kid string, opts hem.CryptoOpts) ([32]byte, error) {
 	const maxRetries = 3
 	const retryDelay = 2 * time.Second
+	what := "ECDH"
+	if opts.ExtKID != "" {
+		what = "ECDH (internal)"
+	}
 	var lastErr error
 	for i := 0; i < maxRetries; i++ {
 		if i > 0 {
-			fmt.Fprintf(os.Stderr, "HEM ECDH (internal) error: %v — retrying (%d/%d)...\n", lastErr, i, maxRetries-1)
+			fmt.Fprintf(os.Stderr, "HEM %s error: %v — retrying (%d/%d)...\n", what, lastErr, i, maxRetries-1)
 			time.Sleep(retryDelay)
 		}
-		result, err := client.ECDHInternal(token, kid, extKid)
+		ctx, cancel := context.WithTimeout(context.Background(), ecdhTimeout)
+		result, err := client.ECDH(ctx, token, kid, opts)
+		cancel()
 		if err == nil {
 			var out [32]byte
 			copy(out[:], result)
@@ -386,28 +399,7 @@ func ecdhInternalWithRetry(client *hem.Client, token, kid, extKid string) ([32]b
 		}
 		lastErr = err
 	}
-	return [32]byte{}, fmt.Errorf("HEM ECDH (internal) unreachable after %d attempts: %w", maxRetries, lastErr)
-}
-
-// ecdhWithRetry calls HSM ECDH with up to 3 attempts on error.
-func ecdhWithRetry(client *hem.Client, token, kid, pubB64 string) ([32]byte, error) {
-	const maxRetries = 3
-	const retryDelay = 2 * time.Second
-	var lastErr error
-	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			fmt.Fprintf(os.Stderr, "HEM ECDH error: %v — retrying (%d/%d)...\n", lastErr, i, maxRetries-1)
-			time.Sleep(retryDelay)
-		}
-		result, err := client.ECDH(token, kid, pubB64)
-		if err == nil {
-			var out [32]byte
-			copy(out[:], result)
-			return out, nil
-		}
-		lastErr = err
-	}
-	return [32]byte{}, fmt.Errorf("HEM ECDH unreachable after %d attempts: %w", maxRetries, lastErr)
+	return [32]byte{}, fmt.Errorf("HEM %s unreachable after %d attempts: %w", what, maxRetries, lastErr)
 }
 
 func run(args ...string) error {

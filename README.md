@@ -39,10 +39,15 @@ Download the binary for your platform from the `dist/` directory:
 **Requirements:** Go 1.23+, git
 
 ```bash
-git clone https://github.com/encedo/encedo-wg-hsm
+git clone --recurse-submodules https://github.com/encedo/encedo-wg-hsm
 cd wg-hsm
 bash build.sh
 ```
+
+The HEM SDK lives in its own repository and is wired in as the `hem-sdk-go`
+submodule — `--recurse-submodules` is required, or `git submodule update --init`
+in an existing clone. The build resolves the module from the checked-out
+submodule, not from the module proxy.
 
 `build.sh` clones the upstream wireguard-go at the pinned commit, overlays the Encedo patches, and builds all 6 binaries into `dist/`.
 
@@ -305,8 +310,7 @@ wg-hsm/
   build.sh                        # clone wireguard-go + overlay patches + build all binaries
   go.mod
   dist/                           # pre-built binaries
-  hem-sdk-go/
-    client.go                     # Encedo HEM SDK (package hem)
+  hem-sdk-go/                     # git submodule -> github.com/encedo/hem-sdk-go
   wireguard-go-encedo/            # ONLY our changes to wireguard-go (4 files)
     device/
       hsm.go                      # new — HSMSession + hsmDH

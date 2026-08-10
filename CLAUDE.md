@@ -170,8 +170,12 @@ wg-hsm/
   PRODUCT.md                      <- marketing summary
   CLAUDE.md                       <- this file
 
-  hem-sdk-go/
-    client.go                     <- Go SDK (package hem): Checkin, Auth, GetPubKey, ECDH
+  hem-sdk-go/                     <- git submodule: github.com/encedo/hem-sdk-go
+                                     package hem. Never edit here — change it in
+                                     the SDK repo, commit, push, then bump the
+                                     submodule pointer. go.mod resolves it via
+                                     `replace => ./hem-sdk-go`, so the build uses
+                                     the checked-out commit.
 
   wireguard-go-encedo/            <- ONLY our files (4 files) — overlay on upstream
     device/
@@ -225,16 +229,25 @@ Tested: Linux client <-> server (remote WireGuard endpoint)
 - DisableKeepAlives=true in HTTP client (HEM embedded closes connections)
 - private_key in UAPI = 64x"0" (intercepted by SetPrivateKey patch)
 - Logger: LogLevelError (not Verbose)
-- ECDH retry: 3 attempts, 2s delay, then graceful shutdown
+- ECDH retry: 3 attempts, 2s delay, then graceful shutdown. Each attempt is
+  bounded by a 3s context -- WireGuard retransmits msg1 after 5s, so a call that
+  has not answered by then is worth retrying rather than waiting on.
 - Token expiry: asked at startup, default 8h, maximum depends on HEM
 
 ## Memory management -- sensitive data
 
-Zeroing order after `AuthPassword`:
-1. `seed []byte` (PBKDF2) -- zeroed immediately after `buildEjwt`
-2. `sharedSecret []byte` (X25519) -- zeroed in `buildEjwt` via `defer` after HMAC
-3. `passBytes` in `main.go` -- zeroed via `defer` after returning from `authInteractive` (after BOTH calls to AuthPassword)
+Zeroing, in the order it happens:
+1. `sharedSecret []byte` (X25519) -- zeroed in `buildEjwt` via `defer` after the HMAC
+2. `seed []byte` (PBKDF2) -- each `AuthPassword` call works on its own copy and
+   zeroes it via `defer`. A copy, not the cached slice, so `ClearKeys` is safe to
+   call while a request is in flight.
+3. the SDK's cached seed -- wiped by `client.ClearKeys()`, deferred in
+   `authInteractive` so it does not outlive the auth step. Both tokens are held
+   as JWT strings for the life of the process; the key that minted them is not.
+4. `passBytes` in `main.go` -- zeroed via `defer` after `authInteractive` returns
 
-`AuthPassword` takes `[]byte` (not `string`) -- no copy to immutable string.
-`AuthPassword` does NOT zero `password` internally -- because needsLookup calls it twice with a shared slice.
+`AuthPassword` takes `[]byte` (not `string`) -- no copy to an immutable string.
+It does NOT zero `password` internally: the caller may pass the same slice twice.
+The second scope is requested with `password=nil`, which reuses the cached key
+instead of running a second 600k-round PBKDF2 over the same passphrase.
 From the moment tokens are returned, only JWT strings live in memory.
