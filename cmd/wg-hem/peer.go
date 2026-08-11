@@ -336,7 +336,8 @@ func reseal(ctx context.Context, client *hem.Client, auth *authenticator, tree *
 	if err != nil {
 		return err
 	}
-	if err := client.UpdateKey(ctx, updTok, tree.IfKID, "", signed[:]); err != nil {
+	// The label travels with the description; see UpdateKey in the SDK.
+	if err := client.UpdateKey(ctx, updTok, tree.IfKID, tree.IfLabel, signed[:]); err != nil {
 		return classify(err, exitDevice, "writing the interface record")
 	}
 	if err := mac.Verify(ctx, client, useTok, tree.IfKID, tree.IfPubKey, signed, records); err != nil {

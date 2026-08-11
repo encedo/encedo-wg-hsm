@@ -36,7 +36,7 @@ type stringList []string
 func (s *stringList) String() string     { return strings.Join(*s, " ") }
 func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 
-func cmdProvision(args []string) error {
+func cmdProvision(args []string) (retErr error) {
 	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -163,6 +163,24 @@ Flags:
 	defer auth.wipe()
 
 	ifKID := *kid
+	createdIdentity := false
+	// Anything created before a later step fails would otherwise be invisible:
+	// an identity key carries no WG:if: record until the last write, so a prefix
+	// search — and therefore `wg-hem wipe` — cannot find it.
+	defer func() {
+		if retErr == nil {
+			return
+		}
+		fmt.Fprintln(os.Stderr, "\nProvisioning did not finish. The device now holds:")
+		if createdIdentity {
+			fmt.Fprintf(os.Stderr, "  identity key %s (no WG:if: record yet, so `wipe` cannot see it)\n", ifKID)
+		}
+		fmt.Fprintln(os.Stderr, "  any peer keys reported as imported above")
+		fmt.Fprintln(os.Stderr, "To carry on where this left off, re-run with:")
+		fmt.Fprintf(os.Stderr, "  wg-hem wipe --peers-only --hem %s\n", url)
+		fmt.Fprintf(os.Stderr, "  wg-hem provision --kid %s ...    # reuses the identity key\n", ifKID)
+	}()
+
 	if ifKID == "" {
 		tok, err := auth.token(ctx, "keymgmt:gen")
 		if err != nil {
@@ -172,6 +190,7 @@ Flags:
 		if err != nil {
 			return classify(err, exitDevice, "creating the identity key")
 		}
+		createdIdentity = true
 		fmt.Fprintf(os.Stderr, "Identity key created: %s\n", ifKID)
 	} else {
 		fmt.Fprintf(os.Stderr, "Reusing identity key %s\n", ifKID)
@@ -267,7 +286,9 @@ Flags:
 	if err != nil {
 		return err
 	}
-	if err := client.UpdateKey(ctx, updTok, ifKID, "", signed[:]); err != nil {
+	// The label goes with it. The reference suite always sends both, and a
+	// device may reject an update carrying only a description.
+	if err := client.UpdateKey(ctx, updTok, ifKID, *label, signed[:]); err != nil {
 		return classify(err, exitDevice, "writing the interface record")
 	}
 

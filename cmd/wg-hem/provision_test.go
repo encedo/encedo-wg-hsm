@@ -49,6 +49,7 @@ type fakeHEM struct {
 	wraps    []map[string]any
 	hashes   []map[string]any
 	verifies []map[string]any
+	updates  []map[string]any
 	scopes   []string
 	deleted  []string
 
@@ -223,6 +224,7 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/keymgmt/update":
 		body := f.body(r)
 		kid, _ := body["kid"].(string)
+		f.updates = append(f.updates, body)
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
 		// A peer's record lives with its import, so an update has to land there
 		// or a later search would hand back the version before the change.
@@ -410,6 +412,17 @@ func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
 	}
 	if !hmac.Equal(ifRec.MAC[:], f.hmac(expected)) {
 		t.Error("the stored MAC does not match the canonical message")
+	}
+
+	// Every update carries a label beside the description: that is the shape the
+	// reference suite uses, and a device rejected the description-only form.
+	if len(f.updates) == 0 {
+		t.Fatal("the interface record was never written")
+	}
+	for i, u := range f.updates {
+		if label, _ := u["label"].(string); label == "" {
+			t.Errorf("update %d sent no label: %v", i, u)
+		}
 	}
 
 	// Provisioning verifies its own work before reporting success.
