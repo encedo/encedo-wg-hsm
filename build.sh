@@ -4,7 +4,7 @@ set -euo pipefail
 WG_REPO="https://git.zx2c4.com/wireguard-go"
 WG_COMMIT="f333402"
 WG_DIR="wireguard-go"
-PATCH_DIR="wireguard-go-encedo"
+PATCH_DIR="_wireguard-go-encedo"
 
 echo "==> Checking out wireguard-go @ ${WG_COMMIT}..."
 if [ -d "${WG_DIR}/.git" ]; then

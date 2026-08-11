@@ -395,11 +395,14 @@ func once(seen map[byte]bool, tag byte) error {
 //
 // Zero is how these fields say "absent" — MTU 0 is not a usable MTU, listen
 // port 0 already means "let the kernel choose", keepalive 0 means disabled — so
-// an explicit zero tag and a missing tag describe the same configuration. Two
-// byte sequences for one configuration is malleability, and this format is
-// authenticated byte for byte: it would let anyone holding a valid record
-// produce a second, differently-signed encoding of it. Only the shorter form is
-// legal, and encoding never emits the other.
+// an explicit zero tag and a missing tag describe the same configuration.
+//
+// Rejecting the longer form is not what stops forgery; the MAC is over the
+// bytes, so a rewritten record simply fails to verify. It is what keeps one
+// configuration to one encoding, the same property DER exists to give ASN.1.
+// That buys two concrete things: encode(decode(x)) == x becomes an invariant a
+// fuzzer can hold the codec to, and two records can be compared as bytes rather
+// than by decoding both and comparing meanings.
 func nonZero(tag byte, v uint64, name string) error {
 	if v == 0 {
 		return fmt.Errorf("descr: tag 0x%02X carries %s 0; omit the tag instead", tag, name)

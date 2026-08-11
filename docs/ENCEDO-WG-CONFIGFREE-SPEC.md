@@ -1,13 +1,18 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 1.4 (2026-08-10) · Status: ready for implementation
+Version: 1.5 (2026-08-11) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
 HEM FW: v1.7b (current API, **zero firmware changes required**)
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
 
 Changes in 1.4: self-ECDH addressed by `ext_kid` rather than `pubkey` (§4, §5);
-§7 endpoint paths corrected to `/api/keymgmt/*`. No change to the DESCR format
-or to the canonical MAC message — `ENC-WG-MAC-v1` stands.
+§7 endpoint paths corrected to `/api/keymgmt/*`.
+
+Changes in 1.5: §3 states the encoding rules that make the format distinguished
+(ascending tags, no zero-valued optional tags). These constrain what a *writer*
+may emit and what a *reader* must reject; no field, tag or offset changed, and
+no record valid under 1.4's tables becomes invalid unless it was already relying
+on two encodings of one configuration. `ENC-WG-MAC-v1` stands.
 
 ## 1. Goal
 
@@ -50,6 +55,21 @@ Common header:
 | 0 | 6 B | ASCII magic: `WG:if:` or `WG:pr:` (exactly 6 chars — the HEM prefix-search minimum) |
 | 6 | 1 B | version = `0x01` |
 | 7 | … | TLV stream: `tag(1B) len(1B) value(len B)`; terminated by tag `0x00` or end of buffer; zero-padded |
+
+**Encoding rules (normative).** One configuration has exactly one encoding — the
+property DER gives ASN.1, and for the same reason: the record is authenticated,
+compared and stored as bytes.
+
+- Tags MUST appear in **ascending order**. A repeatable tag may of course repeat.
+- An optional numeric tag (`0x03` MTU, `0x07` LISTEN_PORT, `0x15` KEEPALIVE) MUST NOT
+  carry the value `0`. Zero is how each of those fields says "absent", so an explicit
+  zero and a missing tag would describe the same configuration — omit the tag.
+- Padding after the terminator MUST be zero.
+
+A decoder rejects anything else rather than normalising it. This is not what
+prevents forgery — the MAC over the bytes already does that — but it makes
+`encode(decode(x)) == x` an invariant the codec can be fuzzed against, and it
+lets two records be compared without decoding both.
 
 ### 3.1 `WG:if:` record (identity key)
 

@@ -319,12 +319,19 @@ wg-hsm/
   go.mod
   dist/                           # pre-built binaries
   hem-sdk-go/                     # git submodule -> github.com/encedo/hem-sdk-go
-  wireguard-go-encedo/            # ONLY our changes to wireguard-go (4 files)
+  _wireguard-go-encedo/           # ONLY our changes to wireguard-go (4 files)
+                                  # leading _ keeps the go tool out: these files
+                                  # only compile once overlaid on upstream
     device/
       hsm.go                      # new — HSMSession + hsmDH
       device.go                   # patched — SetPrivateKey injects HEM public key
       peer.go                     # patched — precomputedStaticStatic via hsmDH
       noise-protocol.go           # patched — ConsumeMessageResponse via hsmDH
+  docs/
+    ENCEDO-WG-CONFIGFREE-SPEC.md  # spec for the config-free client (wg-hem)
+  internal/
+    descr/                        # TLV codec for the 128 B descr records
+    mac/                          # configuration MAC (self-ECDH, computed in HEM)
   cmd/
     wg-quick-encedo/
       main.go                     # CLI: up / down / pubkey
