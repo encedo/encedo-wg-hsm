@@ -1,10 +1,11 @@
 //go:build linux
 
-package main
+package runtime
 
 import (
 	"errors"
 	"net"
+	"net/netip"
 	"os"
 	"os/exec"
 	"syscall"
@@ -13,22 +14,29 @@ import (
 	"golang.zx2c4.com/wireguard/ipc"
 )
 
-func ifUp(ifname, address string) error {
+// Up assigns the interface its addresses and brings it up. Several are allowed:
+// one identity may hold an address in more than one family, or more than one
+// range of the same.
+func Up(ifname string, addrs []netip.Prefix) error {
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
 		return err
 	}
-	addr, err := netlink.ParseAddr(address)
-	if err != nil {
-		return err
-	}
-	if err := netlink.AddrAdd(link, addr); err != nil {
-		return err
+	for _, a := range addrs {
+		addr, err := netlink.ParseAddr(a.String())
+		if err != nil {
+			return err
+		}
+		if err := netlink.AddrAdd(link, addr); err != nil && !errors.Is(err, syscall.EEXIST) {
+			return err
+		}
 	}
 	return netlink.LinkSetUp(link)
 }
 
-func ifDown(ifname string) error {
+// Down removes the interface. Its routes go with it; the pins installed by Pins
+// sit on the physical link and have to be taken back separately.
+func Down(ifname string) error {
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
 		return err
@@ -36,7 +44,7 @@ func ifDown(ifname string) error {
 	return netlink.LinkDel(link)
 }
 
-func addRoutes(ifname string, routes []string) error {
+func AddRoutes(ifname string, routes []netip.Prefix) error {
 	if len(routes) == 0 {
 		return nil
 	}
@@ -44,14 +52,10 @@ func addRoutes(ifname string, routes []string) error {
 	if err != nil {
 		return err
 	}
-	for _, cidr := range routes {
-		_, dst, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return err
-		}
-		err = netlink.RouteAdd(&netlink.Route{
+	for _, r := range routes {
+		err := netlink.RouteAdd(&netlink.Route{
 			LinkIndex: link.Attrs().Index,
-			Dst:       dst,
+			Dst:       ipNet(r),
 		})
 		if err != nil && !errors.Is(err, syscall.EEXIST) {
 			return err
@@ -66,14 +70,14 @@ func addRoutes(ifname string, routes []string) error {
 //
 // Routes without a gateway are skipped: an interface-scoped default is what the
 // tunnel itself installs, and pinning an endpoint to it would defeat the point.
-func defaultGateway(v6 bool) (net.IP, string, error) {
+func defaultGateway(v6 bool) (netip.Addr, string, error) {
 	family := netlink.FAMILY_V4
 	if v6 {
 		family = netlink.FAMILY_V6
 	}
 	routes, err := netlink.RouteList(nil, family)
 	if err != nil {
-		return nil, "", err
+		return netip.Addr{}, "", err
 	}
 	best := -1
 	var chosen netlink.Route
@@ -91,24 +95,28 @@ func defaultGateway(v6 bool) (net.IP, string, error) {
 		}
 	}
 	if best < 0 {
-		return nil, "", errors.New("no default route with a gateway to pin against")
+		return netip.Addr{}, "", errors.New("no default route with a gateway to pin against")
 	}
 	link, err := netlink.LinkByIndex(chosen.LinkIndex)
 	if err != nil {
-		return nil, "", err
+		return netip.Addr{}, "", err
 	}
-	return chosen.Gw, link.Attrs().Name, nil
+	gw, ok := netip.AddrFromSlice(chosen.Gw)
+	if !ok {
+		return netip.Addr{}, "", errors.New("the default route's gateway is not an address")
+	}
+	return gw.Unmap(), link.Attrs().Name, nil
 }
 
-func addHostRoute(ip, gw net.IP, iface string) error {
+func addHostRoute(addr, gw netip.Addr, iface string) error {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
 		return err
 	}
 	err = netlink.RouteAdd(&netlink.Route{
 		LinkIndex: link.Attrs().Index,
-		Dst:       hostNet(ip),
-		Gw:        gw,
+		Dst:       ipNet(hostPrefix(addr)),
+		Gw:        net.IP(gw.AsSlice()),
 	})
 	if err != nil && !errors.Is(err, syscall.EEXIST) {
 		return err
@@ -116,15 +124,15 @@ func addHostRoute(ip, gw net.IP, iface string) error {
 	return nil
 }
 
-func delHostRoute(ip, gw net.IP, iface string) error {
+func delHostRoute(addr, gw netip.Addr, iface string) error {
 	link, err := netlink.LinkByName(iface)
 	if err != nil {
 		return err
 	}
 	err = netlink.RouteDel(&netlink.Route{
 		LinkIndex: link.Attrs().Index,
-		Dst:       hostNet(ip),
-		Gw:        gw,
+		Dst:       ipNet(hostPrefix(addr)),
+		Gw:        net.IP(gw.AsSlice()),
 	})
 	if err != nil && !errors.Is(err, syscall.ESRCH) {
 		return err
@@ -132,7 +140,7 @@ func delHostRoute(ip, gw net.IP, iface string) error {
 	return nil
 }
 
-func setMTU(ifname string, mtu int) error {
+func SetMTU(ifname string, mtu int) error {
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {
 		return err
@@ -140,7 +148,7 @@ func setMTU(ifname string, mtu int) error {
 	return netlink.LinkSetMTU(link, mtu)
 }
 
-func setDNS(ifname string, servers []string) error {
+func SetDNS(ifname string, servers []string) error {
 	if len(servers) == 0 {
 		return nil
 	}
@@ -154,14 +162,14 @@ func setDNS(ifname string, servers []string) error {
 	return run("resolvectl", "domain", ifname, "~.")
 }
 
-func revertDNS(ifname string) {
+func RevertDNS(ifname string) {
 	if _, err := exec.LookPath("resolvectl"); err != nil {
 		return
 	}
 	_ = run("resolvectl", "revert", ifname)
 }
 
-func uapiListen(ifname string) (net.Listener, error) {
+func UAPIListen(ifname string) (net.Listener, error) {
 	if err := os.MkdirAll("/var/run/wireguard", 0755); err != nil {
 		return nil, err
 	}
@@ -170,4 +178,15 @@ func uapiListen(ifname string) (net.Listener, error) {
 		return nil, err
 	}
 	return ipc.UAPIListen(ifname, f)
+}
+
+// ipNet converts a prefix to the form netlink wants, masked: a route's
+// destination is a network, and host bits in AllowedIPs are the operator's
+// shorthand rather than an instruction.
+func ipNet(p netip.Prefix) *net.IPNet {
+	m := p.Masked()
+	return &net.IPNet{
+		IP:   net.IP(m.Addr().AsSlice()),
+		Mask: net.CIDRMask(m.Bits(), m.Addr().BitLen()),
+	}
 }

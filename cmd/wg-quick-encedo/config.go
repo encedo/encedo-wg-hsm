@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -11,7 +12,7 @@ import (
 
 // Interface holds the [Interface] section of a WireGuard config with HSM extensions.
 type Interface struct {
-	Address      string
+	Address      netip.Prefix
 	ListenPort   int
 	HEMURL       string
 	HEMKID       string
@@ -22,11 +23,15 @@ type Interface struct {
 
 // Peer holds a [Peer] section of a WireGuard config.
 // Either PublicKey or HEMKID must be set (HEMKID takes precedence).
+//
+// Addresses and prefixes are parsed here rather than carried as strings: a typo
+// in AllowedIPs would otherwise surface while the interface is half up, with
+// routes already installed and the default route possibly among them.
 type Peer struct {
 	PublicKey           string // base64 Curve25519 public key (standard WireGuard)
 	HEMKID              string // HSM key ID of peer's public key (ext_kid in ECDH API)
 	Endpoint            string
-	AllowedIPs          []string
+	AllowedIPs          []netip.Prefix
 	PersistentKeepalive int
 }
 
@@ -98,7 +103,11 @@ func ParseConfig(path string) (*Config, error) {
 			case "PrivateKey":
 				return nil, fmt.Errorf("PrivateKey must not be present in config — use HEM_KID instead")
 			case "Address":
-				cfg.Interface.Address = value
+				prefix, err := netip.ParsePrefix(value)
+				if err != nil {
+					return nil, fmt.Errorf("invalid Address %q: %w", value, err)
+				}
+				cfg.Interface.Address = prefix
 			case "ListenPort":
 				port, err := strconv.Atoi(value)
 				if err != nil {
@@ -143,9 +152,14 @@ func ParseConfig(path string) (*Config, error) {
 			case "AllowedIPs":
 				for _, cidr := range strings.Split(value, ",") {
 					cidr = strings.TrimSpace(cidr)
-					if cidr != "" {
-						currentPeer.AllowedIPs = append(currentPeer.AllowedIPs, cidr)
+					if cidr == "" {
+						continue
 					}
+					prefix, err := netip.ParsePrefix(cidr)
+					if err != nil {
+						return nil, fmt.Errorf("invalid AllowedIPs %q: %w", cidr, err)
+					}
+					currentPeer.AllowedIPs = append(currentPeer.AllowedIPs, prefix)
 				}
 			case "PersistentKeepalive":
 				ka, err := strconv.Atoi(value)

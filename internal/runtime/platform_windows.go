@@ -1,11 +1,12 @@
 //go:build windows
 
-package main
+package runtime
 
 import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -13,26 +14,28 @@ import (
 	"golang.zx2c4.com/wireguard/ipc"
 )
 
-func ifUp(ifname, address string) error {
-	ip, ipNet, err := net.ParseCIDR(address)
-	if err != nil {
-		return err
+func Up(ifname string, addrs []netip.Prefix) error {
+	for _, a := range addrs {
+		mask := net.IP(net.CIDRMask(a.Bits(), a.Addr().BitLen())).String()
+		if err := run("netsh", "interface", ipFamily(a.Addr().Is6()), "add", "address",
+			fmt.Sprintf("name=%s", ifname), a.Addr().String(), mask); err != nil {
+			return err
+		}
 	}
-	mask := net.IP(ipNet.Mask).String()
-	return run("netsh", "interface", "ip", "add", "address",
-		fmt.Sprintf("name=%s", ifname), ip.String(), mask)
-}
-
-// ifDown is a no-op on Windows: Wintun adapter is destroyed automatically
-// when the WireGuard device is closed (device.Close()).
-func ifDown(_ string) error {
 	return nil
 }
 
-func addRoutes(ifname string, routes []string) error {
-	for _, cidr := range routes {
-		// Ignore errors — route may already exist
-		_ = run("netsh", "interface", "ipv4", "add", "route", cidr, ifname)
+// Down is a no-op on Windows: the Wintun adapter is destroyed automatically when
+// the WireGuard device is closed.
+func Down(_ string) error {
+	return nil
+}
+
+func AddRoutes(ifname string, routes []netip.Prefix) error {
+	for _, r := range routes {
+		// Ignore errors — the route may already exist.
+		_ = run("netsh", "interface", ipFamily(r.Addr().Is6()), "add", "route",
+			r.Masked().String(), ifname)
 	}
 	return nil
 }
@@ -45,7 +48,7 @@ func addRoutes(ifname string, routes []string) error {
 //
 // The interface is returned as an index, which is what netsh accepts back and
 // what stays stable across the localized names of the same adapter.
-func defaultGateway(v6 bool) (net.IP, string, error) {
+func defaultGateway(v6 bool) (netip.Addr, string, error) {
 	family := ipFamily(v6)
 	wantPrefix := "0.0.0.0/0"
 	if v6 {
@@ -53,10 +56,10 @@ func defaultGateway(v6 bool) (net.IP, string, error) {
 	}
 	out, err := exec.Command("netsh", "interface", family, "show", "route").Output()
 	if err != nil {
-		return nil, "", fmt.Errorf("netsh interface %s show route: %w", family, err)
+		return netip.Addr{}, "", fmt.Errorf("netsh interface %s show route: %w", family, err)
 	}
 	best := -1
-	var gw net.IP
+	var gw netip.Addr
 	var idx string
 	for _, line := range strings.Split(string(out), "\n") {
 		f := strings.Fields(line)
@@ -67,28 +70,28 @@ func defaultGateway(v6 bool) (net.IP, string, error) {
 		if err != nil {
 			continue
 		}
-		next := net.ParseIP(f[5])
-		if next == nil {
+		next, err := netip.ParseAddr(f[5])
+		if err != nil {
 			continue
 		}
 		if best < 0 || metric < best {
-			best, gw, idx = metric, next, f[4]
+			best, gw, idx = metric, next.Unmap(), f[4]
 		}
 	}
 	if best < 0 {
-		return nil, "", errors.New("no default route with a gateway to pin against")
+		return netip.Addr{}, "", errors.New("no default route with a gateway to pin against")
 	}
 	return gw, idx, nil
 }
 
-func addHostRoute(ip, gw net.IP, iface string) error {
-	return run("netsh", "interface", ipFamily(ip.To4() == nil), "add", "route",
-		hostNet(ip).String(), iface, gw.String())
+func addHostRoute(addr, gw netip.Addr, iface string) error {
+	return run("netsh", "interface", ipFamily(addr.Is6()), "add", "route",
+		hostPrefix(addr).String(), iface, gw.String())
 }
 
-func delHostRoute(ip, gw net.IP, iface string) error {
-	return run("netsh", "interface", ipFamily(ip.To4() == nil), "delete", "route",
-		hostNet(ip).String(), iface, gw.String())
+func delHostRoute(addr, gw netip.Addr, iface string) error {
+	return run("netsh", "interface", ipFamily(addr.Is6()), "delete", "route",
+		hostPrefix(addr).String(), iface, gw.String())
 }
 
 func ipFamily(v6 bool) string {
@@ -98,12 +101,12 @@ func ipFamily(v6 bool) string {
 	return "ipv4"
 }
 
-func setMTU(ifname string, mtu int) error {
+func SetMTU(ifname string, mtu int) error {
 	return run("netsh", "interface", "ipv4", "set", "subinterface",
 		ifname, fmt.Sprintf("mtu=%s", strconv.Itoa(mtu)), "store=active")
 }
 
-func setDNS(ifname string, servers []string) error {
+func SetDNS(ifname string, servers []string) error {
 	if len(servers) == 0 {
 		return nil
 	}
@@ -123,11 +126,11 @@ func setDNS(ifname string, servers []string) error {
 	return nil
 }
 
-func revertDNS(ifname string) {
+func RevertDNS(ifname string) {
 	_ = run("netsh", "interface", "ip", "set", "dns",
 		fmt.Sprintf("name=%s", ifname), "dhcp")
 }
 
-func uapiListen(ifname string) (net.Listener, error) {
+func UAPIListen(ifname string) (net.Listener, error) {
 	return ipc.UAPIListen(ifname)
 }

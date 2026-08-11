@@ -222,6 +222,16 @@ wg-hsm/
                                      two builds cannot read each other's trees.
     mac/                          <- canonical message + Sign/Verify (spec §4)
     config/                       <- load + authenticate the whole tree (spec §6.2)
+    runtime/                      <- the OS half of bringing an interface up (spec §9):
+                                     addresses, routes, MTU, DNS, UAPI socket, and the
+                                     endpoint pinning of routing.go. Imported as `rt` to
+                                     stay visibly apart from the standard library's
+                                     runtime. Its Peer type carries only Endpoint and
+                                     AllowedIPs, so neither client's notion of a peer
+                                     leaks into it: wg-quick-encedo fills it from
+                                     wg1.conf, wg-hem from the descr records.
+                                     platform_{linux,darwin,windows}.go hold everything
+                                     that differs per OS.
 
   cmd/
     wg-hem/                       <- config-free client: provision | verify
@@ -234,14 +244,11 @@ wg-hsm/
       session.go                  <- shared device flags, connect + load
       auth.go                     <- one passphrase, several scoped tokens
     wg-quick-encedo/
-      main.go                     <- up / down / pubkey, interactive auth, ECDH retry
-      config.go                   <- wg1.conf parser + HEM_URL/HEM_KID
-      routing.go                  <- endpoint pinning + HEM reachability; resolution
-                                     happens before the interface exists, so the
-                                     resolver is not behind the tunnel being built
-      platform_linux.go           <- netlink, resolvectl, UAPI socket
-      platform_darwin.go          <- ifconfig, route, utun
-      platform_windows.go         <- netsh, Wintun named pipe
+      main.go                     <- up / down / pubkey, interactive auth, ECDH retry;
+                                     the OS work goes through internal/runtime
+      config.go                   <- wg1.conf parser + HEM_URL/HEM_KID. Addresses and
+                                     AllowedIPs are netip.Prefix, parsed here: a typo
+                                     would otherwise surface with the interface half up
 ```
 
 ---
@@ -255,7 +262,7 @@ Tested: Linux client <-> server (remote WireGuard endpoint)
 ## Implemented
 
 - Routes (AllowedIPs -> netlink/route/netsh per platform)
-- Full-tunnel routing (`routing.go`): endpoints that AllowedIPs would capture are
+- Full-tunnel routing (`internal/runtime`): endpoints that AllowedIPs would capture are
   pinned to the pre-tunnel default gateway before the tunnel's own routes go in,
   and unpinned on teardown. The HEM is tested the same way but not pinned -- it
   works from inside the tunnel (rekey overlap), so the client reports it and

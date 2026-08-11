@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"net/netip"
 	"os"
-	"os/exec"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -20,6 +20,10 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 
 	hem "github.com/encedo/hem-sdk-go"
+
+	// Aliased: the package is internal/runtime, and rt keeps it visibly apart
+	// from the standard library's runtime wherever both might be read for one.
+	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 )
 
 // ecdhTimeout bounds a single HEM call on the handshake path. WireGuard
@@ -63,7 +67,7 @@ func usage() {
 }
 
 func cmdDown(ifname string) {
-	if err := ifDown(ifname); err != nil {
+	if err := rt.Down(ifname); err != nil {
 		fmt.Fprintf(os.Stderr, "down: %v\n", err)
 		os.Exit(1)
 	}
@@ -85,7 +89,7 @@ func cmdUp(ifname, cfgPath string) {
 	if err != nil {
 		fatal("config: %v", err)
 	}
-	if cfg.Interface.Address == "" {
+	if !cfg.Interface.Address.IsValid() {
 		fatal("Address is required in [Interface]")
 	}
 
@@ -150,7 +154,7 @@ func cmdUp(ifname, cfgPath string) {
 	// 4c. Plan the routing while the host's resolver is still the host's own.
 	// Once AllowedIPs owns the default route, a name lookup may be travelling
 	// through the tunnel that the answer is needed to build.
-	routing, err := planRouting(cfg)
+	plan, err := rt.PlanRouting(runtimePeers(cfg.Peers), cfg.Interface.HEMURL)
 	if err != nil {
 		fatal("routing: %v", err)
 	}
@@ -200,60 +204,65 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 10. Bring interface up with address
-	if err := ifUp(ifname, cfg.Interface.Address); err != nil {
-		fatal("ifUp: %v", err)
+	if err := rt.Up(ifname, []netip.Prefix{cfg.Interface.Address}); err != nil {
+		fatal("bringing %s up: %v", ifname, err)
 	}
 
 	// 10a. MTU
 	if cfg.Interface.MTU > 0 {
-		if err := setMTU(ifname, cfg.Interface.MTU); err != nil {
-			fatal("setMTU: %v", err)
+		if err := rt.SetMTU(ifname, cfg.Interface.MTU); err != nil {
+			fatal("setting the MTU: %v", err)
 		}
 	}
 
 	// From here on the routing table has been touched, so a failure has to put
-	// it back rather than exit and leave the host without a default route.
-	exceptions := &routeExceptions{}
-	fail := func(format string, args ...interface{}) {
+	// it back rather than exit and leave the host without a default route. The
+	// same teardown serves both ways out, so the abort path cannot drift from
+	// the one that runs on Ctrl+C.
+	exceptions := &rt.Pins{}
+	teardown := func() {
 		wgdev.Close()
-		revertDNS(ifname)
-		_ = ifDown(ifname)
-		exceptions.restore()
+		rt.RevertDNS(ifname)
+		_ = rt.Down(ifname)
+		exceptions.Restore()
 		_ = os.Remove("/var/run/wireguard/" + ifname + ".pub")
+	}
+	fail := func(format string, args ...interface{}) {
+		teardown()
 		fatal(format, args...)
 	}
 
 	// 10b. Pin the endpoints the tunnel would otherwise swallow, before the
 	// tunnel's own routes go in — no window in which the endpoint has no path.
-	if err := exceptions.pin(routing.endpoints); err != nil {
+	if err := exceptions.Add(plan.Endpoints); err != nil {
 		fail("route exception: %v", err)
 	}
 
 	// 10c. Routes for AllowedIPs
-	var allRoutes []string
+	var allRoutes []netip.Prefix
 	for _, p := range cfg.Peers {
 		allRoutes = append(allRoutes, p.AllowedIPs...)
 	}
-	if err := addRoutes(ifname, allRoutes); err != nil {
-		fail("addRoutes: %v", err)
+	if err := rt.AddRoutes(ifname, allRoutes); err != nil {
+		fail("installing routes: %v", err)
 	}
 
 	// 10d. DNS
-	if err := setDNS(ifname, cfg.Interface.DNS); err != nil {
-		fail("setDNS: %v", err)
+	if err := rt.SetDNS(ifname, cfg.Interface.DNS); err != nil {
+		fail("setting DNS: %v", err)
 	}
 
 	// 10e. With the routes in place, confirm the HEM is still there. It is
 	// consulted at every handshake, so losing it is not a degraded tunnel — it
 	// is one that stops at the first rekey, roughly two minutes in.
-	if routing.hemInside {
-		if err := probeHEM(client, routing.hemHost); err != nil {
+	if plan.HEMInside {
+		if err := rt.ProbeHEM(client, plan.HEMHost); err != nil {
 			fail("%v", err)
 		}
 	}
 
 	// 11. UAPI listener (enables: wg show wg1)
-	uapiListener, err := uapiListen(ifname)
+	uapiListener, err := rt.UAPIListen(ifname)
 	if err != nil {
 		fail("UAPI listen: %v", err)
 	}
@@ -284,12 +293,20 @@ func cmdUp(ifname, cfgPath string) {
 
 	// 13. Cleanup
 	uapiListener.Close()
-	wgdev.Close()
-	revertDNS(ifname)
-	_ = ifDown(ifname)
-	exceptions.restore()
-	_ = os.Remove("/var/run/wireguard/" + ifname + ".pub")
+	teardown()
 	fmt.Fprintf(os.Stderr, "Interface %s down.\n", ifname)
+}
+
+// runtimePeers reduces the parsed configuration to what the routing decision
+// needs. The runtime package deliberately knows nothing about keys, HEM_KIDs or
+// where the configuration came from — wg-hem feeds it the same shape from the
+// records it reads out of the device.
+func runtimePeers(peers []Peer) []rt.Peer {
+	out := make([]rt.Peer, 0, len(peers))
+	for _, p := range peers {
+		out = append(out, rt.Peer{Endpoint: p.Endpoint, AllowedIPs: p.AllowedIPs})
+	}
+	return out
 }
 
 // buildUAPIConfig builds the WireGuard UAPI set-operation string.
@@ -436,13 +453,6 @@ func ecdhWithRetry(client *hem.Client, token, kid string, opts hem.CryptoOpts) (
 		lastErr = err
 	}
 	return [32]byte{}, fmt.Errorf("HEM %s unreachable after %d attempts: %w", what, maxRetries, lastErr)
-}
-
-func run(args ...string) error {
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 func fatal(format string, args ...interface{}) {
