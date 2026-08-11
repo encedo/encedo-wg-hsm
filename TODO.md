@@ -108,6 +108,39 @@ is wasted on it, and the runtime dependency is not. These are two presentations
 for two audiences and two shapes of task, both calling one Go core — not two
 implementations of anything.
 
+*Where it lives: a nested module, not a second repository.* Measured rather than
+assumed. Go's `internal/` rule works on the import path prefix, so a module named
+`github.com/encedo/encedo-wg-gui` cannot see `internal/config`, `internal/runtime`,
+`internal/descr` or `internal/mac` — the compiler refuses outright. Making a
+separate repository work would mean promoting the TLV codec, the MAC
+canonicalisation and the runtime to public API, with the compatibility obligation
+that follows, for a format §8.7 says is headed for certification as a controlled
+document. That is the wrong direction, and it arrives with the submodule friction
+this project already knows.
+
+A directory with its own `go.mod` has neither problem, and it is not the same as a
+plain subdirectory:
+
+```
+encedo-wg-hsm/
+├── go.mod          module github.com/encedo/encedo-wg-hsm
+├── cmd/            CLI: static, cross-compiled, unchanged
+├── internal/       shared core
+└── gui/
+    └── go.mod      module github.com/encedo/encedo-wg-hsm/gui
+                    replace github.com/encedo/encedo-wg-hsm => ../
+```
+
+The prefix matches, so `internal/` is importable; the nested module is invisible to
+`go list ./...` at the root, so cgo never reaches a build of the CLI. One
+repository, one tag, changes to the core and the interface land together and
+cannot drift. A plain subdirectory inside the *same* module would do the opposite
+— `go build ./...` would drag cgo and the GUI libraries into every build of the
+command-line client, which is the outcome the previous paragraph exists to avoid.
+The committed `replace` means CI needs no `go.work` and no extra setup; the only
+cost is that `go install …/gui@latest` will not work for an outsider, which does
+not matter for something distributed as signed binaries.
+
 *The tray is not uniform, and it carries a design decision.* Windows has a
 notification area and macOS a menu bar, both idiomatic. Stock GNOME has neither:
 tray icons were removed and return only through an AppIndicator extension. That is
@@ -175,6 +208,38 @@ the number of peers, and a token whose size depends on how many peers a
 configuration has is a token that eventually will not fit. And `allow_keysearch`
 now carries user-visible weight rather than mere convenience — while it is on, the
 everyday path is one tap; with it off, two.
+
+*What it costs, roughly.* The interface is the cheap part and reads as the whole
+job, which is how this kind of work gets underestimated. Three states, a button, a
+countdown and a panel is about a week. What dominates is everything around it.
+
+| | estimate |
+|---|---|
+| A drivable session API extracted from `cmdUp` | 3–5 d |
+| The interface itself | 5–8 d |
+| Privileged helper, three platforms | **10–20 d** |
+| Module presence (poll the device; hotplug APIs are not worth it) | 1–2 d |
+| Tray, including desktops that have none | 3–5 d |
+| Packaging, signing, notarisation, CI | 5–10 d |
+| Testing on three platforms against real hardware | 5–10 d |
+
+Call it 32–60 developer-days, so two to three months for one person working on it
+properly. The privileged helper is both the largest number and the least certain:
+three platforms, three mechanisms, and each with its own installation and
+permission story.
+
+Staged, it looks better than the total suggests. A Linux-only build running
+elevated, with no helper and no packaging, is demonstrable in two to three weeks
+and answers the question the design is actually uncertain about — whether the
+one-window, one-button, session-is-the-window model feels right to somebody who is
+not us. Getting one platform to production quality is another three or four weeks;
+the third platform is mostly packaging rather than code.
+
+*One purchase this depends on.* The code-signing certificate being bought signs
+Windows. macOS needs an Apple Developer ID and notarisation through Apple, which
+is a separate certificate, a separate subscription and a first-time process worth
+budgeting days for on its own. Worth knowing while the Windows one is still being
+chosen.
 
 **A migration tool.** Read an existing `wg0.conf`, carry over everything that can
 be carried, and return the new public key; the administrator changes one line on
