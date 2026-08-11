@@ -6,18 +6,54 @@ WG_COMMIT="f333402"
 WG_DIR="wireguard-go"
 PATCH_DIR="_wireguard-go-encedo"
 
+PATCH_ABS="$(cd "$(dirname "$0")" && pwd)/${PATCH_DIR}"
+
 echo "==> Checking out wireguard-go @ ${WG_COMMIT}..."
 if [ -d "${WG_DIR}/.git" ]; then
-    echo "    already cloned, pulling..."
+    echo "    already cloned, fetching..."
     git -C "${WG_DIR}" fetch --quiet
 else
     rm -rf "${WG_DIR}"
     git clone --quiet "${WG_REPO}" "${WG_DIR}"
 fi
-git -C "${WG_DIR}" checkout --quiet "${WG_COMMIT}"
+# --force and clean, not a plain checkout: the previous build left this tree
+# patched, and a patch is not idempotent the way the old file copy was. The
+# checkout has to put upstream back exactly before anything is applied again.
+git -C "${WG_DIR}" checkout --quiet --force "${WG_COMMIT}"
+git -C "${WG_DIR}" clean -qfd
 
-echo "==> Overlaying Encedo patches..."
-cp -r "${PATCH_DIR}/." "${WG_DIR}/"
+echo "==> Applying the Encedo changes..."
+# hsm.go is ours outright, so it is copied in. The other three files are
+# upstream's and are changed by patch rather than replaced. That distinction is
+# the point: a whole-file copy would silently discard whatever upstream had done
+# to those files since WG_COMMIT, and they are the files the handshake lives in.
+# A patch that no longer applies stops the build, which is the review that a
+# version bump deserves.
+cp "${PATCH_ABS}/device/hsm.go" "${WG_DIR}/device/hsm.go"
+for patch in "${PATCH_ABS}"/patches/*.patch; do
+    name="$(basename "${patch}")"
+    if git -C "${WG_DIR}" apply --whitespace=nowarn "${patch}"; then
+        echo "    applied ${name}"
+    else
+        cat >&2 <<MSG
+
+${name} does not apply to wireguard-go ${WG_COMMIT}.
+
+Upstream has changed the lines this project depends on. Do not force it: the
+patch touches the static-key Diffie-Hellman in the Noise handshake, and the
+whole design rests on those call sites. Read what upstream changed, decide
+whether the delegation still belongs where it was, and regenerate:
+
+    cd ${WG_DIR}
+    git checkout --force ${WG_COMMIT} && git clean -qfd
+    git apply --3way ${patch}      # resolve the conflicts by hand
+    git diff -- device/ > ${patch}
+
+See UPSTREAM.md.
+MSG
+        exit 1
+    fi
+done
 
 echo "==> Building..."
 mkdir -p dist

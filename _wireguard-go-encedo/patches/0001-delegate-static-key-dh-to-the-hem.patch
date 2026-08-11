@@ -1,0 +1,112 @@
+diff --git a/device/device.go b/device/device.go
+index 6854ed8..e5d5172 100644
+--- a/device/device.go
++++ b/device/device.go
+@@ -1,6 +1,10 @@
+ /* SPDX-License-Identifier: MIT
+  *
+  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
++ *
++ * Modified 2026 by Krzysztof Rutecki for encedo-wg-hsm:
++ * SetPrivateKey takes the public key from the injected HEM session instead
++ * of deriving it, the private key being absent by design.
+  */
+ 
+ package device
+@@ -232,6 +236,12 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
+ 	device.staticIdentity.Lock()
+ 	defer device.staticIdentity.Unlock()
+ 
++	if hsmSession != nil {
++		device.staticIdentity.publicKey = hsmSession.PublicKey
++		device.cookieChecker.Init(hsmSession.PublicKey)
++		return nil
++	}
++
+ 	if sk.Equals(device.staticIdentity.privateKey) {
+ 		return nil
+ 	}
+diff --git a/device/noise-protocol.go b/device/noise-protocol.go
+index 5cf1702..469b042 100644
+--- a/device/noise-protocol.go
++++ b/device/noise-protocol.go
+@@ -1,6 +1,11 @@
+ /* SPDX-License-Identifier: MIT
+  *
+  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
++ *
++ * Modified 2026 by Krzysztof Rutecki for encedo-wg-hsm:
++ * the two live Diffie-Hellmans against the peer's ephemeral key, in
++ * ConsumeMessageInitiation and ConsumeMessageResponse, are delegated to
++ * the HEM.
+  */
+ 
+ package device
+@@ -357,7 +362,18 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
+ 	// decrypt static key
+ 	var peerPK NoisePublicKey
+ 	var key [chacha20poly1305.KeySize]byte
+-	ss, err := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
++	var ss [NoisePublicKeySize]byte
++	var err error
++	if hsmSession != nil {
++		// Responder side of the handshake: the peer initiated, so its ephemeral
++		// key exists only in this packet — nothing here can be precomputed and
++		// the DH has to reach the HEM now. Without this branch the intercepted
++		// (zero) private key yields a wrong secret, the AEAD below fails to
++		// open, and the initiation is silently dropped as unauthentic.
++		ss, err = hsmDH(msg.Ephemeral)
++	} else {
++		ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
++	}
+ 	if err != nil {
+ 		return nil
+ 	}
+@@ -554,9 +570,16 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
+ 		mixKey(&chainKey, &chainKey, ss[:])
+ 		setZero(ss[:])
+ 
+-		ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+-		if err != nil {
+-			return false
++		if hsmSession != nil {
++			ss, err = hsmDH(msg.Ephemeral)
++			if err != nil {
++				return false
++			}
++		} else {
++			ss, err = device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
++			if err != nil {
++				return false
++			}
+ 		}
+ 		mixKey(&chainKey, &chainKey, ss[:])
+ 		setZero(ss[:])
+diff --git a/device/peer.go b/device/peer.go
+index ebf25f9..4ea42d6 100644
+--- a/device/peer.go
++++ b/device/peer.go
+@@ -1,6 +1,10 @@
+ /* SPDX-License-Identifier: MIT
+  *
+  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
++ *
++ * Modified 2026 by Krzysztof Rutecki for encedo-wg-hsm:
++ * precomputedStaticStatic is obtained from the HEM rather than computed
++ * locally.
+  */
+ 
+ package device
+@@ -93,7 +97,11 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
+ 	// pre-compute DH
+ 	handshake := &peer.handshake
+ 	handshake.mutex.Lock()
+-	handshake.precomputedStaticStatic, _ = device.staticIdentity.privateKey.sharedSecret(pk)
++	if ek2, err := hsmDH(pk); err == nil {
++		handshake.precomputedStaticStatic = ek2
++	} else {
++		handshake.precomputedStaticStatic, _ = device.staticIdentity.privateKey.sharedSecret(pk)
++	}
+ 	handshake.remoteStatic = pk
+ 	handshake.mutex.Unlock()
+ 
