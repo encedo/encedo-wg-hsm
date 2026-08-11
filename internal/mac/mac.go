@@ -16,6 +16,7 @@ package mac
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -47,6 +48,12 @@ const fixedLen = len(Domain) + PubKeyLen + descr.Size
 // message limit rather than by anything in WireGuard. Typical deployments use
 // two or three.
 const MaxPeers = (deviceMsgLimit - fixedLen) / perPeer
+
+// ErrNotAuthentic reports that the stored configuration is not the one that was
+// provisioned. Callers match on it rather than on a message because it is the
+// one failure that must stop a startup outright, and it has to be told apart
+// from an unreachable device or an expired token.
+var ErrNotAuthentic = errors.New("configuration failed authentication")
 
 // PeerRecord pairs a peer's public key with its stored descr, both exactly as
 // they live in the HEM.
@@ -167,14 +174,14 @@ func Verify(ctx context.Context, c *hem.Client, token, kid string,
 		return fmt.Errorf("mac: interface record: %w", err)
 	}
 	if !rec.HasMAC {
-		return fmt.Errorf("mac: interface record carries no MAC")
+		return fmt.Errorf("mac: %w: the interface record carries no MAC", ErrNotAuthentic)
 	}
 	msg, err := Canonical(ifPubKey, ifDescr, peers)
 	if err != nil {
 		return err
 	}
 	if err := c.HmacVerify(ctx, token, kid, msg, rec.MAC[:], hem.CryptoOpts{Alg: Alg, ExtKID: kid}); err != nil {
-		return fmt.Errorf("mac: configuration failed authentication: %w", err)
+		return fmt.Errorf("mac: %w: %w", ErrNotAuthentic, err)
 	}
 	return nil
 }

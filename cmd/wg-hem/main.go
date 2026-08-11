@@ -53,6 +53,8 @@ func main() {
 	switch os.Args[1] {
 	case "provision":
 		err = cmdProvision(os.Args[2:])
+	case "verify":
+		err = cmdVerify(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(exitOK)
@@ -77,8 +79,9 @@ func usage() {
 
 Usage:
   wg-hem provision [flags]    write a configuration into the HEM
+  wg-hem verify [flags]       check the stored configuration and print it
 
-Run "wg-hem provision -h" for its flags.
+Run "wg-hem <command> -h" for a command's flags.
 
 Exit codes: 0 ok, 1 usage, 2 authentication, 3 network, 4 integrity, 5 device.
 `)

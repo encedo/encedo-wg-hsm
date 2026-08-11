@@ -217,8 +217,15 @@ wg-hsm/
   internal/                       <- shared by both CLIs
     descr/                        <- TLV codec for the 128 B descr records (spec §3)
     mac/                          <- canonical message + Sign/Verify (spec §4)
+    config/                       <- load + authenticate the whole tree (spec §6.2)
 
   cmd/
+    wg-hem/                       <- config-free client: provision | verify
+      main.go                     <- dispatch + exit codes (0/1/2/3/4/5)
+      provision.go                <- write a configuration into the HEM (spec §6.1)
+      verify.go                   <- read it back, check the MAC, dump it (spec §10.3)
+      peerspec.go                 <- --peer flag parsing
+      auth.go                     <- one passphrase, several scoped tokens
     wg-quick-encedo/
       main.go                     <- up / down / pubkey, interactive auth, ECDH retry
       config.go                   <- wg1.conf parser + HEM_URL/HEM_KID

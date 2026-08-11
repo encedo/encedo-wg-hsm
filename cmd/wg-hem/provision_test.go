@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -28,28 +29,91 @@ type fakeHEM struct {
 	mu sync.Mutex
 
 	ifKID    string
+	ifLabel  string
 	ifPub    [32]byte
 	macKey   []byte            // stands in for the self-ECDH key
 	stored   map[string][]byte // kid -> descr
+	peerKeys map[string][]byte // kid -> public key
 	imported []importCall
 	wraps    []map[string]any
 	hashes   []map[string]any
 	verifies []map[string]any
 	scopes   []string
+
+	// requireSearchToken makes the device refuse an anonymous key search, as it
+	// does when allow_keysearch is off.
+	requireSearchToken bool
 }
 
 type importCall struct {
+	kid    string
 	label  string
 	pubKey []byte
 	descr  []byte
 }
 
+func peerKID(pubKey []byte) string {
+	return "peer" + hex.EncodeToString(pubKey)[:28]
+}
+
+// search answers a prefix search over the descr field, the way the device does:
+// the pattern arrives as "^" followed by base64 of the bytes to match.
+func (f *fakeHEM) search(w http.ResponseWriter, r *http.Request) {
+	if f.requireSearchToken && r.Header.Get("Authorization") == "" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	body := f.body(r)
+	pattern, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(body["descr"].(string), "^"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	type entry struct {
+		KID   string `json:"kid"`
+		Label string `json:"label"`
+		Type  string `json:"type"`
+		Descr string `json:"descr"`
+	}
+	var list []entry
+	switch string(pattern) {
+	case descr.MagicInterface:
+		if d, ok := f.stored[f.ifKID]; ok && bytes.HasPrefix(d, pattern) {
+			list = append(list, entry{KID: f.ifKID, Label: f.ifLabel, Type: "PKEY,ECDH,CURVE25519",
+				Descr: base64.StdEncoding.EncodeToString(d)})
+		}
+	case descr.MagicPeer:
+		for _, imp := range f.imported {
+			if bytes.HasPrefix(imp.descr, pattern) {
+				list = append(list, entry{KID: imp.kid, Label: imp.label, Type: "ECDH,CURVE25519",
+					Descr: base64.StdEncoding.EncodeToString(imp.descr)})
+			}
+		}
+	}
+
+	total := len(list)
+	offset := 0
+	if v, ok := body["offset"].(float64); ok {
+		offset = int(v)
+	}
+	if offset > len(list) {
+		offset = len(list)
+	}
+	list = list[offset:]
+
+	resp := map[string]any{"offset": offset, "total": total, "listed": len(list), "list": list}
+	out, _ := json.Marshal(resp)
+	w.Write(out)
+}
+
 func newFakeHEM(t *testing.T) (*fakeHEM, *httptest.Server) {
 	t.Helper()
 	f := &fakeHEM{
-		ifKID:  "aaaabbbbccccddddeeeeffff00001111",
-		macKey: []byte("self-ecdh-key-that-never-leaves!"),
-		stored: map[string][]byte{},
+		ifKID:    "aaaabbbbccccddddeeeeffff00001111",
+		macKey:   []byte("self-ecdh-key-that-never-leaves!"),
+		stored:   map[string][]byte{},
+		peerKeys: map[string][]byte{},
 	}
 	// A deterministic Curve25519 public key for the identity.
 	seed := bytes.Repeat([]byte{7}, 32)
@@ -106,16 +170,32 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"token":"jwt"}`)
 
 	case r.URL.Path == "/api/keymgmt/create":
+		body := f.body(r)
+		f.ifLabel, _ = body["label"].(string)
 		io.WriteString(w, `{"kid":"`+f.ifKID+`"}`)
 	case strings.HasPrefix(r.URL.Path, "/api/keymgmt/get/"):
-		io.WriteString(w, `{"pubkey":"`+b64(f.ifPub[:])+`","type":"PKEY,ECDH,CURVE25519","updated":1}`)
+		kid := strings.TrimPrefix(r.URL.Path, "/api/keymgmt/get/")
+		key := f.ifPub[:]
+		if kid != f.ifKID {
+			pk, ok := f.peerKeys[kid]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			key = pk
+		}
+		io.WriteString(w, `{"pubkey":"`+b64(key)+`","type":"PKEY,ECDH,CURVE25519","updated":1}`)
 	case r.URL.Path == "/api/keymgmt/import":
 		body := f.body(r)
 		pk, _ := base64.StdEncoding.DecodeString(body["pubkey"].(string))
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
 		label, _ := body["label"].(string)
-		f.imported = append(f.imported, importCall{label: label, pubKey: pk, descr: d})
-		io.WriteString(w, `{"kid":"peer`+b64(pk)[:8]+`"}`)
+		kid := peerKID(pk)
+		f.peerKeys[kid] = pk
+		f.imported = append(f.imported, importCall{kid: kid, label: label, pubKey: pk, descr: d})
+		io.WriteString(w, `{"kid":"`+kid+`"}`)
+	case r.URL.Path == "/api/keymgmt/search":
+		f.search(w, r)
 	case r.URL.Path == "/api/keymgmt/update":
 		body := f.body(r)
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
