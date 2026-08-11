@@ -55,6 +55,10 @@ func main() {
 		err = cmdProvision(os.Args[2:])
 	case "verify":
 		err = cmdVerify(os.Args[2:])
+	case "peer":
+		err = cmdPeer(os.Args[2:])
+	case "wipe":
+		err = cmdWipe(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(exitOK)
@@ -80,6 +84,8 @@ func usage() {
 Usage:
   wg-hem provision [flags]    write a configuration into the HEM
   wg-hem verify [flags]       check the stored configuration and print it
+  wg-hem peer add|remove|update    change the peer list, re-authenticating the tree
+  wg-hem wipe [flags]         delete the WG:* records from the HEM
 
 Run "wg-hem <command> -h" for a command's flags.
 

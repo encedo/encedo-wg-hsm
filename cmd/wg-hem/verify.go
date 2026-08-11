@@ -21,11 +21,7 @@ import (
 func cmdVerify(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	hemURL := fs.String("hem", "", "HEM base URL (default "+defaultHEM+", or $WG_HEM_URL)")
-	broker := fs.String("broker", "", "notification broker URL (default is the SDK's)")
-	mobile := fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase")
-	insecure := fs.Bool("insecure", false, "skip TLS verification (self-signed PPA certificate)")
-	expHours := fs.Int("session", 1, "token lifetime in hours")
+	dev := addDeviceFlags(fs)
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: wg-hem verify [flags]
 
@@ -40,29 +36,12 @@ Flags:
 		return &exitError{code: exitUsage, err: err}
 	}
 
-	url := *hemURL
-	if url == "" {
-		url = os.Getenv("WG_HEM_URL")
-	}
-	if url == "" {
-		url = defaultHEM
-	}
-
 	ctx := context.Background()
-	client := hem.NewClient(url, hem.Config{Broker: *broker, InsecureSkipVerify: *insecure})
-
-	fmt.Fprintf(os.Stderr, "Connecting to %s...\n", url)
-	if err := client.Checkin(ctx); err != nil {
-		return classify(err, exitNetwork, "checkin")
-	}
-
-	auth := &authenticator{client: client, mobile: *mobile, expSecs: *expHours * 3600}
-	defer auth.wipe()
-
-	tree, err := config.Load(ctx, client, auth.token)
+	_, auth, tree, err := dev.load(ctx)
 	if err != nil {
-		return classifyLoad(err)
+		return err
 	}
+	defer auth.wipe()
 
 	fmt.Fprintln(os.Stderr, "Configuration verified: the stored records are the ones that were provisioned.")
 	dumpTree(tree)

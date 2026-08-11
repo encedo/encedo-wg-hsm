@@ -1,6 +1,6 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 1.7 (2026-08-11) · Status: ready for implementation
+Version: 1.8 (2026-08-11) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
 HEM FW: v1.7b (current API, **zero firmware changes required**)
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
@@ -22,6 +22,10 @@ by one `keymgmt:get` token.
 
 Changes in 1.7: §3 records that the 64 B `descr` of older firmware is a
 supported build target, and what stops fitting at that size.
+
+Changes in 1.8: §6.2 step 8 adds the HEM reachability check. The endpoint
+exception was already there; the HEM's own address needs the same treatment,
+because a handshake cannot complete without it.
 
 ## 1. Goal
 
@@ -183,6 +187,18 @@ Consequences:
 7. Resolve the endpoint (DNS before the tunnel; ENDPOINT_HOST requires a working resolver). Create the interface (wireguard-go in-process), configure via UAPI in memory: privkey = sentinel (HEM), the selected peer, AllowedIPs, keepalive, PSK.
 8. Netlink: addr, mtu, routes from AllowedIPs, DNS (systemd-resolved via D-Bus / resolvconf).
    With AllowedIPs 0.0.0.0/0: **routing exception for the endpoint IP** via the default gw.
+   **HEM reachability.** Every handshake is a live HEM call, so the HEM's own address
+   deserves the same attention as the endpoint's. Resolve the host from the HEM URL and
+   test it against the selected peer's AllowedIPs; after the interface is up, confirm with
+   an unauthenticated `GET /api/system/version`.
+   - HEM outside the tunnel (PPA on its USB link, or an EPA the AllowedIPs do not cover):
+     nothing to do.
+   - HEM inside the tunnel but still answering: **warn and ask to continue.** It works, but
+     it cannot recover: rekeying every ~2 min needs the HEM, the HEM needs the tunnel, and
+     the tunnel needs the rekey. One outage and the client cannot rebuild the session that
+     would restore access to the HEM.
+   - HEM unreachable once the routes are in place: **refuse**, restore the previous routing
+     and report. The first rekey would take the interface down anyway.
 9. Runtime: handshake monitoring + connection-error handling (§6.4).
 
 ### 6.3 Handshake (wireguard-go fork)

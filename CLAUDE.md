@@ -228,7 +228,10 @@ wg-hsm/
       main.go                     <- dispatch + exit codes (0/1/2/3/4/5)
       provision.go                <- write a configuration into the HEM (spec §6.1)
       verify.go                   <- read it back, check the MAC, dump it (spec §10.3)
+      peer.go                     <- peer add|remove|update, re-MACs the tree
+      wipe.go                     <- delete the WG:* records (typed confirmation)
       peerspec.go                 <- --peer flag parsing
+      session.go                  <- shared device flags, connect + load
       auth.go                     <- one passphrase, several scoped tokens
     wg-quick-encedo/
       main.go                     <- up / down / pubkey, interactive auth, ECDH retry

@@ -50,6 +50,7 @@ type fakeHEM struct {
 	hashes   []map[string]any
 	verifies []map[string]any
 	scopes   []string
+	deleted  []string
 
 	// requireSearchToken makes the device refuse an anonymous key search, as it
 	// does when allow_keysearch is off.
@@ -207,10 +208,38 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"kid":"`+kid+`"}`)
 	case r.URL.Path == "/api/keymgmt/search":
 		f.search(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/keymgmt/delete/") && r.Method == "DELETE":
+		kid := strings.TrimPrefix(r.URL.Path, "/api/keymgmt/delete/")
+		f.deleted = append(f.deleted, kid)
+		delete(f.stored, kid)
+		delete(f.peerKeys, kid)
+		for i, imp := range f.imported {
+			if imp.kid == kid {
+				f.imported = append(f.imported[:i:i], f.imported[i+1:]...)
+				break
+			}
+		}
+		io.WriteString(w, `{}`)
 	case r.URL.Path == "/api/keymgmt/update":
 		body := f.body(r)
+		kid, _ := body["kid"].(string)
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
-		f.stored[body["kid"].(string)] = d
+		// A peer's record lives with its import, so an update has to land there
+		// or a later search would hand back the version before the change.
+		updated := false
+		for i, imp := range f.imported {
+			if imp.kid == kid {
+				f.imported[i].descr = d
+				if label, ok := body["label"].(string); ok && label != "" {
+					f.imported[i].label = label
+				}
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			f.stored[kid] = d
+		}
 		io.WriteString(w, `{}`)
 
 	case r.URL.Path == "/api/crypto/cipher/wrap":
