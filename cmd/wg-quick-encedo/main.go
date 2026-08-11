@@ -26,11 +26,6 @@ import (
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 )
 
-// ecdhTimeout bounds a single HEM call on the handshake path. WireGuard
-// retransmits its first message after 5 s, so an ECDH that has not answered
-// well before then is better retried than waited on.
-const ecdhTimeout = 3 * time.Second
-
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -160,29 +155,11 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 5. Inject HSM session — HSM must remain online for live ECDH during handshakes
-	hsmClient := client
-	hsmToken := tokens.ecdh
-	hsmKID := cfg.Interface.HEMKID
-	hsmDead := make(chan struct{}, 1)
-	device.InjectHSMSession(&device.HSMSession{
-		PublicKey: myPubKey,
-		ECDH: func(pub device.NoisePublicKey) ([device.NoisePublicKeySize]byte, error) {
-			// Static peer key with HEM_KID: fully internal ECDH, no key bytes in software
-			if extKID, ok := extKIDMap[pub]; ok {
-				return ecdhWithRetry(hsmClient, hsmToken, hsmKID, hem.CryptoOpts{ExtKID: extKID})
-			}
-			// Ephemeral key (per-handshake): standard ECDH with pubkey value
-			result, err := ecdhWithRetry(hsmClient, hsmToken, hsmKID, hem.CryptoOpts{PubKey: pub[:]})
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable — shutting down interface: %v\n", err)
-				select {
-				case hsmDead <- struct{}{}:
-				default:
-				}
-			}
-			return result, err
-		},
-	})
+	hsm := rt.NewHSM(client, tokens.ecdh, cfg.Interface.HEMKID, myPubKey)
+	for pub, kid := range extKIDMap {
+		hsm.AddPeerKID(pub, kid)
+	}
+	hsm.Inject()
 	fmt.Fprintln(os.Stderr, "HEM online — live ECDH on every handshake.")
 
 	// 7. Create TUN interface
@@ -287,7 +264,7 @@ func cmdUp(ifname, cfgPath string) {
 	case <-stop:
 	case <-errs:
 	case <-wgdev.Wait():
-	case <-hsmDead:
+	case <-hsm.Dead():
 		fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable — bringing interface down.")
 	}
 
@@ -424,35 +401,6 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		}
 		return tokenPair{lookup: lookupToken, ecdh: ecdhToken}, nil
 	}
-}
-
-// ecdhWithRetry calls HEM ECDH with up to 3 attempts on error. opts selects the
-// peer key: ExtKID for a peer already imported into the HEM (both operands stay
-// in-device), PubKey for a key seen on the wire — an ephemeral, in practice.
-func ecdhWithRetry(client *hem.Client, token, kid string, opts hem.CryptoOpts) ([32]byte, error) {
-	const maxRetries = 3
-	const retryDelay = 2 * time.Second
-	what := "ECDH"
-	if opts.ExtKID != "" {
-		what = "ECDH (internal)"
-	}
-	var lastErr error
-	for i := 0; i < maxRetries; i++ {
-		if i > 0 {
-			fmt.Fprintf(os.Stderr, "HEM %s error: %v — retrying (%d/%d)...\n", what, lastErr, i, maxRetries-1)
-			time.Sleep(retryDelay)
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), ecdhTimeout)
-		result, err := client.ECDH(ctx, token, kid, opts)
-		cancel()
-		if err == nil {
-			var out [32]byte
-			copy(out[:], result)
-			return out, nil
-		}
-		lastErr = err
-	}
-	return [32]byte{}, fmt.Errorf("HEM %s unreachable after %d attempts: %w", what, maxRetries, lastErr)
 }
 
 func fatal(format string, args ...interface{}) {

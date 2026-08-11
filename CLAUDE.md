@@ -223,6 +223,9 @@ wg-hsm/
     mac/                          <- canonical message + Sign/Verify (spec §4)
     config/                       <- load + authenticate the whole tree (spec §6.2)
     runtime/                      <- the OS half of bringing an interface up (spec §9):
+                                     hsm.go holds the handshake ECDH path shared by both
+                                     clients -- the retry policy is the tunnel's failure
+                                     behaviour, not either client's detail.
                                      addresses, routes, MTU, DNS, UAPI socket, and the
                                      endpoint pinning of routing.go. Imported as `rt` to
                                      stay visibly apart from the standard library's
@@ -236,6 +239,9 @@ wg-hsm/
   cmd/
     wg-hem/                       <- config-free client: provision | verify
       main.go                     <- dispatch + exit codes (0/1/2/3/4/5)
+      up.go                       <- bring the tunnel up from the stored config (§6.2).
+                                     cmdUp decides (which peer, which PSK, what routing),
+                                     bringUp executes (device, interface, routes, wait).
       provision.go                <- write a configuration into the HEM (spec §6.1)
       verify.go                   <- read it back, check the MAC, dump it (spec §10.3)
       peer.go                     <- peer add|remove|update, re-MACs the tree
