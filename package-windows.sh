@@ -11,6 +11,14 @@
 # wintun.h. The conditions that come with it are honoured here: the DLL is
 # copied byte for byte and never modified, and its licence travels with it.
 #
+# DO NOT SIGN wintun.dll. It arrives signed by WireGuard LLC through DigiCert,
+# carrying Microsoft's attestation for the driver inside it, and that is the
+# signature Windows trusts. Authenticode is written into the PE file, so signing
+# it again would both modify the Software — which clause 3(a) forbids, and which
+# is the same clause the permission above depends on — and displace a chain we
+# cannot reissue. Sign wg-hem.exe and wg-quick-encedo.exe; leave the driver
+# exactly as it came.
+#
 # Run after build.sh, and with the same WG_HEM_DESCR, so the binaries and the
 # archive names agree.
 set -euo pipefail
