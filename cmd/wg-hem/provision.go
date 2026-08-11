@@ -14,19 +14,13 @@ import (
 
 	hem "github.com/encedo/hem-sdk-go"
 
+	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 )
 
-// pskCtx domain-separates the key that wraps a PSK from any other wrap use of
-// the same interface key (§5).
-const pskCtx = "ENC-WG-PSK-v1"
-
 // pskLen is the length of a WireGuard pre-shared key.
-const pskLen = 32
-
-// wrapAlg selects the size of the derived key-encryption key.
-const wrapAlg = "AES256"
+const pskLen = config.PSKLen
 
 // keyType is the type of the interface identity key.
 const keyType = "CURVE25519"
@@ -214,24 +208,6 @@ Flags:
 	var ifPub [pubKeyLen]byte
 	copy(ifPub[:], ifKey.PubKey)
 
-	// The PSK is wrapped under a key that only exists inside the device: the
-	// interface key's ECDH against itself. Wrapping under ECDH(interface, peer)
-	// would hand the key-encryption key to whoever holds the peer's private key.
-	var wrapped []byte
-	if pskBytes != nil {
-		wrapped, err = client.CipherWrap(ctx, useTok, ifKID, pskBytes, hem.CryptoOpts{
-			Alg:    wrapAlg,
-			ExtKID: ifKID,
-			Ctx:    []byte(pskCtx),
-		})
-		if err != nil {
-			return classify(err, exitDevice, "wrapping the pre-shared key")
-		}
-		if len(wrapped) != descr.PSKWrappedLen {
-			return failf(exitDevice, "wrapped PSK is %d bytes, expected %d", len(wrapped), descr.PSKWrappedLen)
-		}
-	}
-
 	ifRec := descr.Interface{
 		Addrs:      addrs,
 		MTU:        uint16(*mtu),
@@ -241,6 +217,14 @@ Flags:
 	}
 	var peerRecords []mac.PeerRecord
 	for _, p := range peers {
+		// The pre-shared key is wrapped once per peer, under a key that exists
+		// only inside the device — the interface key's ECDH against itself,
+		// bound to this peer. Wrapping under ECDH(interface, peer) would instead
+		// hand the key-encryption key to whoever holds the peer's private key.
+		wrapped, err := wrapPSK(ctx, client, useTok, ifKID, descr.KID(p.PubKey), pskBytes)
+		if err != nil {
+			return err
+		}
 		rec, err := p.record(wrapped)
 		if err != nil {
 			return failf(exitUsage, "peer %s: %w", p.Label, err)

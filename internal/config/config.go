@@ -19,10 +19,22 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 )
 
-// PSKContext domain-separates the key that wraps a pre-shared key from any
-// other wrap use of the same interface key (§5). Wrap and unwrap must agree on
-// it exactly or the derived key differs.
-const PSKContext = "ENC-WG-PSK-v1"
+// PSKContextPrefix domain-separates the key that wraps a pre-shared key from any
+// other wrap use of the same interface key (§5).
+const PSKContextPrefix = "ENC-WG-PSK-v2|"
+
+// PSKContext returns the HKDF context for one peer's wrapped pre-shared key.
+//
+// Binding it to the peer's identifier makes the wrap positional. AES key wrap
+// authenticates what it holds, but not where it sits: with one context per
+// identity, a ciphertext lifted from one peer's record unwraps perfectly well in
+// another's, and only the configuration MAC would notice. With the peer in the
+// context the two derive different keys, so a moved wrap simply fails.
+//
+// Wrap and unwrap must agree on this byte for byte, or the derived key differs.
+func PSKContext(peerKID string) []byte {
+	return []byte(PSKContextPrefix + peerKID)
+}
 
 // WrapAlg selects the size of the derived key-encryption key.
 const WrapAlg = "AES256"
@@ -223,7 +235,7 @@ func (t *Tree) UnwrapPSK(ctx context.Context, c *hem.Client, useTok string, p Pe
 	psk, err := c.CipherUnwrap(ctx, useTok, t.IfKID, p.PSKWrapped, hem.CryptoOpts{
 		Alg:    WrapAlg,
 		ExtKID: t.IfKID,
-		Ctx:    []byte(PSKContext),
+		Ctx:    PSKContext(p.KID),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unwrapping the pre-shared key of %s: %w", p.Label, err)

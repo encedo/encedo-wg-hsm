@@ -17,6 +17,7 @@ import (
 
 	"golang.org/x/crypto/curve25519"
 
+	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 )
@@ -469,11 +470,17 @@ func TestProvisionWrapsThePSKUnderSelfECDH(t *testing.T) {
 		t.Errorf("wrap kid/ext_kid = %v/%v, want both %s — a peer's key would expose the KEK",
 			w["kid"], w["ext_kid"], f.ifKID)
 	}
-	if w["ctx"] != base64.StdEncoding.EncodeToString([]byte(pskCtx)) {
-		t.Errorf("wrap ctx = %v, want %s", w["ctx"], pskCtx)
+	// The context names the peer the wrap belongs to, so a ciphertext lifted
+	// into another peer's record derives a different key and fails to unwrap.
+	wantCtx := config.PSKContext(descr.KID(mustKey(t, peerKeyA)))
+	if w["ctx"] != base64.StdEncoding.EncodeToString(wantCtx) {
+		t.Errorf("wrap ctx = %v, want %s", w["ctx"], wantCtx)
 	}
-	if w["alg"] != wrapAlg {
-		t.Errorf("wrap alg = %v, want %s", w["alg"], wrapAlg)
+	if len(wantCtx) > 64 {
+		t.Errorf("the context is %d bytes, over the device's 64", len(wantCtx))
+	}
+	if w["alg"] != config.WrapAlg {
+		t.Errorf("wrap alg = %v, want %s", w["alg"], config.WrapAlg)
 	}
 	// The PSK itself must never appear in a descr in the clear.
 	sent, _ := base64.StdEncoding.DecodeString(w["msg"].(string))

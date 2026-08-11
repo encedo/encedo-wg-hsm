@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
+	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 )
 
@@ -198,5 +200,48 @@ func TestPeerAddAdoptsAnExistingRecord(t *testing.T) {
 	}
 	if _, err := runVerify(t, "-hem", srv.URL, "-broker", srv.URL); err != nil {
 		t.Fatalf("the tree does not verify after adopting: %v", err)
+	}
+}
+
+// A pre-shared key is wrapped per peer, so the same key produces a different
+// ciphertext in each record and none of them is valid anywhere else. AES key
+// wrap authenticates what it holds but not where it sits; the context is what
+// supplies the position.
+func TestPSKWrapIsBoundToItsPeer(t *testing.T) {
+	requireRoom(t, 70) // two peers, each carrying a wrapped key
+	f, srv := newFakeHEM(t)
+
+	if _, err := runProvision(t,
+		"-hem", srv.URL, "-broker", srv.URL,
+		"-address", "10.0.0.7/32", "-psk", "generate",
+		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24,label=hq",
+		"-peer", "pubkey="+peerKeyB+",endpoint=198.51.100.1:51820,allowed-ips=10.1.0.0/24,label=backup",
+	); err != nil {
+		t.Fatalf("provision: %v", err)
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.wraps) != 2 {
+		t.Fatalf("%d wrap calls, want one per peer", len(f.wraps))
+	}
+	ctxA := f.wraps[0]["ctx"]
+	ctxB := f.wraps[1]["ctx"]
+	if ctxA == ctxB {
+		t.Error("both peers were wrapped under the same context, so a ciphertext would move between them")
+	}
+	for i, w := range f.wraps {
+		key := peerKeyA
+		if i == 1 {
+			key = peerKeyB
+		}
+		want := base64.StdEncoding.EncodeToString(config.PSKContext(descr.KID(mustKey(t, key))))
+		if w["ctx"] != want {
+			t.Errorf("wrap %d context = %v, want the one naming that peer", i, w["ctx"])
+		}
+		// Same plaintext each time: it is one pre-shared key, wrapped twice.
+		if w["msg"] != f.wraps[0]["msg"] {
+			t.Errorf("wrap %d carried different key material", i)
+		}
 	}
 }
