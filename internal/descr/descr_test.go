@@ -263,7 +263,7 @@ func TestParserRejectsMalformed(t *testing.T) {
 		}, "magic"},
 		{"unsupported version", func() [Size]byte {
 			r := valid
-			r[magicLen] = 0x02
+			r[magicLen] = Version + 1
 			return r
 		}, "version"},
 		{"unknown tag", func() [Size]byte {
@@ -385,11 +385,36 @@ func TestNormalizePadsTrimmedRecords(t *testing.T) {
 	}
 }
 
-func TestMakePeerRef(t *testing.T) {
-	// SHA-256("") = e3b0c442..., so the reference of an empty key is its first 4 bytes.
-	ref := MakePeerRef(nil)
-	if got := hex.EncodeToString(ref[:]); got != "e3b0c442" {
-		t.Errorf("MakePeerRef(nil) = %s, want e3b0c442", got)
+// A reference is the start of the KID, and the KID is SHA-1(pubkey)[:16] — the
+// derivation the device uses, confirmed against real hardware. Deriving it
+// locally is what lets a peer be looked up, or found to be already present,
+// before anything is written.
+func TestKIDAndPeerRef(t *testing.T) {
+	// SHA-1("") = da39a3ee5e6b4b0d3255bfef95601890afd80709.
+	if got := KID(nil); got != "da39a3ee5e6b4b0d3255bfef95601890" {
+		t.Errorf("KID(nil) = %s", got)
+	}
+	empty := MakePeerRef(nil)
+	if got := hex.EncodeToString(empty[:]); got != "da39a3ee" {
+		t.Errorf("MakePeerRef(nil) = %s", got)
+	}
+
+	// A reference derived from a key and one derived from that key's KID must
+	// agree, or a record found by search could not be matched to a reference.
+	key := []byte("a 32-byte curve25519 public key!")
+	fromKID, err := PeerRefFromKID(KID(key))
+	if err != nil {
+		t.Fatalf("PeerRefFromKID: %v", err)
+	}
+	if fromKID != MakePeerRef(key) {
+		t.Errorf("PeerRefFromKID(%s) = %x, MakePeerRef = %x", KID(key), fromKID, MakePeerRef(key))
+	}
+
+	if _, err := PeerRefFromKID("nothex"); err == nil {
+		t.Error("a malformed kid must be rejected")
+	}
+	if _, err := PeerRefFromKID("abcd"); err == nil {
+		t.Error("a short kid must be rejected")
 	}
 }
 

@@ -116,29 +116,46 @@ func Load(ctx context.Context, c *hem.Client, tok TokenFunc) (*Tree, error) {
 		return nil, err
 	}
 
-	// A peer record may belong to another interface key — the device holds one
-	// record per public key, shared across interfaces — so the candidates are
-	// filtered down to the ones this interface actually references.
-	byRef := make(map[descr.PeerRef]Peer, len(peerEntries))
-	var unreadable []string
+	// A reference is the start of the peer's KID, and search returns the KID of
+	// every record, so the candidates are matched without reading a single key.
+	// Only the peers this interface actually references are then read — a
+	// repository holding records for several identities costs nothing here.
+	byRef := make(map[descr.PeerRef]hem.KeyEntry, len(peerEntries))
 	for _, e := range peerEntries {
+		ref, err := descr.PeerRefFromKID(e.KID)
+		if err != nil {
+			continue // not a KID this client can make sense of
+		}
+		if prev, dup := byRef[ref]; dup {
+			return nil, fmt.Errorf("peer records %s and %s share the reference %x; the interface record cannot say which it means",
+				prev.KID, e.KID, ref)
+		}
+		byRef[ref] = e
+	}
+
+	var records []mac.PeerRecord
+	for _, ref := range t.Iface.PeerRefs {
+		e, ok := byRef[ref]
+		if !ok {
+			return nil, fmt.Errorf("the interface record references peer %x, which is not in the device", ref)
+		}
 		key, err := c.GetPubKey(ctx, getTok, e.KID)
 		if err != nil {
-			// A candidate whose key cannot be read cannot be matched, but it
-			// also cannot be assumed to be ours. Skipping keeps unrelated junk
-			// in the repository from blocking startup; if the record was in
-			// fact referenced, the resolution loop below fails anyway and says
-			// which reads were skipped.
-			unreadable = append(unreadable, e.KID)
-			continue
+			return nil, fmt.Errorf("reading public key of peer %s: %w", e.KID, err)
 		}
 		if len(key.PubKey) != mac.PubKeyLen {
-			continue // not a Curve25519 key; cannot be one of ours
+			return nil, fmt.Errorf("peer %s has a %d-byte public key, expected %d",
+				e.KID, len(key.PubKey), mac.PubKeyLen)
 		}
-		ref := descr.MakePeerRef(key.PubKey)
-		if _, dup := byRef[ref]; dup {
-			return nil, fmt.Errorf("two peer records share the reference %x", ref)
+		// The device's identifier must be the one this client derives, or every
+		// reference it resolves is guesswork. Checking here turns a wrong
+		// assumption about the device into a clear error rather than a MAC
+		// failure with no explanation.
+		if got := descr.KID(key.PubKey); got != e.KID {
+			return nil, fmt.Errorf("peer %s reports a public key whose KID is %s; this client derives identifiers as SHA-1(pubkey)[:16] and the device evidently does not",
+				e.KID, got)
 		}
+
 		p := Peer{KID: e.KID, Label: e.Label}
 		copy(p.PubKey[:], key.PubKey)
 		if p.Raw, err = descr.Normalize(e.Descr); err != nil {
@@ -146,19 +163,6 @@ func Load(ctx context.Context, c *hem.Client, tok TokenFunc) (*Tree, error) {
 		}
 		if p.Peer, err = descr.DecodePeer(p.Raw[:]); err != nil {
 			return nil, fmt.Errorf("peer record %s: %w", e.KID, err)
-		}
-		byRef[ref] = p
-	}
-
-	var records []mac.PeerRecord
-	for _, ref := range t.Iface.PeerRefs {
-		p, ok := byRef[ref]
-		if !ok {
-			if len(unreadable) > 0 {
-				return nil, fmt.Errorf("the interface record references peer %x, which is not in the device (could not read %d candidate key(s): %s)",
-					ref, len(unreadable), strings.Join(unreadable, ", "))
-			}
-			return nil, fmt.Errorf("the interface record references peer %x, which is not in the device", ref)
 		}
 		t.Peers = append(t.Peers, p)
 		records = append(records, mac.PeerRecord{PubKey: p.PubKey, Descr: p.Raw})

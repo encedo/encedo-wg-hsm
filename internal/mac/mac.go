@@ -26,8 +26,9 @@ import (
 )
 
 // Domain separates this MAC from any other use of the same key. A change to the
-// record format bumps this string and the record version together (§8.6).
-const Domain = "ENC-WG-MAC-v1"
+// record format bumps this string and the record version together (§8.6); v2
+// accompanies the PEER_REF change from a public-key digest to a KID prefix.
+const Domain = "ENC-WG-MAC-v2"
 
 // Alg is the HMAC hash the device is asked for.
 const Alg = "SHA2-256"

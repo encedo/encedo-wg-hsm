@@ -51,6 +51,7 @@ func cmdProvision(args []string) (retErr error) {
 	label := fs.String("label", "wg-hem identity", "label for the identity key in the HEM")
 	kid := fs.String("kid", "", "reuse an existing Curve25519 key instead of creating one")
 	psk := fs.String("psk", "", "'-' reads a base64 pre-shared key from stdin; 'generate' makes one locally")
+	adoptPeers := fs.Bool("adopt", false, "reuse a peer already in the device even if its stored settings differ from the flags")
 	mobile := fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase")
 	insecure := fs.Bool("insecure", false, "skip TLS verification (self-signed PPA certificate)")
 	expHours := fs.Int("session", 1, "token lifetime in hours")
@@ -231,11 +232,6 @@ Flags:
 		}
 	}
 
-	impTok, err := auth.token(ctx, "keymgmt:imp")
-	if err != nil {
-		return err
-	}
-
 	ifRec := descr.Interface{
 		Addrs:      addrs,
 		MTU:        uint16(*mtu),
@@ -253,8 +249,18 @@ Flags:
 		if err != nil {
 			return failf(exitUsage, "peer %s: %w", p.Label, err)
 		}
-		if _, err := client.ImportKey(ctx, impTok, p.Label, keyType, p.PubKey, enc[:], ""); err != nil {
-			return classify(err, exitDevice, "importing peer %s", p.Label)
+		_, adopted, err := placePeer(ctx, client, auth, p, enc, *adoptPeers)
+		if err != nil {
+			return err
+		}
+		if adopted {
+			// The stored record is what the tree must authenticate, not the one
+			// the flags described.
+			stored, err := readPeerRecord(ctx, client, auth, descr.KID(p.PubKey))
+			if err != nil {
+				return err
+			}
+			enc = *stored
 		}
 		// Reference order is failover priority, so it follows the flag order.
 		ifRec.PeerRefs = append(ifRec.PeerRefs, descr.MakePeerRef(p.PubKey))
@@ -263,7 +269,9 @@ Flags:
 		copy(pr.PubKey[:], p.PubKey)
 		pr.Descr = enc
 		peerRecords = append(peerRecords, pr)
-		fmt.Fprintf(os.Stderr, "Peer imported: %s (%s)\n", p.Label, p.Endpoint.String())
+		if !adopted {
+			fmt.Fprintf(os.Stderr, "Peer imported: %s (%s)\n", p.Label, p.Endpoint.String())
+		}
 	}
 
 	// The MAC is computed over the record as it will be stored, with the MAC

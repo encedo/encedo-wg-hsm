@@ -58,6 +58,7 @@ func peerAdd(args []string) error {
 	spec := fs.String("peer", "", "peer spec (see `wg-hem peer -h`)")
 	psk := fs.String("psk", "", "'-' reads a base64 pre-shared key from stdin; 'generate' makes one locally")
 	first := fs.Bool("first", false, "put the peer at the head of the failover order instead of the tail")
+	adopt := fs.Bool("adopt", false, "reuse a peer already in the device even if its stored settings differ")
 	if err := fs.Parse(args); err != nil {
 		return &exitError{code: exitUsage, err: err}
 	}
@@ -120,13 +121,19 @@ func peerAdd(args []string) error {
 		return failf(exitUsage, "peer %s: %w", p.Label, err)
 	}
 
-	impTok, err := auth.token(ctx, "keymgmt:imp")
+	kid, adopted, err := placePeer(ctx, client, auth, p, enc, *adopt)
 	if err != nil {
 		return err
 	}
-	kid, err := client.ImportKey(ctx, impTok, p.Label, keyType, p.PubKey, enc[:], "")
-	if err != nil {
-		return classify(err, exitDevice, "importing peer %s", p.Label)
+	if adopted {
+		stored, err := readPeerRecord(ctx, client, auth, kid)
+		if err != nil {
+			return err
+		}
+		enc = *stored
+		if rec, err = descr.DecodePeer(enc[:]); err != nil {
+			return failf(exitDevice, "peer record %s: %w", kid, err)
+		}
 	}
 
 	newPeer := config.Peer{KID: kid, Label: p.Label, Raw: enc, Peer: rec}

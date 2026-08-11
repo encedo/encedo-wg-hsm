@@ -15,11 +15,13 @@
 package descr
 
 import (
-	"crypto/sha256"
+	"crypto/sha1"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/netip"
+	"strings"
 )
 
 // Magic prefixes. Both are exactly 6 bytes: the shortest prefix the device's
@@ -32,8 +34,9 @@ const (
 )
 
 // Version is the record format version. A format change bumps this and the MAC
-// domain string together (§8.6).
-const Version = 0x01
+// domain string together (§8.6). Version 2 redefined PEER_REF from a SHA-256
+// digest of the peer's public key to the leading bytes of its KID.
+const Version = 0x02
 
 // headerLen is the magic plus the version byte.
 const headerLen = magicLen + 1
@@ -81,20 +84,64 @@ const PSKWrappedLen = 40
 // Peer.Encode for the budget that actually applies.
 const MaxHostname = min(60, Size-headerLen-4)
 
-// PeerRefLen is the length of a peer reference: the first bytes of the SHA-256
-// of the peer's public key.
+// PeerRefLen is the length of a peer reference: the leading bytes of the peer's
+// KID.
 const PeerRefLen = 4
 
-// PeerRef is a truncated hash of a peer public key, used by an interface record
-// to name its peers without spending 32 bytes each.
+// KIDLen is the length in bytes of a HEM key identifier.
+const KIDLen = 16
+
+// PeerRef names a peer inside an interface record without spending 32 bytes on
+// its public key.
+//
+// It is the start of the peer's KID, which the device's key search returns
+// alongside every record — so a reference can be resolved against search results
+// directly, with no public key read per candidate. Deriving it locally works
+// because the KID is a function of the key: see KID.
+//
+// A reference is an index, not a credential. Four bytes collide, and someone who
+// can import keys could grind one that collides deliberately. That yields an
+// ambiguous or unresolvable reference, never a substituted peer: the canonical
+// message carries each peer's full public key and record, so anything other than
+// the peer that was provisioned changes the message and fails the MAC.
 type PeerRef [PeerRefLen]byte
+
+// KID computes the key identifier the device assigns to a public key: the
+// leading 16 bytes of its SHA-1, rendered as lowercase hex.
+//
+// Confirmed against a device for Curve25519 keys. It is what makes the checks
+// this package supports possible at all — knowing a peer's KID before talking to
+// the device means knowing whether it is already in the repository.
+//
+// SHA-1's collision weakness does not carry over here. The identifier is a
+// lookup key, and nothing is authenticated by it: every use is backed by the
+// MAC over the full public keys.
+func KID(pubKey []byte) string {
+	sum := sha1.Sum(pubKey)
+	return hex.EncodeToString(sum[:KIDLen])
+}
 
 // MakePeerRef derives the reference for a peer's public key.
 func MakePeerRef(pubKey []byte) PeerRef {
-	sum := sha256.Sum256(pubKey)
+	sum := sha1.Sum(pubKey)
 	var ref PeerRef
 	copy(ref[:], sum[:PeerRefLen])
 	return ref
+}
+
+// PeerRefFromKID derives the reference for a KID as the device reports it, so a
+// search result can be matched without reading the key behind it.
+func PeerRefFromKID(kid string) (PeerRef, error) {
+	var ref PeerRef
+	raw, err := hex.DecodeString(strings.TrimSpace(kid))
+	if err != nil {
+		return ref, fmt.Errorf("descr: kid %q is not hex: %w", kid, err)
+	}
+	if len(raw) != KIDLen {
+		return ref, fmt.Errorf("descr: kid %q is %d bytes, expected %d", kid, len(raw), KIDLen)
+	}
+	copy(ref[:], raw[:PeerRefLen])
+	return ref, nil
 }
 
 // Interface is the decoded form of a WG:if: record — the identity key's own

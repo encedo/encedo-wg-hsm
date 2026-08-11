@@ -1,6 +1,6 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 1.9 (2026-08-11) · Status: ready for implementation
+Version: 2.0 (2026-08-11) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
 HEM FW: v1.7b (current API, **zero firmware changes required**)
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
@@ -26,6 +26,12 @@ supported build target, and what stops fitting at that size.
 Changes in 1.8: §6.2 step 8 adds the HEM reachability check. The endpoint
 exception was already there; the HEM's own address needs the same treatment,
 because a handshake cannot complete without it.
+
+Changes in 2.0 (**format change**): PEER_REF is the first 4 B of the peer's KID
+instead of a SHA-256 digest of its public key, since `KID = SHA-1(pubkey)[0:16]`
+is derivable locally and is what key search returns. Record version 0x01→0x02 and
+the MAC domain v1→v2 accordingly (§8.6). §2 states what sharing a peer record does
+and does not allow.
 
 Changes in 1.9: corrects that check. A HEM inside the tunnel is informational,
 not a warning to confirm — rekeying overlaps a live session by 60 s, so it uses
@@ -61,8 +67,21 @@ On the host: a single `wg-hem` binary (wrapper + forked wireguard-go) + the phys
 ```
 
 Object mapping: **1 interface (if) key → N peers** (list of references in the if key's `descr`).
-A peer may be shared by multiple if keys (each if MACs it on its own side).
-Public keys in HEM are unique — a peer record exists exactly once.
+The binding is one-directional: the identity record enumerates its peers, and a peer
+record points at nothing. That is what lets one MAC close over the whole set, and what
+makes a peer record shareable.
+
+Public keys in HEM are unique — a peer record exists exactly once, and the device
+refuses a second import of a key it already holds. So several identity keys may
+reference the same peer, but they all authenticate **the same bytes**: sharing works
+only where they agree on the peer's endpoint, routes and keepalive. A client adopts an
+existing record rather than rewriting it, since rewriting would invalidate the MAC of
+every other identity referencing it.
+
+**A shared peer cannot carry a PSK.** TLV 0x16 is wrapped under the *identity* key's
+self-ECDH (§5), so a second identity cannot unwrap it, and one record holds one wrap.
+Peers used by more than one identity are therefore PSK-less; a PSK peer belongs to a
+single identity.
 
 ## 3. Data format — DESCR (128 B, binary)
 
@@ -71,7 +90,7 @@ Common header:
 | offset | size | content |
 |---|---|---|
 | 0 | 6 B | ASCII magic: `WG:if:` or `WG:pr:` (exactly 6 chars — the HEM prefix-search minimum) |
-| 6 | 1 B | version = `0x01` |
+| 6 | 1 B | version = `0x02` |
 | 7 | … | TLV stream: `tag(1B) len(1B) value(len B)`; terminated by tag `0x00` or end of buffer; zero-padded |
 
 **Record length.** 128 B, the capacity of the `descr` field. Firmware predating
@@ -99,6 +118,21 @@ prevents forgery — the MAC over the bytes already does that — but it makes
 `encode(decode(x)) == x` an invariant the codec can be fuzzed against, and it
 lets two records be compared without decoding both.
 
+**Key identifiers.** `KID = SHA-1(pubkey)[0:16]`, lowercase hex — confirmed against
+a device for Curve25519 keys. Two consequences the design leans on:
+
+- A peer's identifier is knowable before any call, so a client can tell whether a
+  key is already in the repository, and read its record, before attempting an
+  import that the device would refuse anyway (one public key, one record).
+- `PEER_REF` is the start of that identifier rather than a separate digest, so key
+  search — which returns a KID with every record — resolves references directly.
+  Public keys are then read only for the peers actually referenced.
+
+A reference is an index, not a credential: four bytes collide, and someone able to
+import keys could grind a collision. The result is an ambiguous or unresolvable
+reference, never a substituted peer, because the canonical message of §4 carries
+each peer's full public key and record.
+
 ### 3.1 `WG:if:` record (identity key)
 
 | tag | name | len | value | notes |
@@ -108,7 +142,7 @@ lets two records be compared without decoding both.
 | 0x03 | MTU | 2 | uint16 BE | optional (default 1420) |
 | 0x04 | DNS4 | 4 | addr(4) | repeatable, optional |
 | 0x05 | DNS6 | 16 | addr(16) | repeatable, optional |
-| 0x06 | PEER_REF | 4 | first 4 B of SHA-256(peer_pubkey) | repeatable; **order = failover priority** |
+| 0x06 | PEER_REF | 4 | first 4 B of the peer's KID | repeatable; **order = failover priority** |
 | 0x07 | LISTEN_PORT | 2 | uint16 BE | optional |
 | 0x7F | MAC | 32 | HMAC-SHA2-256 | **always the last TLV**; see §4 |
 
@@ -140,7 +174,7 @@ Address the second operand with **`ext_kid` = `<if_kid>`**, not with `pubkey`. B
 Canonical message:
 
 ```
-msg = "ENC-WG-MAC-v1"                      # 13 B ASCII, domain separation
+msg = "ENC-WG-MAC-v2"                      # 13 B ASCII, domain separation
     || if_pubkey (32 B)
     || if_descr[0..127] with the TLV 0x7F value zeroed (32 × 0x00 in place of the MAC)
     || for each peer on the PEER_REF list, sorted ascending by full pubkey (bytes):

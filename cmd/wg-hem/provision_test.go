@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,8 +64,10 @@ type importCall struct {
 	descr  []byte
 }
 
+// peerKID mirrors the device: the identifier is the leading 16 bytes of the
+// public key's SHA-1.
 func peerKID(pubKey []byte) string {
-	return "peer" + hex.EncodeToString(pubKey)[:28]
+	return descr.KID(pubKey)
 }
 
 // search answers a prefix search over the descr field, the way the device does:
@@ -193,6 +194,7 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 			pk, ok := f.peerKeys[kid]
 			if !ok {
 				w.WriteHeader(http.StatusNotFound)
+				io.WriteString(w, `{"error":"no such key"}`)
 				return
 			}
 			key = pk
@@ -204,6 +206,13 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
 		label, _ := body["label"].(string)
 		kid := peerKID(pk)
+		// The device computes the identifier from the key and refuses a second
+		// import of one it already holds.
+		if _, exists := f.peerKeys[kid]; exists {
+			w.WriteHeader(http.StatusNotAcceptable)
+			io.WriteString(w, `{"error":"key already in repository"}`)
+			return
+		}
 		f.peerKeys[kid] = pk
 		f.imported = append(f.imported, importCall{kid: kid, label: label, pubKey: pk, descr: d})
 		io.WriteString(w, `{"kid":"`+kid+`"}`)
@@ -431,7 +440,9 @@ func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
 	}
 
 	// Only the authorities the job needs, one token each.
-	wantScopes := []string{"keymgmt:gen", "keymgmt:use:" + f.ifKID, "keymgmt:imp", "keymgmt:upd"}
+	// keymgmt:get pays for the check that a peer is not already in the device,
+	// which has to happen before an import that would be refused anyway.
+	wantScopes := []string{"keymgmt:gen", "keymgmt:use:" + f.ifKID, "keymgmt:get", "keymgmt:imp", "keymgmt:upd"}
 	if strings.Join(f.scopes, ",") != strings.Join(wantScopes, ",") {
 		t.Errorf("scopes = %v, want %v", f.scopes, wantScopes)
 	}
