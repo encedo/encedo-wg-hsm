@@ -41,6 +41,7 @@ func cmdUp(args []string) error {
 	ifname := fs.String("interface", "wg0", "name of the tunnel interface")
 	peerIndex := fs.Int("peer", 0, "connect to peer N as numbered by `wg-hem verify` (1-based)")
 	peerKey := fs.String("peer-pubkey", "", "connect to the peer whose base64 public key starts with this prefix")
+	debug := fs.Bool("debug", false, "trace every handshake ECDH on stderr (no key material: values are shown head…tail)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem up — bring the tunnel up from the configuration in the device
 
@@ -58,6 +59,9 @@ A peer that never answers is reported and another is offered.
 	}
 	if *peerIndex != 0 && *peerKey != "" {
 		return failf(exitUsage, "--peer and --peer-pubkey select the same thing; pass one")
+	}
+	if *debug {
+		rt.SetDebug(true)
 	}
 
 	ctx := context.Background()

@@ -2,15 +2,42 @@ package runtime
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.zx2c4.com/wireguard/device"
 
 	hem "github.com/encedo/hem-sdk-go"
 )
+
+// debug turns on the handshake trace: one line per ECDH, which is the only way
+// to watch the tunnel rekey from outside the device. Off unless WG_HEM_DEBUG is
+// set in the environment or a command calls SetDebug.
+var debug = os.Getenv("WG_HEM_DEBUG") != ""
+
+// SetDebug turns the handshake trace on from a command's flags.
+func SetDebug(on bool) { debug = on }
+
+// ecdhSeq numbers the calls so a reader can count them against handshakes: a
+// completed handshake costs two, and a number that stops climbing is a tunnel
+// that has stopped rekeying.
+var ecdhSeq atomic.Uint64
+
+// headTail renders a value as its first and last four bytes. For a 32-byte
+// shared secret that shows 8 of them — enough to see the value change from one
+// handshake to the next, and 192 bits short of being of use to anyone who reads
+// the log. Peer ephemerals are rendered the same way for symmetry; those are
+// public regardless, since they cross the wire in cleartext.
+func headTail(b []byte) string {
+	if len(b) <= 8 {
+		return hex.EncodeToString(b)
+	}
+	return hex.EncodeToString(b[:4]) + "…" + hex.EncodeToString(b[len(b)-4:])
+}
 
 // ecdhTimeout bounds a single HEM call on the handshake path. WireGuard
 // retransmits its first message after 5 s, so an ECDH that has not answered well
@@ -110,6 +137,7 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 	if opts.ExtKID != "" {
 		what = "ECDH (internal)"
 	}
+	seq := ecdhSeq.Add(1)
 	var lastErr error
 	for i := 0; i < ecdhRetries; i++ {
 		if i > 0 {
@@ -117,14 +145,53 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 			time.Sleep(ecdhRetryDelay)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), ecdhTimeout)
+		started := time.Now()
 		result, err := h.client.ECDH(ctx, h.token, h.kid, opts)
+		took := time.Since(started)
 		cancel()
 		if err == nil {
 			var out [32]byte
 			copy(out[:], result)
+			if debug {
+				trace(seq, opts, out[:], took, i+1)
+			}
 			return out, nil
+		}
+		if debug {
+			fmt.Fprintf(os.Stderr, "[hsm] %s ecdh#%-4d %-9s FAILED after %s (try %d/%d): %v\n",
+				time.Now().Format("15:04:05.000"), seq, operandKind(opts), took.Round(time.Millisecond),
+				i+1, ecdhRetries, err)
 		}
 		lastErr = err
 	}
 	return [32]byte{}, fmt.Errorf("HEM %s unreachable after %d attempts: %w", what, ecdhRetries, lastErr)
+}
+
+// operandKind names which of the two DHs this is. "static" is the peer's own
+// key, already inside the device, so only its identifier travels; "ephemeral"
+// is the key read off the wire for this one handshake.
+func operandKind(opts hem.CryptoOpts) string {
+	if opts.ExtKID != "" {
+		return "static"
+	}
+	return "ephemeral"
+}
+
+// trace prints one line per successful ECDH. Two lines with the same second and
+// different operands are one handshake; the gap between such pairs is the rekey
+// interval, and the ss column changing across them is the tunnel actually
+// rotating rather than reusing a session.
+func trace(seq uint64, opts hem.CryptoOpts, ss []byte, took time.Duration, try int) {
+	operand := "-"
+	if opts.ExtKID != "" {
+		operand = opts.ExtKID
+		if len(operand) > 16 {
+			operand = operand[:8] + "…" + operand[len(operand)-8:]
+		}
+	} else if len(opts.PubKey) > 0 {
+		operand = headTail(opts.PubKey)
+	}
+	fmt.Fprintf(os.Stderr, "[hsm] %s ecdh#%-4d %-9s peer=%-19s ss=%-19s %7s try=%d\n",
+		time.Now().Format("15:04:05.000"), seq, operandKind(opts), operand,
+		headTail(ss), took.Round(time.Millisecond), try)
 }
