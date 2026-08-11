@@ -39,6 +39,78 @@ unanswered question into written permission, and it is worth having before a
 company signs a distribution with its own certificate: renaming afterwards costs
 incomparably more than asking now.
 
+## v2.1 — proposed: the version somebody's assistant can run
+
+Neither of these is started. Both assume `wg-hem` as it stands and add nothing to
+the protocol; they are about who can operate it.
+
+**A graphical client.** Simple by default, with an advanced mode, on the
+assumption that 99.9% of use is: open it, connect, close it. One decision comes
+before any of the interface work and is expensive to reverse.
+
+*The GUI is the session.* Closing the window ends the tunnel. `up` already holds
+the foreground, needs privilege, and holds a token that cannot be renewed without
+a human — so a process surviving the window would be the daemon this project
+deliberately does not build, holding a credential nobody is watching. Minimising
+to a tray icon keeps the session; closing ends it, and the first close should say
+so. Privileged work (TUN, routes, DNS) belongs in a helper that knows nothing
+about keys; the session and the token stay in the GUI.
+
+*Module presence is the primary state, not a connect button.* Plugged in, ready,
+connected. This is the one VPN client whose identity is an object the user can
+hold, and that is easier to teach than any profile dialog. Prompt on insertion;
+do not connect on insertion, because a tunnel that raises itself without intent is
+a bad tunnel.
+
+*Three things will bite.* Token expiry, which today defaults to an hour and simply
+ends the tunnel mid-afternoon — show the remaining time permanently, warn before
+it, offer one-click renewal, and default to eight hours rather than one. Module
+removal, which does not end the tunnel until the next rekey up to two minutes
+later, long enough for the user to believe all is well — react on removal, not on
+failure. And failover, which prompts in a terminal today; a GUI should try the
+next peer and say what it did, keeping manual choice for the advanced mode.
+
+*Advanced mode* is a toggle in the same window, not a second application: peer
+selection, the `--debug` ECDH trace, the decoded configuration from `verify` with
+its MAC check, HEM URL, last handshake. `status` already returns all of it.
+Provisioning stays out — the person running the tunnel is not the person who
+provisions it.
+
+*Implementation.* §10.4.4 already settles the shape: one embedded UI, browser as
+UI only, every HEM call through the same Go path, no second implementation of the
+codecs. A webview wrapper (Wails or equivalent) makes that look like an
+application rather than a browser tab. The "secrets in browser context" objection
+recorded against a hosted page does not apply here — the origin belongs to the
+binary. Open question: whether the hardware supports ExtAuth, because approving
+on a phone instead of typing a passphrase would be the better flow by some margin.
+
+**A migration tool.** Read an existing `wg0.conf`, carry over everything that can
+be carried, and return the new public key; the administrator changes one line on
+the server and the migration is done. The shape is right and the one-line claim
+holds: the client's address does not change, so `AllowedIPs` on the server stays,
+and the pre-shared key can be carried too (`provision --psk -` wraps it), so
+`PresharedKey` stays as well. Only `PublicKey` changes.
+
+*What cannot be carried is the part that matters.* `PrivateKey` is left behind by
+design — that is the entire point, and the new identity is generated inside the
+module. But `PostUp`, `PreUp`, `PostDown`, `PreDown`, `Table` and `FwMark` have no
+TLV representation and never will: the record format has seven tags and none of
+them is a script. A configuration with an `iptables` rule in `PostUp` will come up
+after migration looking healthy while the rule is simply gone. **These must be
+listed and acknowledged, not dropped quietly** — a silent behaviour change found a
+week later costs more trust than a refusal on the day.
+
+*Give it a diff, not a wizard.* Original file on one side, what will be stored on
+the other, and beneath them the list of what could not be carried and why. A black
+box invites suspicion at exactly the moment a migration tool needs to be believed;
+`verify` can then show what actually landed in the module for comparison.
+
+*Cutover is reversible until the swap.* The old file and old key keep working
+until the administrator changes the line, so provisioning early and switching
+later is safe. Zero-downtime needs the new identity to take a different address
+and a second `[Peer]` alongside the old one — the same `AllowedIPs` on two peers
+of one interface makes the routing ambiguous.
+
 ## Parked: provisioning for an administrator
 
 Deliberately set aside, not forgotten. The thread: a service provider wants to
@@ -84,6 +156,45 @@ Deferred until the new firmware is available; the client side is ready.
 - Full-tunnel variant (`allowed-ips=0.0.0.0/0`). The only untested path in
   `internal/runtime`: endpoints the tunnel would swallow are pinned to the
   pre-tunnel gateway, and the HEM is probed but deliberately not pinned.
+
+**Remove the 64-byte record variant once the target firmware ships.** It is a
+temporary accommodation for current hardware, not a product characteristic, and
+it should not outlive the firmware that needs it. It reaches further than it
+looks: `descr64` and the `-descr64` suffix in `build.sh`, the two-way matrix in
+the CI workflow, `size_descr64.go`, the record size reported by `wg-hem version`,
+and the passages in `README.md`, `CLAUDE.md` and `UPSTREAM.md` that explain why a
+tree written by one build cannot be read by the other. Removing half of that
+leaves a build flag that no longer does anything and documentation describing a
+choice nobody has. The customer-facing page already says nothing about record
+sizes, deliberately — until this is done, the repository and that page disagree.
+
+## Outside the code
+
+**The landing page.** A single page aimed at a technically literate buyer, built
+from `PRODUCT.md`, `README.md` and the specification, and resolving the one thing
+none of them said on its own: there are **two** guarantees here, not one, and they
+fail separately. The key cannot be taken — that is the claim `PRODUCT.md` already
+made. The routing cannot be altered unnoticed — that is v2 only, and it is the
+reason v2 exists. A file with no key in it is still a file somebody can edit, and
+changing one `AllowedIPs` entry sends traffic elsewhere with the key perfectly
+safe. That argument is the spine of the page and appears nowhere else.
+
+It presents the line as v0 (standard WireGuard) → v1 (`wg-quick-encedo`) → v2
+(`wg-hem`), drawn as three states of the same configuration file, and gives the
+strongest commercial point its own full-width band: any standard-conforming
+implementation is a valid other end, so there is no migration, no coordination
+window, and no provider to leave. It also states what the design costs and what
+has not been tested, on the grounds that a page listing only advantages reads as a
+brochure to the audience it is written for.
+
+Deliberately absent: any call to action with contact details, since none were
+available to invent; and any mention of record sizes, per the entry above. Named
+VPN brands are avoided too — categories and implementations make the same point
+without implying a relationship with anyone. The trademark notice in the footer
+follows the same reasoning as the entry in *Not yet written*.
+
+Source: `docs/landing-page.html`, self-contained — one file, no external
+requests, and it renders in both light and dark.
 
 ## Deliberate non-goals
 
