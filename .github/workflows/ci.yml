@@ -47,6 +47,15 @@ jobs:
           WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./build.sh
 
+      # Windows needs wintun.dll beside the executable or the tunnel fails at
+      # the moment it is created. Its licence permits redistribution alongside
+      # software using only the documented API, which is what this is, so the
+      # driver ships in the same archive rather than being a step in a README.
+      - name: Package the Windows bundles
+        env:
+          WG_HEM_DESCR: ${{ matrix.descr }}
+        run: ./package-windows.sh
+
       - name: gofmt
         run: |
           unformatted="$(gofmt -l cmd/ internal/)"

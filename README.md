@@ -67,6 +67,12 @@ built for.
 
 All binaries are statically linked and depend on no system libraries.
 
+**Windows comes as a bundle.** `encedo-wg-windows-<arch>.zip` holds both clients,
+the `wintun.dll` they need, and the licences of both — unpack it and everything
+is in one directory, which is where the DLL has to be. Wintun is redistributed
+unmodified and with its licence, as clause 3(d) of that licence provides for
+software using only its documented API.
+
 ### Option B — Build from source
 
 **Requirements:** Go 1.26+, git
@@ -170,17 +176,21 @@ sudo wg-quick-encedo up wg1 /etc/wireguard/wg1.conf
 
 ### Windows
 
-**1. Provide Wintun**
+**1. Unpack the bundle**
+
+`encedo-wg-windows-amd64.zip` from the releases page already contains both
+clients and `wintun.dll`. Extract it to `C:\WireGuard` and skip to step 3 —
+nothing else is needed.
 
 The tunnel device is created through `wintun.dll`, which is loaded by name at
-runtime and must be findable. Either:
+runtime and found beside the executable, so the three files have to stay
+together. If you would rather supply it yourself, take it from
+[wintun.net](https://www.wintun.net/) with the architecture matching the
+executable, or run the WireGuard installer from
+[wireguard.com](https://www.wireguard.com/install/), which registers it
+system-wide; the GUI application itself is not needed.
 
-- download it from [wintun.net](https://www.wintun.net/) and put it **next to the
-  executable** — the architecture has to match, `amd64` with `amd64`; or
-- run the WireGuard installer from [wireguard.com](https://www.wireguard.com/install/),
-  which registers it system-wide. The GUI application itself is not needed.
-
-**2. Place the binary**
+**2. Place the binary** (only if you did not use the bundle)
 
 Copy `wg-quick-encedo-windows-amd64.exe` to `C:\WireGuard\wg-quick-encedo.exe` (or any location in PATH).
 
