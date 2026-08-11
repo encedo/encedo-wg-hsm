@@ -243,8 +243,13 @@ wg-hsm/
     wg-hem/                       <- config-free client: provision | verify
       main.go                     <- dispatch + exit codes (0/1/2/3/4/5)
       up.go                       <- bring the tunnel up from the stored config (§6.2).
-                                     cmdUp decides (which peer, which PSK, what routing),
-                                     bringUp executes (device, interface, routes, wait).
+                                     cmdUp decides (which peer), the tunnel type executes.
+                                     usePeer is the only peer-dependent step, which is what
+                                     lets failover swap one without disturbing the rest.
+      failover.go                 <- §6.4 v1: 15 s without a handshake -> re-prompt, marking
+                                     the peer that failed. Only the FIRST handshake after a
+                                     peer is configured is watched; a peer that answers and
+                                     later stops is v2 (health check + hysteresis).
       state.go                    <- /var/run/wireguard/<if>.wg-hem.json: pid, interface,
                                      if/peer KID, endpoint, HEM URL. No secrets. It is how
                                      down and status find the process that owns the routes.

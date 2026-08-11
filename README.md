@@ -159,8 +159,8 @@ All cryptographic keys are replaced with opaque HEM key identifiers (`HEM_KID`).
 > A second client, `wg-hem`, removes the file entirely: the addresses, peers, routes and DNS
 > live in the HEM alongside the keys, under a MAC computed inside the device, so tampering with
 > the routing is detectable rather than merely unprofitable. `wg-hem provision` writes a
-> configuration, `wg-hem up` runs from it, and `down` and `status` manage it; failover is
-> still to come. See
+> configuration, `wg-hem up` runs from it with interactive failover, and `down` and
+> `status` manage it. See
 > [docs/ENCEDO-WG-CONFIGFREE-SPEC.md](docs/ENCEDO-WG-CONFIGFREE-SPEC.md).
 
 ```ini

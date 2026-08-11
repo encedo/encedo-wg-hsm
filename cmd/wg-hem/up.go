@@ -33,7 +33,8 @@ import (
 var runDir = "/var/run/wireguard"
 
 // cmdUp brings the tunnel up from the configuration in the device (§6.2). No
-// file is read and nothing is written to disk beyond the public key.
+// file is read and nothing is written to disk beyond the public key and the
+// state file that lets `down` and `status` find this process.
 func cmdUp(args []string) error {
 	fs := flag.NewFlagSet("up", flag.ContinueOnError)
 	dev := addDeviceFlags(fs)
@@ -47,6 +48,7 @@ func cmdUp(args []string) error {
 
 With more than one peer and neither selection flag, the peer is asked for; the
 order is the one the interface record stores, which is the failover priority.
+A peer that never answers is reported and another is offered.
 
 `)
 		fs.PrintDefaults()
@@ -69,143 +71,80 @@ order is the one the interface record stores, which is the failover priority.
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Peer %q at %s.\n", peer.Label, peer.Endpoint.String())
 
 	// One scope covers the rest of the run: the ECDH at every handshake, the
-	// unwrap of the pre-shared key, and reading the interface's own public key.
+	// unwrap of each pre-shared key, and reading the interface's own public key.
 	useTok, err := auth.token(ctx, "keymgmt:use:"+tree.IfKID)
 	if err != nil {
 		return err
 	}
 
-	psk, err := tree.UnwrapPSK(ctx, client, useTok, *peer)
-	if err != nil {
-		return classify(err, exitDevice, "pre-shared key")
+	t := &tunnel{
+		ctx: ctx, client: client, tree: tree,
+		useTok: useTok, hemURL: dev.url(), ifname: *ifname,
 	}
-	defer zero(psk)
-
-	// Resolve while the host's resolver is still the host's own: once AllowedIPs
-	// owns the default route, a lookup may be travelling through the tunnel that
-	// the answer is needed to build.
-	//
-	// Only the selected peer is planned for. Cryptokey routing gives one peer
-	// the AllowedIPs at a time, so the others' endpoints are not reachable
-	// through this interface and have nothing to be pinned against.
-	plan, err := rt.PlanRouting([]rt.Peer{{
-		Endpoint:   peer.Endpoint.String(),
-		AllowedIPs: peer.AllowedIPs,
-	}}, dev.url())
-	if err != nil {
-		return failf(exitNetwork, "%w", err)
-	}
-
-	return bringUp(ctx, client, tree, peer, psk, useTok, plan, *ifname, dev.url())
+	return t.run(peer)
 }
 
-// bringUp is everything from "the configuration is known" onwards: the device,
-// the interface, the routing, and the wait. It is separate from cmdUp so the
-// part that talks to the HEM and the part that talks to the kernel stay legible
-// apart from each other.
-func bringUp(ctx context.Context, client *hem.Client, tree *config.Tree, peer *config.Peer,
-	psk []byte, useTok string, plan *rt.Plan, ifname, hemURL string) error {
+// tunnel is one interface's life: the device that holds its key, the kernel
+// objects it created, and the peer it is currently pointed at. Failover changes
+// the last of those and leaves the rest standing.
+type tunnel struct {
+	ctx    context.Context
+	client *hem.Client
+	tree   *config.Tree
+	useTok string
+	hemURL string
+	ifname string
 
-	ifPub, err := client.GetPubKey(ctx, useTok, tree.IfKID)
-	if err != nil {
-		return classify(err, exitDevice, "reading the interface public key")
+	dev  *device.Device
+	hsm  *rt.HSM
+	pins *rt.Pins
+
+	peer *config.Peer
+	psk  []byte
+
+	// hemInside is whether the current peer's AllowedIPs cover the HEM. The
+	// probe that acts on it waits until the routes are actually in.
+	hemInside bool
+	hemHost   string
+}
+
+// run brings the interface up on peer and holds it until something ends it,
+// offering another peer whenever the current one never answers (§6.4).
+func (t *tunnel) run(peer *config.Peer) error {
+	if err := t.openDevice(); err != nil {
+		return err
 	}
-	var ifPubKey device.NoisePublicKey
-	copy(ifPubKey[:], ifPub.PubKey)
+	t.pins = &rt.Pins{}
 
-	// The private key never enters this process, so the tunnel's every handshake
-	// is a live call into the device.
-	hsm := rt.NewHSM(client, useTok, tree.IfKID, ifPubKey)
-	var peerPub device.NoisePublicKey
-	copy(peerPub[:], peer.PubKey[:])
-	hsm.AddPeerKID(peerPub, peer.KID)
-	hsm.Inject()
-
-	tdev, err := tun.CreateTUN(ifname, int(tree.MTU()))
-	if err != nil {
-		return failf(exitDevice, "creating the tunnel interface: %w", err)
+	// The peer goes in before the interface's own routes: pinning its endpoint
+	// has to happen before a default route can capture it.
+	if err := t.usePeer(peer); err != nil {
+		t.teardown()
+		return err
 	}
-	if name, err := tdev.Name(); err == nil && name != "" {
-		ifname = name
-	}
-
-	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", ifname))
-	wgdev := device.NewDevice(tdev, conn.NewDefaultBind(), logger)
-
-	if err := wgdev.IpcSet(uapiConfig(tree, peer, psk)); err != nil {
-		wgdev.Close()
-		return failf(exitDevice, "configuring the tunnel: %w", err)
-	}
-
-	_ = os.MkdirAll(runDir, 0755)
-	pubPath := runDir + "/" + ifname + ".pub"
-	_ = os.WriteFile(pubPath, []byte(base64.StdEncoding.EncodeToString(ifPub.PubKey)+"\n"), 0644)
-
-	if err := rt.Up(ifname, tree.Iface.Addrs); err != nil {
-		wgdev.Close()
-		_ = os.Remove(pubPath)
-		return failf(exitDevice, "bringing %s up: %w", ifname, err)
-	}
-	if err := rt.SetMTU(ifname, int(tree.MTU())); err != nil {
-		wgdev.Close()
-		_ = rt.Down(ifname)
-		_ = os.Remove(pubPath)
-		return failf(exitDevice, "setting the MTU: %w", err)
+	if err := t.configureInterface(); err != nil {
+		t.teardown()
+		return err
 	}
 
-	// From here the routing table has been touched, so every way out goes
-	// through one teardown — the abort path cannot then drift from the one that
-	// runs on Ctrl+C.
-	pins := &rt.Pins{}
-	teardown := func() {
-		wgdev.Close()
-		rt.RevertDNS(ifname)
-		_ = rt.Down(ifname)
-		pins.Restore()
-		_ = os.Remove(pubPath)
-		removeState(ifname)
-	}
-
-	// The state file is what `down` and `status` find this process by. It goes in
-	// before the interface is announced and comes out in the teardown, so its
-	// presence means "a wg-hem owns this interface and has work to undo".
 	st := &state{
-		PID: os.Getpid(), Interface: ifname, IfKID: tree.IfKID,
+		PID: os.Getpid(), Interface: t.ifname, IfKID: t.tree.IfKID,
 		PeerKID: peer.KID, PeerLabel: peer.Label, Endpoint: peer.Endpoint.String(),
-		HEMURL: hemURL, Started: time.Now(),
+		HEMURL: t.hemURL, Started: time.Now(),
 	}
 	if err := st.save(); err != nil {
-		teardown()
+		t.teardown()
 		return failf(exitDevice, "recording the interface state: %w", err)
 	}
 
-	if err := pins.Add(plan.Endpoints); err != nil {
-		teardown()
-		return failf(exitDevice, "%w", err)
-	}
-	if err := rt.AddRoutes(ifname, peer.AllowedIPs); err != nil {
-		teardown()
-		return failf(exitDevice, "installing routes: %w", err)
-	}
-	if err := rt.SetDNS(ifname, dnsServers(tree)); err != nil {
-		teardown()
-		return failf(exitDevice, "setting DNS: %w", err)
-	}
-	if plan.HEMInside {
-		if err := rt.ProbeHEM(client, plan.HEMHost); err != nil {
-			teardown()
-			return failf(exitNetwork, "%w", err)
-		}
-	}
-
-	uapi, err := rt.UAPIListen(ifname)
+	uapi, err := rt.UAPIListen(t.ifname)
 	if err != nil {
-		teardown()
+		t.teardown()
 		return failf(exitDevice, "opening the UAPI socket: %w", err)
 	}
+	defer uapi.Close()
 	uapiErr := make(chan error, 1)
 	go func() {
 		for {
@@ -214,26 +153,200 @@ func bringUp(ctx context.Context, client *hem.Client, tree *config.Tree, peer *c
 				uapiErr <- err
 				return
 			}
-			go wgdev.IpcHandle(c)
+			go t.dev.IpcHandle(c)
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "Interface %s is up.\n", ifname)
-
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	select {
-	case <-stop:
-	case <-uapiErr:
-	case <-wgdev.Wait():
-	case <-hsm.Dead():
-		fmt.Fprintln(os.Stderr, "The HEM is gone or the token has expired — bringing the interface down.")
+
+	// ending closes when the tunnel is over for a reason no other peer would
+	// fix. Failover is the one kind of trouble that is worth staying up for.
+	ending := make(chan struct{})
+	var endMsg string
+	go func() {
+		select {
+		case <-stop:
+		case <-uapiErr:
+		case <-t.dev.Wait():
+		case <-t.hsm.Dead():
+			endMsg = "The HEM is gone or the token has expired — bringing the interface down."
+		}
+		close(ending)
+	}()
+
+	fmt.Fprintf(os.Stderr, "Interface %s is up.\n", t.ifname)
+
+	if err := t.hold(st, ending); err != nil {
+		t.teardown()
+		return err
+	}
+	if endMsg != "" {
+		fmt.Fprintln(os.Stderr, endMsg)
+	}
+	t.teardown()
+	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", t.ifname)
+	return nil
+}
+
+// hold waits for the current peer to answer, and offers another when it does
+// not (§6.4). Once a handshake has happened it just waits for the end: a peer
+// that answers and later stops is v2's problem, with the health check and the
+// hysteresis that telling a quiet tunnel from a dead one actually needs.
+func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
+	for {
+		if awaitHandshake(t.ifname, ending) {
+			fmt.Fprintf(os.Stderr, "Handshake with %q completed.\n", t.peer.Label)
+			<-ending
+			return nil
+		}
+		select {
+		case <-ending:
+			return nil
+		default:
+		}
+
+		next, err := repromptPeer(t.tree, t.peer)
+		if err != nil {
+			return err
+		}
+		if err := t.usePeer(next); err != nil {
+			return err
+		}
+		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
+		if err := st.save(); err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: the state file no longer names the active peer: %v\n", err)
+		}
+	}
+}
+
+// openDevice reads the interface's public key, binds the handshake path to the
+// HEM, and creates the tunnel device. None of it depends on which peer is
+// chosen, so failover leaves all of it alone.
+func (t *tunnel) openDevice() error {
+	ifPub, err := t.client.GetPubKey(t.ctx, t.useTok, t.tree.IfKID)
+	if err != nil {
+		return classify(err, exitDevice, "reading the interface public key")
+	}
+	var ifPubKey device.NoisePublicKey
+	copy(ifPubKey[:], ifPub.PubKey)
+
+	// The private key never enters this process, so every handshake is a live
+	// call into the device.
+	t.hsm = rt.NewHSM(t.client, t.useTok, t.tree.IfKID, ifPubKey)
+	t.hsm.Inject()
+
+	tdev, err := tun.CreateTUN(t.ifname, int(t.tree.MTU()))
+	if err != nil {
+		return failf(exitDevice, "creating the tunnel interface: %w", err)
+	}
+	if name, err := tdev.Name(); err == nil && name != "" {
+		t.ifname = name
 	}
 
-	uapi.Close()
-	teardown()
-	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", ifname)
+	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", t.ifname))
+	t.dev = device.NewDevice(tdev, conn.NewDefaultBind(), logger)
+
+	_ = os.MkdirAll(runDir, 0755)
+	_ = os.WriteFile(t.pubPath(), []byte(base64.StdEncoding.EncodeToString(ifPub.PubKey)+"\n"), 0644)
 	return nil
+}
+
+// usePeer points the interface at a peer: its pre-shared key out of the device,
+// its endpoint pinned outside the tunnel, and the peer itself into wireguard-go
+// — which precomputes the static-static DH as it goes in, one more call the
+// device answers.
+func (t *tunnel) usePeer(peer *config.Peer) error {
+	psk, err := t.tree.UnwrapPSK(t.ctx, t.client, t.useTok, *peer)
+	if err != nil {
+		return classify(err, exitDevice, "pre-shared key")
+	}
+	fail := func(err error) error {
+		zero(psk)
+		return err
+	}
+
+	// The peer's key is in the device, so its static-static DH can be done with
+	// both operands inside. Recording that has to precede adding the peer,
+	// because adding it is what triggers the DH.
+	var pub device.NoisePublicKey
+	copy(pub[:], peer.PubKey[:])
+	t.hsm.AddPeerKID(pub, peer.KID)
+
+	plan, err := rt.PlanRouting([]rt.Peer{{
+		Endpoint:   peer.Endpoint.String(),
+		AllowedIPs: peer.AllowedIPs,
+	}}, t.hemURL)
+	if err != nil {
+		return fail(failf(exitNetwork, "%w", err))
+	}
+	if err := t.pins.Add(plan.Endpoints); err != nil {
+		return fail(failf(exitDevice, "%w", err))
+	}
+
+	uapi := uapiConfig(t.tree, peer, psk)
+	if t.peer != nil {
+		warnAllowedIPsDiffer(t.peer, peer)
+		uapi = uapiReplacePeer(peer, psk)
+		// Routes are added, never withdrawn: traffic is using the ones already
+		// there, and taking them back mid-flight is the more dangerous mistake.
+		if err := rt.AddRoutes(t.ifname, peer.AllowedIPs); err != nil {
+			return fail(failf(exitDevice, "installing routes: %w", err))
+		}
+	}
+	if err := t.dev.IpcSet(uapi); err != nil {
+		return fail(failf(exitDevice, "configuring the tunnel: %w", err))
+	}
+
+	zero(t.psk)
+	t.peer, t.psk = peer, psk
+	t.hemInside, t.hemHost = plan.HEMInside, plan.HEMHost
+	return nil
+}
+
+// configureInterface does the interface-level work: address, MTU, routes, DNS,
+// and the check that the HEM survived them.
+func (t *tunnel) configureInterface() error {
+	if err := rt.Up(t.ifname, t.tree.Iface.Addrs); err != nil {
+		return failf(exitDevice, "bringing %s up: %w", t.ifname, err)
+	}
+	if err := rt.SetMTU(t.ifname, int(t.tree.MTU())); err != nil {
+		return failf(exitDevice, "setting the MTU: %w", err)
+	}
+	if err := rt.AddRoutes(t.ifname, t.peer.AllowedIPs); err != nil {
+		return failf(exitDevice, "installing routes: %w", err)
+	}
+	if err := rt.SetDNS(t.ifname, dnsServers(t.tree)); err != nil {
+		return failf(exitDevice, "setting DNS: %w", err)
+	}
+	// With the routes in place, confirm the HEM is still there. It is consulted
+	// at every handshake, so losing it is not a degraded tunnel — it is one that
+	// stops at the first rekey, roughly two minutes in.
+	if t.hemInside {
+		if err := rt.ProbeHEM(t.client, t.hemHost); err != nil {
+			return failf(exitNetwork, "%w", err)
+		}
+	}
+	return nil
+}
+
+func (t *tunnel) pubPath() string { return runDir + "/" + t.ifname + ".pub" }
+
+// teardown undoes everything this process created, in the order that leaves the
+// host as it was found. Every way out goes through it, so the abort path cannot
+// drift from the one that runs on Ctrl+C.
+func (t *tunnel) teardown() {
+	if t.dev != nil {
+		t.dev.Close()
+	}
+	rt.RevertDNS(t.ifname)
+	_ = rt.Down(t.ifname)
+	if t.pins != nil {
+		t.pins.Restore()
+	}
+	zero(t.psk)
+	_ = os.Remove(t.pubPath())
+	removeState(t.ifname)
 }
 
 // selectPeer implements §6.2 step 5. WireGuard's cryptokey routing gives one
@@ -315,23 +428,37 @@ func uapiConfig(tree *config.Tree, peer *config.Peer, psk []byte) string {
 	if tree.Iface.ListenPort != 0 {
 		fmt.Fprintf(&sb, "listen_port=%d\n", tree.Iface.ListenPort)
 	}
-
-	fmt.Fprintf(&sb, "public_key=%s\n", hex.EncodeToString(peer.PubKey[:]))
-	if !peer.Endpoint.IsZero() {
-		fmt.Fprintf(&sb, "endpoint=%s\n", peer.Endpoint.String())
-	}
-	for _, a := range peer.AllowedIPs {
-		fmt.Fprintf(&sb, "allowed_ip=%s\n", a)
-	}
-	if peer.Keepalive != 0 {
-		fmt.Fprintf(&sb, "persistent_keepalive_interval=%d\n", peer.Keepalive)
-	}
-	if len(psk) != 0 {
-		fmt.Fprintf(&sb, "preshared_key=%s\n", hex.EncodeToString(psk))
-	}
+	writePeer(&sb, peer, psk)
 
 	sb.WriteString("\n")
 	return sb.String()
+}
+
+// uapiReplacePeer swaps the active peer for another and leaves the interface's
+// own settings alone. replace_peers drops the previous one, which is the point:
+// two peers claiming the same AllowedIPs is not something WireGuard can route.
+func uapiReplacePeer(peer *config.Peer, psk []byte) string {
+	var sb strings.Builder
+	sb.WriteString("replace_peers=true\n")
+	writePeer(&sb, peer, psk)
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func writePeer(sb *strings.Builder, peer *config.Peer, psk []byte) {
+	fmt.Fprintf(sb, "public_key=%s\n", hex.EncodeToString(peer.PubKey[:]))
+	if !peer.Endpoint.IsZero() {
+		fmt.Fprintf(sb, "endpoint=%s\n", peer.Endpoint.String())
+	}
+	for _, a := range peer.AllowedIPs {
+		fmt.Fprintf(sb, "allowed_ip=%s\n", a)
+	}
+	if peer.Keepalive != 0 {
+		fmt.Fprintf(sb, "persistent_keepalive_interval=%d\n", peer.Keepalive)
+	}
+	if len(psk) != 0 {
+		fmt.Fprintf(sb, "preshared_key=%s\n", hex.EncodeToString(psk))
+	}
 }
 
 func dnsServers(tree *config.Tree) []string {

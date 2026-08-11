@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"golang.zx2c4.com/wireguard/device"
@@ -39,6 +40,10 @@ type HSM struct {
 	// extKIDs lets a peer whose public key is already imported into the device
 	// have its static-static DH done with both operands inside it: neither key
 	// value passes through this process.
+	//
+	// Guarded: failover adds to it from the foreground while the device's own
+	// goroutines may be reading it for a handshake already in flight.
+	mu      sync.RWMutex
 	extKIDs map[device.NoisePublicKey]string
 
 	dead chan struct{}
@@ -59,7 +64,16 @@ func NewHSM(client *hem.Client, token, kid string, pubKey device.NoisePublicKey)
 // turns its static-static DH into an operation with no key material on either
 // side of the wire.
 func (h *HSM) AddPeerKID(pubKey device.NoisePublicKey, kid string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.extKIDs[pubKey] = kid
+}
+
+func (h *HSM) peerKID(pubKey device.NoisePublicKey) (string, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	kid, ok := h.extKIDs[pubKey]
+	return kid, ok
 }
 
 // Dead fires when a handshake ECDH has failed past its retries. The tunnel
@@ -73,7 +87,7 @@ func (h *HSM) Inject() {
 	device.InjectHSMSession(&device.HSMSession{
 		PublicKey: h.pubKey,
 		ECDH: func(pub device.NoisePublicKey) ([device.NoisePublicKeySize]byte, error) {
-			if extKID, ok := h.extKIDs[pub]; ok {
+			if extKID, ok := h.peerKID(pub); ok {
 				return h.ecdh(hem.CryptoOpts{ExtKID: extKID})
 			}
 			// An ephemeral, read off the wire: it exists nowhere but this
