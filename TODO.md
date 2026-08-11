@@ -93,30 +93,48 @@ buys every scope with one prompt, because the SDK caches the derived key, while
 ExtAuth charges per scope.
 
 Today `up` needs two (`keymgmt:get`, `keymgmt:use:<ifKID>`) and `provision` five.
-Multi-scope tokens in the coming firmware collapse that, and the largest bundle
-any single command needs is **six** — `provision --kid`, which can know all of
-them up front: `use:<kid>`, `get`, `imp`, `upd`, `search`, `del`. The last is only
-used when a failed run cleans up after itself, but it has to be in the bundle
-anyway: a token taken once at the start cannot go back and ask for more at the
-moment something has already gone wrong.
+The coming firmware changes both halves of that. Multi-scope tokens bundle what a
+command needs, and a search that returns public keys as well as identifiers
+removes `keymgmt:get` from the client altogether: `config.Load` stops reading the
+interface key and each peer key one call at a time, and the existence probe in
+`adopt.go` goes with it, since `readPeerRecord` already answers that question
+through search. **Deleting that scope is a real cleanup to schedule**, and it
+retires the endpoint whose 406 for an unknown key cost an afternoon to diagnose.
+
+What is left is small enough to state in full:
+
+| command | token(s) | approvals |
+|---|---|---|
+| `up`, `status`, `verify` | `use:<ifKID>` | 1 |
+| `provision --kid` | `use:<kid>` `imp` `upd` `search` `del` | 1 |
+| `provision`, new identity | `gen` `imp` `upd` `search` `del`, then `use:<KID>` | 2 |
+| `peer add/update` | `use:<kid>` `upd` | 1 |
+| `wipe` | `del` | 1 |
+
+So the largest bundle is **five**, and the everyday path is a single approval.
+`keymgmt:del` stays in the provisioning bundle although only a failed run uses it:
+a token taken once at the start cannot go back for more at the moment something
+has already gone wrong.
 
 *The binding constraint is ordering, not count.* `keymgmt:use:<KID>` names a key,
 and there are two places where the key is not yet known when the token would be
 requested. Provisioning a new identity learns the KID from `CreateKey`, so it
-needs two rounds however many scopes a token carries. `up`, `status` and `verify`
-learn it from the search for the `WG:if:` record — so if the device permits
-anonymous search, the whole of `up` fits in one token and the user taps once; if
-it does not, the search costs a token of its own and they tap twice.
+needs two rounds however many scopes a token carries — a key that does not exist
+cannot be named, and no firmware change will alter that. `up`, `status` and
+`verify` learn it from the search for the `WG:if:` record, so their single
+approval holds only while anonymous search is permitted; without it the search
+takes a token of its own and the everyday path costs two again.
 
 *Three things worth saying to whoever specifies the firmware.* A use-scope that is
 not bound to one KID — a list, or a wildcard — would make `up` a single approval
 in every case rather than only when anonymous search is on; provisioning a new key
 stays at two regardless, because a key that does not exist cannot be named.
-`keymgmt:get` should survive: one such scope reads every peer's public key, so the
-bundle stays a constant size, whereas per-key use-scopes would grow it with the
-number of peers. And `allow_keysearch` now carries user-visible weight rather than
-mere convenience — it is the difference between one tap and two on the path
-everybody uses every day.
+Whatever replaces `keymgmt:get` must keep reading every peer in one grant, as
+search-returning-public-keys does: per-key use-scopes would grow the bundle with
+the number of peers, and a token whose size depends on how many peers a
+configuration has is a token that eventually will not fit. And `allow_keysearch`
+now carries user-visible weight rather than mere convenience — while it is on, the
+everyday path is one tap; with it off, two.
 
 **A migration tool.** Read an existing `wg0.conf`, carry over everything that can
 be carried, and return the new public key; the administrator changes one line on
