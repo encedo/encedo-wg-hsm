@@ -182,6 +182,24 @@ PersistentKeepalive = 25
 
 > **Note:** Do not set `ListenPort` if the client is behind NAT — WireGuard will use a random port automatically. A fixed port requires inbound UDP to be reachable from the internet.
 
+### Full tunnel — `AllowedIPs = 0.0.0.0/0`
+
+A tunnel carries its own transport, so a default route on the interface would
+route the UDP to `Endpoint` into the tunnel that UDP is supposed to carry. Before
+installing the tunnel's routes, `wg-quick-encedo` resolves every endpoint and
+pins the addresses that `AllowedIPs` would capture to the gateway that was
+default beforehand — a `/32` beats a `/0`, so the endpoint keeps its physical
+path. The pins are removed when the interface goes down.
+
+`HEM_URL` gets the same test but not the same treatment. Routing HEM traffic
+through the tunnel can be deliberate, and it works: rekeying begins around 120 s
+while the previous session is valid to 180 s, so the ECDH call travels over the
+live session. When the HEM falls inside `AllowedIPs`, the client says so and
+continues; if the HEM stops answering once the routes are in, the interface is
+refused and the routing table put back, because the first rekey would take it
+down anyway. Names are resolved before the interface exists — afterwards the
+resolver may be behind the tunnel that the answer is needed to build.
+
 ---
 
 ## Usage
@@ -299,10 +317,11 @@ When `hsmSession == nil`, all patches fall through to standard wireguard-go beha
 ## Lifecycle and failure handling
 
 ```
-startup:    checkin → auth → get public key → resolve peer keys → inject session → up
+startup:    checkin → auth → get public key → resolve peer keys → plan routing
+            → inject session → up → pin endpoints → routes → DNS → HEM probe
 runtime:    every ~3 min: handshake → 2× HEM ECDH calls
 on error:   ECDH retried 3× with 2s delay
-on failure: interface brought down gracefully
+on failure: interface brought down gracefully, pinned routes removed
 on expiry:  token expires → interface shuts down cleanly
 on Ctrl+C:  clean shutdown, interface removed
 ```

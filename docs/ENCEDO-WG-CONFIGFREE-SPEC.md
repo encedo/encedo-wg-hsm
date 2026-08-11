@@ -368,7 +368,8 @@ wg-hem status                                  # active peer, last handshake, tr
 
 ```
 wg-hem peer add|remove|update …    # same flags as --peer; every change triggers a tree re-MAC (automatic)
-wg-hem rotate-psk --peer N --psk -
+                                   # `peer update --psk -|generate|clear` is the PSK rotation: it rewraps
+                                   # under the peer's own context (§5) and re-MACs, so no separate verb
 wg-hem verify                      # standalone hmac/verify + parsed-config dump; the "has anyone touched the config" diagnostic
 wg-hem wipe                        # remove all WG:* records from HEM (with confirmation)
 ```

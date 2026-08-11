@@ -60,6 +60,78 @@ func addRoutes(ifname string, routes []string) error {
 	return nil
 }
 
+// defaultGateway reports the gateway and interface that carry traffic for this
+// family before the tunnel exists. Where several default routes compete the one
+// with the lowest metric wins, which is the choice the kernel is making anyway.
+//
+// Routes without a gateway are skipped: an interface-scoped default is what the
+// tunnel itself installs, and pinning an endpoint to it would defeat the point.
+func defaultGateway(v6 bool) (net.IP, string, error) {
+	family := netlink.FAMILY_V4
+	if v6 {
+		family = netlink.FAMILY_V6
+	}
+	routes, err := netlink.RouteList(nil, family)
+	if err != nil {
+		return nil, "", err
+	}
+	best := -1
+	var chosen netlink.Route
+	for _, r := range routes {
+		if r.Dst != nil {
+			if ones, _ := r.Dst.Mask.Size(); ones != 0 {
+				continue
+			}
+		}
+		if r.Gw == nil {
+			continue
+		}
+		if best < 0 || r.Priority < best {
+			best, chosen = r.Priority, r
+		}
+	}
+	if best < 0 {
+		return nil, "", errors.New("no default route with a gateway to pin against")
+	}
+	link, err := netlink.LinkByIndex(chosen.LinkIndex)
+	if err != nil {
+		return nil, "", err
+	}
+	return chosen.Gw, link.Attrs().Name, nil
+}
+
+func addHostRoute(ip, gw net.IP, iface string) error {
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		return err
+	}
+	err = netlink.RouteAdd(&netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       hostNet(ip),
+		Gw:        gw,
+	})
+	if err != nil && !errors.Is(err, syscall.EEXIST) {
+		return err
+	}
+	return nil
+}
+
+func delHostRoute(ip, gw net.IP, iface string) error {
+	link, err := netlink.LinkByName(iface)
+	if err != nil {
+		return err
+	}
+	err = netlink.RouteDel(&netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       hostNet(ip),
+		Gw:        gw,
+	})
+	if err != nil && !errors.Is(err, syscall.ESRCH) {
+		return err
+	}
+	return nil
+}
+
 func setMTU(ifname string, mtu int) error {
 	link, err := netlink.LinkByName(ifname)
 	if err != nil {

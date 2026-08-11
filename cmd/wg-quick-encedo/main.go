@@ -147,6 +147,14 @@ func cmdUp(ifname, cfgPath string) {
 		extKIDMap[pk] = peer.HEMKID
 	}
 
+	// 4c. Plan the routing while the host's resolver is still the host's own.
+	// Once AllowedIPs owns the default route, a name lookup may be travelling
+	// through the tunnel that the answer is needed to build.
+	routing, err := planRouting(cfg)
+	if err != nil {
+		fatal("routing: %v", err)
+	}
+
 	// 5. Inject HSM session — HSM must remain online for live ECDH during handshakes
 	hsmClient := client
 	hsmToken := tokens.ecdh
@@ -203,24 +211,51 @@ func cmdUp(ifname, cfgPath string) {
 		}
 	}
 
-	// 10b. Routes for AllowedIPs
+	// From here on the routing table has been touched, so a failure has to put
+	// it back rather than exit and leave the host without a default route.
+	exceptions := &routeExceptions{}
+	fail := func(format string, args ...interface{}) {
+		wgdev.Close()
+		revertDNS(ifname)
+		_ = ifDown(ifname)
+		exceptions.restore()
+		_ = os.Remove("/var/run/wireguard/" + ifname + ".pub")
+		fatal(format, args...)
+	}
+
+	// 10b. Pin the endpoints the tunnel would otherwise swallow, before the
+	// tunnel's own routes go in — no window in which the endpoint has no path.
+	if err := exceptions.pin(routing.endpoints); err != nil {
+		fail("route exception: %v", err)
+	}
+
+	// 10c. Routes for AllowedIPs
 	var allRoutes []string
 	for _, p := range cfg.Peers {
 		allRoutes = append(allRoutes, p.AllowedIPs...)
 	}
 	if err := addRoutes(ifname, allRoutes); err != nil {
-		fatal("addRoutes: %v", err)
+		fail("addRoutes: %v", err)
 	}
 
-	// 10c. DNS
+	// 10d. DNS
 	if err := setDNS(ifname, cfg.Interface.DNS); err != nil {
-		fatal("setDNS: %v", err)
+		fail("setDNS: %v", err)
+	}
+
+	// 10e. With the routes in place, confirm the HEM is still there. It is
+	// consulted at every handshake, so losing it is not a degraded tunnel — it
+	// is one that stops at the first rekey, roughly two minutes in.
+	if routing.hemInside {
+		if err := probeHEM(client, routing.hemHost); err != nil {
+			fail("%v", err)
+		}
 	}
 
 	// 11. UAPI listener (enables: wg show wg1)
 	uapiListener, err := uapiListen(ifname)
 	if err != nil {
-		fatal("UAPI listen: %v", err)
+		fail("UAPI listen: %v", err)
 	}
 	errs := make(chan error, 1)
 	go func() {
@@ -252,6 +287,7 @@ func cmdUp(ifname, cfgPath string) {
 	wgdev.Close()
 	revertDNS(ifname)
 	_ = ifDown(ifname)
+	exceptions.restore()
 	_ = os.Remove("/var/run/wireguard/" + ifname + ".pub")
 	fmt.Fprintf(os.Stderr, "Interface %s down.\n", ifname)
 }

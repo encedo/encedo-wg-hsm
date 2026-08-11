@@ -236,6 +236,9 @@ wg-hsm/
     wg-quick-encedo/
       main.go                     <- up / down / pubkey, interactive auth, ECDH retry
       config.go                   <- wg1.conf parser + HEM_URL/HEM_KID
+      routing.go                  <- endpoint pinning + HEM reachability; resolution
+                                     happens before the interface exists, so the
+                                     resolver is not behind the tunnel being built
       platform_linux.go           <- netlink, resolvectl, UAPI socket
       platform_darwin.go          <- ifconfig, route, utun
       platform_windows.go         <- netsh, Wintun named pipe
@@ -252,6 +255,11 @@ Tested: Linux client <-> server (remote WireGuard endpoint)
 ## Implemented
 
 - Routes (AllowedIPs -> netlink/route/netsh per platform)
+- Full-tunnel routing (`routing.go`): endpoints that AllowedIPs would capture are
+  pinned to the pre-tunnel default gateway before the tunnel's own routes go in,
+  and unpinned on teardown. The HEM is tested the same way but not pinned -- it
+  works from inside the tunnel (rekey overlap), so the client reports it and
+  continues, and refuses only if the HEM stops answering once the routes are up.
 - MTU (netlink/ifconfig/netsh)
 - DNS (resolvectl on Linux, no-op on macOS with warning, netsh on Windows)
 - HEM_BROKER_URL in [Interface] (fallback to `https://api.encedo.com`)
