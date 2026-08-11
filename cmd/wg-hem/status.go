@@ -39,7 +39,7 @@ device, which needs a token and therefore the passphrase.
 		return failf(exitUsage, "%w", err)
 	}
 
-	st, err := loadState(*ifname)
+	st, err := resolveState(*ifname, flagGiven(fs, "interface"))
 	if err != nil {
 		return err
 	}
@@ -53,7 +53,7 @@ device, which needs a token and therefore the passphrase.
 	fmt.Printf("peer.label %s\n", st.PeerLabel)
 	fmt.Printf("peer.endpoint %s\n", st.Endpoint)
 
-	live, err := rt.Status(*ifname)
+	live, err := rt.Status(st.Interface)
 	if err != nil {
 		// The state file says a tunnel should be here and the socket says
 		// otherwise. That is worth reporting as a failure, not as a blank.

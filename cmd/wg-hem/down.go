@@ -50,33 +50,36 @@ func cmdDown(args []string) error {
 		return failf(exitUsage, "%w", err)
 	}
 
-	st, err := loadState(*ifname)
+	st, err := resolveState(*ifname, flagGiven(fs, "interface"))
 	if err != nil {
 		return err
 	}
+	// From here the interface is the one the state file records. On macOS that
+	// is not the name the caller asked for, and the routes belong to the former.
+	name := st.Interface
 
 	if err := signalProcess(st.PID, syscall.SIGTERM); err == nil {
-		if waitGone(*ifname, st.PID) {
-			fmt.Fprintf(os.Stderr, "Interface %s is down.\n", *ifname)
+		if waitGone(name, st.PID) {
+			fmt.Fprintf(os.Stderr, "Interface %s is down.\n", name)
 			return nil
 		}
 		fmt.Fprintf(os.Stderr,
 			"WARNING: pid %d did not finish within %s; taking %s down from here.\n",
-			st.PID, downTimeout, *ifname)
+			st.PID, downTimeout, name)
 	} else {
-		fmt.Fprintf(os.Stderr, "No live wg-hem process for %s; removing the interface only.\n", *ifname)
+		fmt.Fprintf(os.Stderr, "No live wg-hem process for %s; removing the interface only.\n", name)
 	}
 
 	// Either there is no owning process or it will not go. The interface is
 	// still ours to remove, and saying so is better than reporting success over
 	// a live tunnel — but whatever that process would have undone stays undone,
 	// routing exceptions and DNS included.
-	err = takeDownInterface(*ifname)
-	removeState(*ifname)
+	err = takeDownInterface(name)
+	removeState(name)
 	if err != nil {
-		return failf(exitDevice, "removing %s: %w", *ifname, err)
+		return failf(exitDevice, "removing %s: %w", name, err)
 	}
-	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", *ifname)
+	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", name)
 	return nil
 }
 

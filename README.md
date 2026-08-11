@@ -367,16 +367,18 @@ wg-hem provision --address 10.99.0.7/32 --peer 'pubkey=…,endpoint=…,allowed-
 
 sudo wg-hem up
 #   Interface utun5 is up.        <- macOS names it, not you
-sudo wg-hem status --interface utun5
-sudo wg-hem down --interface utun5
+sudo wg-hem status               # finds utun5 on its own
+sudo wg-hem down
 ```
 
 Two differences worth knowing before the first run. `--interface wg0` is a
 request macOS does not grant: the kernel assigns `utunN`, and the state file is
-written under the name it assigned, so `down` and `status` need that name rather
-than the one asked for. `up` prints it. And setting DNS is a no-op here with a
-warning — the tunnel carries traffic, but `--dns` from the stored configuration
-is not applied.
+written under that name. `down` and `status` therefore look for the interface
+that is actually running when the name was left at its default, so the commands
+above need no `--interface`. Pass one and it is used exactly as given; with
+several tunnels up and no name, they refuse and list what is running rather than
+guess. And setting DNS is a no-op here with a warning — the tunnel carries
+traffic, but `--dns` from the stored configuration is not applied.
 
 **Windows** — PowerShell as Administrator, `wintun.dll` beside the executable:
 

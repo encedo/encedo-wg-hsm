@@ -2,10 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
+
+// stateSuffix names a state file. Writing it and finding it again are in
+// different places now, so the two agree through this rather than by eye.
+const stateSuffix = ".wg-hem.json"
 
 // state is what a running `wg-hem up` leaves behind so another invocation can
 // find it. The UAPI socket says what the tunnel is doing; it does not say which
@@ -27,7 +33,7 @@ type state struct {
 }
 
 func statePath(ifname string) string {
-	return runDir + "/" + ifname + ".wg-hem.json"
+	return runDir + "/" + ifname + stateSuffix
 }
 
 func (s *state) save() error {
@@ -56,6 +62,65 @@ func loadState(ifname string) (*state, error) {
 		return nil, failf(exitDevice, "the state file of %s is unreadable: %w", ifname, err)
 	}
 	return &s, nil
+}
+
+// resolveState finds the interface a command should act on.
+//
+// A name the caller typed is used as given: guessing past an explicit argument
+// would act on an interface nobody named. A name left at its default may be
+// corrected, and on macOS it usually has to be — `up` asks for wg0, the kernel
+// hands back utunN, and the state file is written under the name that came
+// back, so the default names a file that was never going to exist. When exactly
+// one interface is running, that is the one meant; when several are, only the
+// caller knows which.
+func resolveState(ifname string, explicit bool) (*state, error) {
+	s, err := loadState(ifname)
+	if err == nil || explicit {
+		return s, err
+	}
+
+	running, lerr := runningInterfaces()
+	if lerr != nil || len(running) == 0 {
+		return nil, err // the original "nothing by that name is running"
+	}
+	if len(running) > 1 {
+		return nil, failf(exitUsage,
+			"no interface named %s, and %d others are running (%s) — name one with --interface",
+			ifname, len(running), strings.Join(running, ", "))
+	}
+	fmt.Fprintf(os.Stderr, "No interface named %s; using %s, the only one running.\n", ifname, running[0])
+	return loadState(running[0])
+}
+
+// runningInterfaces lists the interfaces that left a state file behind. A file
+// here is not proof the process is alive — `down` deals with that — only that
+// this is a name `up` used.
+func runningInterfaces() ([]string, error) {
+	entries, err := os.ReadDir(runDir)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if name, ok := strings.CutSuffix(e.Name(), stateSuffix); ok {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// flagGiven reports whether a flag was typed rather than left at its default.
+func flagGiven(fs *flag.FlagSet, name string) bool {
+	given := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			given = true
+		}
+	})
+	return given
 }
 
 func removeState(ifname string) {

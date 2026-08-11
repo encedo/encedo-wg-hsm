@@ -22,14 +22,6 @@ seconds, and a peer that answers and later goes quiet is never noticed. v2 needs
 a periodic liveness check against the UAPI handshake timestamp, with enough
 hysteresis that a single missed rekey does not flap a working tunnel.
 
-**`down` and `status` should find the interface macOS actually created.** `up`
-asks for `wg0`, the kernel hands back `utunN`, and the state file is written
-under the name that came back. `down` and `status` default to `wg0` and look for
-a file that is not there, so on macOS both need `--interface utun5` — a name the
-user has to read out of the `up` output first. When the named state file is
-absent and `RunDir` holds exactly one, using it would be right far more often
-than failing is. Ambiguity is the only case worth refusing.
-
 **Integration test for failover (§9.7).** One interface, three peers, kill the
 active endpoint, measure the switch. Today's testing used a single peer, so
 failover was only exercised on the path where there is nowhere to switch *to*

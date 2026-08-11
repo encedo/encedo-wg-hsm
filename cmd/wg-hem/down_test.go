@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -157,4 +158,63 @@ func stubProcess(t *testing.T, signal func(int, syscall.Signal) error, down func
 	prevSignal, prevDown := signalProcess, takeDownInterface
 	signalProcess, takeDownInterface = signal, down
 	return func() { signalProcess, takeDownInterface = prevSignal, prevDown }
+}
+
+// On macOS `up` asks for wg0 and the kernel hands back utunN, so the state file
+// is never under the name a later command would guess. Left at its default, the
+// name is a guess and may be corrected.
+func TestResolveStateFindsTheOnlyRunningInterface(t *testing.T) {
+	withRunDir(t)
+	writeState(t, "utun5", 4242)
+
+	got, err := resolveState("wg0", false)
+	if err != nil {
+		t.Fatalf("resolveState: %v", err)
+	}
+	if got.Interface != "utun5" {
+		t.Errorf("resolved %q, want utun5", got.Interface)
+	}
+}
+
+// A name the caller typed is not a guess. Acting on some other interface
+// because this one is absent would take down something nobody named.
+func TestResolveStateHonoursAnExplicitName(t *testing.T) {
+	withRunDir(t)
+	writeState(t, "utun5", 4242)
+
+	if _, err := resolveState("wg7", true); err == nil {
+		t.Fatal("an explicitly named interface that is not running must fail")
+	}
+}
+
+// With more than one candidate only the caller knows which was meant, and the
+// refusal has to name them or it is not actionable.
+func TestResolveStateRefusesToChooseBetweenSeveral(t *testing.T) {
+	withRunDir(t)
+	writeState(t, "utun5", 4242)
+	writeState(t, "utun6", 4243)
+
+	_, err := resolveState("wg0", false)
+	if err == nil {
+		t.Fatal("expected a refusal")
+	}
+	for _, want := range []string{"utun5", "utun6", "--interface"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q, got: %v", want, err)
+		}
+	}
+}
+
+// Nothing running at all is the ordinary case, and it must still read as
+// "nothing is running" rather than as a directory listing failure.
+func TestResolveStateReportsNothingRunning(t *testing.T) {
+	withRunDir(t)
+
+	_, err := resolveState("wg0", false)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "wg0") {
+		t.Errorf("error should name the interface asked for, got: %v", err)
+	}
 }
