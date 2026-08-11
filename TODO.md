@@ -228,12 +228,39 @@ properly. The privileged helper is both the largest number and the least certain
 three platforms, three mechanisms, and each with its own installation and
 permission story.
 
-Staged, it looks better than the total suggests. A Linux-only build running
-elevated, with no helper and no packaging, is demonstrable in two to three weeks
-and answers the question the design is actually uncertain about — whether the
-one-window, one-button, session-is-the-window model feels right to somebody who is
-not us. Getting one platform to production quality is another three or four weeks;
-the third platform is mostly packaging rather than code.
+Staged, it looks better than the total suggests. Assume elevated privileges and
+the twenty-day line disappears, which is what makes a demonstration cheap relative
+to the whole. Getting one platform to production quality after that is another
+three or four weeks; the third platform is mostly packaging rather than code.
+
+*A demonstration, running elevated.* One fact decides the shape of it: **the
+session lives in `package main`.** `tunnel`, `authenticator` and the whole tunnel
+lifecycle are in `cmd/wg-hem`, while `internal/` holds only the pieces — config,
+descr, mac, runtime. A separate `gui/` module has nothing to import today. So
+there are two routes and they differ by a factor of two.
+
+*Drive the existing binary* — 3–5 days. The interface starts `wg-hem up` as a
+child process, reads its stderr for the states it already announces, and
+disconnects with SIGTERM. Nothing in the core changes. One obstacle is not
+obvious: `readPassphrase` calls `term.ReadPassword` on stdin, which requires a
+terminal and fails on a pipe, so this route needs either a pty or a relaxation of
+that read. The relaxation is an hour's work and a security-relevant decision —
+acceptable in a throwaway, deliberate in anything else. The code is discarded
+afterwards, but the question gets answered in full.
+
+*Do it in process* — 7–10 days, of which 2–3 are moving the session
+orchestration out of `package main` into `internal/`, with authentication
+injected rather than held in a package-level variable. **That part is not
+discarded**: it is the same seam the *extract the provisioner core* entry below
+already calls for, and the first slice of the real thing.
+
+Prefer the second unless the demonstration is needed this week, because the
+throwaway route costs nearly as much once the pty work is counted. Either way this
+is the right thing to build first: it answers the only question the design is
+genuinely unsure about — whether *the window is the session* is intelligible to
+somebody who was not part of deciding it. Everything else in the table above is
+work whose answers are already known. If that model turns out to be wrong, every
+other estimate here is void anyway.
 
 *One purchase this depends on.* The code-signing certificate being bought signs
 Windows. macOS needs an Apple Developer ID and notarisation through Apple, which
