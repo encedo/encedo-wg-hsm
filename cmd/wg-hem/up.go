@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -24,11 +25,12 @@ import (
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 )
 
-// runDir is where the interface's public key is left while it is up, so `wg
-// show` and `wg-hem status` have something to read. The private key is not there
-// and never will be — `wg` cannot derive the public one from the zeroed private
-// key the device is configured with.
-const runDir = "/var/run/wireguard"
+// runDir is where a running interface leaves its public key and its state file.
+// The private key is not there and never will be — `wg` cannot even derive the
+// public one, because the device is configured with a zeroed private key.
+//
+// A variable so tests can write somewhere they are allowed to.
+var runDir = "/var/run/wireguard"
 
 // cmdUp brings the tunnel up from the configuration in the device (§6.2). No
 // file is read and nothing is written to disk beyond the public key.
@@ -97,7 +99,7 @@ order is the one the interface record stores, which is the failover priority.
 		return failf(exitNetwork, "%w", err)
 	}
 
-	return bringUp(ctx, client, tree, peer, psk, useTok, plan, *ifname)
+	return bringUp(ctx, client, tree, peer, psk, useTok, plan, *ifname, dev.url())
 }
 
 // bringUp is everything from "the configuration is known" onwards: the device,
@@ -105,7 +107,7 @@ order is the one the interface record stores, which is the failover priority.
 // part that talks to the HEM and the part that talks to the kernel stay legible
 // apart from each other.
 func bringUp(ctx context.Context, client *hem.Client, tree *config.Tree, peer *config.Peer,
-	psk []byte, useTok string, plan *rt.Plan, ifname string) error {
+	psk []byte, useTok string, plan *rt.Plan, ifname, hemURL string) error {
 
 	ifPub, err := client.GetPubKey(ctx, useTok, tree.IfKID)
 	if err != nil {
@@ -164,6 +166,20 @@ func bringUp(ctx context.Context, client *hem.Client, tree *config.Tree, peer *c
 		_ = rt.Down(ifname)
 		pins.Restore()
 		_ = os.Remove(pubPath)
+		removeState(ifname)
+	}
+
+	// The state file is what `down` and `status` find this process by. It goes in
+	// before the interface is announced and comes out in the teardown, so its
+	// presence means "a wg-hem owns this interface and has work to undo".
+	st := &state{
+		PID: os.Getpid(), Interface: ifname, IfKID: tree.IfKID,
+		PeerKID: peer.KID, PeerLabel: peer.Label, Endpoint: peer.Endpoint.String(),
+		HEMURL: hemURL, Started: time.Now(),
+	}
+	if err := st.save(); err != nil {
+		teardown()
+		return failf(exitDevice, "recording the interface state: %w", err)
 	}
 
 	if err := pins.Add(plan.Endpoints); err != nil {

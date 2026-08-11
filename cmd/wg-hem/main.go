@@ -55,6 +55,10 @@ func main() {
 		err = cmdProvision(os.Args[2:])
 	case "up":
 		err = cmdUp(os.Args[2:])
+	case "down":
+		err = cmdDown(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
 	case "verify":
 		err = cmdVerify(os.Args[2:])
 	case "peer":
@@ -86,6 +90,8 @@ func usage() {
 Usage:
   wg-hem provision [flags]    write a configuration into the HEM
   wg-hem up [flags]           bring the tunnel up from the stored configuration
+  wg-hem down [flags]         stop a running interface
+  wg-hem status [flags]       report on a running interface
   wg-hem verify [flags]       check the stored configuration and print it
   wg-hem peer add|remove|update    change the peer list, re-authenticating the tree
   wg-hem wipe [flags]         delete the WG:* records from the HEM

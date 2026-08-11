@@ -226,6 +226,9 @@ wg-hsm/
                                      hsm.go holds the handshake ECDH path shared by both
                                      clients -- the retry policy is the tunnel's failure
                                      behaviour, not either client's detail.
+                                     uapi.go dials a running interface and parses its
+                                     get-operation: the only source that knows whether a
+                                     handshake has actually happened.
                                      addresses, routes, MTU, DNS, UAPI socket, and the
                                      endpoint pinning of routing.go. Imported as `rt` to
                                      stay visibly apart from the standard library's
@@ -242,6 +245,13 @@ wg-hsm/
       up.go                       <- bring the tunnel up from the stored config (§6.2).
                                      cmdUp decides (which peer, which PSK, what routing),
                                      bringUp executes (device, interface, routes, wait).
+      state.go                    <- /var/run/wireguard/<if>.wg-hem.json: pid, interface,
+                                     if/peer KID, endpoint, HEM URL. No secrets. It is how
+                                     down and status find the process that owns the routes.
+      down.go                     <- SIGTERM to that process so it undoes its own pins and
+                                     DNS; removes the interface itself only when the owner
+                                     is gone or will not go, and says so.
+      status.go                   <- state + UAPI (handshake, transfer) + hmac/verify
       provision.go                <- write a configuration into the HEM (spec §6.1)
       verify.go                   <- read it back, check the MAC, dump it (spec §10.3)
       peer.go                     <- peer add|remove|update, re-MACs the tree

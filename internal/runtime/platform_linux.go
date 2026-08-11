@@ -190,3 +190,10 @@ func ipNet(p netip.Prefix) *net.IPNet {
 		Mask: net.CIDRMask(m.Bits(), m.Addr().BitLen()),
 	}
 }
+
+// UAPIDial opens a connection to a running interface's UAPI socket — the same
+// one `wg` talks to. It fails when nothing is listening, which is the answer to
+// "is this interface up".
+func UAPIDial(ifname string) (net.Conn, error) {
+	return net.Dial("unix", "/var/run/wireguard/"+ifname+".sock")
+}

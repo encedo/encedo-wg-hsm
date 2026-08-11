@@ -10,8 +10,10 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.zx2c4.com/wireguard/ipc"
+	"golang.zx2c4.com/wireguard/ipc/namedpipe"
 )
 
 func Up(ifname string, addrs []netip.Prefix) error {
@@ -133,4 +135,11 @@ func RevertDNS(ifname string) {
 
 func UAPIListen(ifname string) (net.Listener, error) {
 	return ipc.UAPIListen(ifname)
+}
+
+// UAPIDial opens a connection to a running interface's UAPI pipe — the same one
+// `wg` talks to. It fails when nothing is listening, which is the answer to "is
+// this interface up".
+func UAPIDial(ifname string) (net.Conn, error) {
+	return namedpipe.DialTimeout(`\\.\pipe\ProtectedPrefix\Administrators\WireGuard\`+ifname, time.Second)
 }
