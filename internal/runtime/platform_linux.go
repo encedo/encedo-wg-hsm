@@ -14,6 +14,11 @@ import (
 	"golang.zx2c4.com/wireguard/ipc"
 )
 
+// RunDir is where a running interface leaves its UAPI socket, its public key
+// and, for wg-hem, its state file. The private key is not there and never will
+// be: the device is configured with a zeroed one.
+const RunDir = "/var/run/wireguard"
+
 // Up assigns the interface its addresses and brings it up. Several are allowed:
 // one identity may hold an address in more than one family, or more than one
 // range of the same.
@@ -170,7 +175,7 @@ func RevertDNS(ifname string) {
 }
 
 func UAPIListen(ifname string) (net.Listener, error) {
-	if err := os.MkdirAll("/var/run/wireguard", 0755); err != nil {
+	if err := os.MkdirAll(RunDir, 0755); err != nil {
 		return nil, err
 	}
 	f, err := ipc.UAPIOpen(ifname)
@@ -195,5 +200,5 @@ func ipNet(p netip.Prefix) *net.IPNet {
 // one `wg` talks to. It fails when nothing is listening, which is the answer to
 // "is this interface up".
 func UAPIDial(ifname string) (net.Conn, error) {
-	return net.Dial("unix", "/var/run/wireguard/"+ifname+".sock")
+	return net.Dial("unix", RunDir+"/"+ifname+".sock")
 }

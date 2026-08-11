@@ -170,9 +170,15 @@ sudo wg-quick-encedo up wg1 /etc/wireguard/wg1.conf
 
 ### Windows
 
-**1. Install Wintun driver**
+**1. Provide Wintun**
 
-Download and run the WireGuard installer from [wireguard.com](https://www.wireguard.com/install/) — this installs the Wintun driver. The WireGuard GUI app itself is not needed.
+The tunnel device is created through `wintun.dll`, which is loaded by name at
+runtime and must be findable. Either:
+
+- download it from [wintun.net](https://www.wintun.net/) and put it **next to the
+  executable** — the architecture has to match, `amd64` with `amd64`; or
+- run the WireGuard installer from [wireguard.com](https://www.wireguard.com/install/),
+  which registers it system-wide. The GUI application itself is not needed.
 
 **2. Place the binary**
 
@@ -185,6 +191,16 @@ Copy `wg-quick-encedo-windows-amd64.exe` to `C:\WireGuard\wg-quick-encedo.exe` (
 ```powershell
 C:\WireGuard\wg-quick-encedo.exe up wg1 C:\WireGuard\wg1.conf
 ```
+
+Administrator is required, not merely convenient: creating the adapter and
+opening the UAPI pipe under `\\.\pipe\ProtectedPrefix\Administrators\WireGuard\`
+both need it. Runtime files — the interface public key, and `wg-hem`'s state
+file — go to `%ProgramData%\WireGuard`, which is where `/var/run/wireguard`
+means on this platform.
+
+> **Only Linux has been tested end to end.** The macOS and Windows binaries are
+> built and cross-checked on every push, and the platform code is there, but
+> neither has been run against a real tunnel. Treat them as untested.
 
 ---
 

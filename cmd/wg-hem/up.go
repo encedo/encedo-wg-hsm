@@ -29,8 +29,10 @@ import (
 // The private key is not there and never will be — `wg` cannot even derive the
 // public one, because the device is configured with a zeroed private key.
 //
-// A variable so tests can write somewhere they are allowed to.
-var runDir = "/var/run/wireguard"
+// The location differs per platform, so it comes from internal/runtime with
+// everything else that does. A variable so tests can write somewhere they are
+// allowed to.
+var runDir = rt.RunDir
 
 // cmdUp brings the tunnel up from the configuration in the device (§6.2). No
 // file is read and nothing is written to disk beyond the public key and the

@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -72,7 +73,7 @@ func cmdDown(ifname string) {
 }
 
 func cmdPubkey(ifname string) {
-	pubFile := "/var/run/wireguard/" + ifname + ".pub"
+	pubFile := filepath.Join(rt.RunDir, ifname+".pub")
 	data, err := os.ReadFile(pubFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "pubkey: interface %s not running or pubkey not found (%v)\n", ifname, err)
@@ -128,8 +129,8 @@ func cmdUp(ifname, cfgPath string) {
 	copy(myPubKey[:], myKey.PubKey)
 	pubKeyB64 := base64.StdEncoding.EncodeToString(myKey.PubKey)
 	fmt.Fprintf(os.Stderr, "HEM public key: %s\n", pubKeyB64)
-	_ = os.MkdirAll("/var/run/wireguard", 0755)
-	_ = os.WriteFile("/var/run/wireguard/"+ifname+".pub", []byte(pubKeyB64+"\n"), 0644)
+	_ = os.MkdirAll(rt.RunDir, 0755)
+	_ = os.WriteFile(filepath.Join(rt.RunDir, ifname+".pub"), []byte(pubKeyB64+"\n"), 0644)
 
 	// 4b. Resolve peer public keys and build extKIDMap (peer pubkey → ext_kid)
 	// Peers with HEM_KID: GetPubKey via lookupToken, ECDH fully internal.
@@ -205,7 +206,7 @@ func cmdUp(ifname, cfgPath string) {
 		rt.RevertDNS(ifname)
 		_ = rt.Down(ifname)
 		exceptions.Restore()
-		_ = os.Remove("/var/run/wireguard/" + ifname + ".pub")
+		_ = os.Remove(filepath.Join(rt.RunDir, ifname+".pub"))
 	}
 	fail := func(format string, args ...interface{}) {
 		teardown()

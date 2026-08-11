@@ -14,6 +14,11 @@ import (
 	"golang.zx2c4.com/wireguard/ipc"
 )
 
+// RunDir is where a running interface leaves its UAPI socket, its public key
+// and, for wg-hem, its state file. The private key is not there and never will
+// be: the device is configured with a zeroed one.
+const RunDir = "/var/run/wireguard"
+
 // Up configures a utun point-to-point interface. The first address is the
 // primary one, the rest are aliases; each brings its own subnet route.
 func Up(ifname string, addrs []netip.Prefix) error {
@@ -123,5 +128,5 @@ func UAPIListen(ifname string) (net.Listener, error) {
 // one `wg` talks to. It fails when nothing is listening, which is the answer to
 // "is this interface up".
 func UAPIDial(ifname string) (net.Conn, error) {
-	return net.Dial("unix", "/var/run/wireguard/"+ifname+".sock")
+	return net.Dial("unix", RunDir+"/"+ifname+".sock")
 }
