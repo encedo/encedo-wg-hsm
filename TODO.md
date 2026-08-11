@@ -27,6 +27,18 @@ active endpoint, measure the switch. Today's testing used a single peer, so
 failover was only exercised on the path where there is nowhere to switch *to*
 — the selection logic across several candidates is untested.
 
+**Ask about the names before the first signed release.** "WireGuard" and its logo
+are registered trademarks of Jason A. Donenfeld. The policy forbids using the
+marks in a product name, and marks "so similar … that may confuse or mislead
+people"; it says nothing either way about the abbreviation `wg`. Nothing here
+contains "WireGuard", but `wg-quick-encedo` reads as a variant of upstream's
+`wg-quick`, which is the case the second clause is about. The policy gives an
+address for exactly this — wireguard-trademark-usage@zx2c4.com — and says such
+requests "will be trivially approved without debate". One email turns an
+unanswered question into written permission, and it is worth having before a
+company signs a distribution with its own certificate: renaming afterwards costs
+incomparably more than asking now.
+
 ## Parked: provisioning for an administrator
 
 Deliberately set aside, not forgotten. The thread: a service provider wants to

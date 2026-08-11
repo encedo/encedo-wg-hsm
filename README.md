@@ -563,6 +563,40 @@ encedo-wg-hsm/
   .github/workflows/ci.yml        # both record sizes, on every push
 ```
 
+---
+
+## Releasing
+
+CI builds and verifies every push, and publishes nothing. The Windows binaries
+are signed on a hardware token, which cannot be given to a runner, so releases
+are assembled by hand and the tag goes on after the signing rather than before.
+
+The order matters more than it looks:
+
+```bash
+./build.sh                      # 1. both variants
+WG_HEM_DESCR=64 ./build.sh
+
+#  2. sign dist/wg-hem-windows-*.exe and dist/wg-quick-encedo-windows-*.exe
+#     Do NOT sign wintun.dll — see package-windows.sh for why.
+
+./package-windows.sh            # 3. bundle, AFTER signing
+WG_HEM_DESCR=64 ./package-windows.sh
+
+sha256sum dist/*.zip dist/wg-* > dist/SHA256SUMS
+
+git tag -a v0.9.1 -m "0.9.1"    # 4. tag the commit that was built
+git push origin v0.9.1
+#  5. create the release and upload dist/ by hand
+```
+
+Packaging before signing is the mistake worth guarding against: it succeeds, and
+produces archives whose executables are unsigned, which nothing downstream will
+notice until a user meets SmartScreen. A `.zip` carries no signature of its own,
+so the checksums are what covers the archive.
+
+---
+
 > `wireguard-go/` and `dist/` are not stored in the repository. `build.sh` produces
 > both: it clones upstream at the pinned commit and applies the patch, rather than
 > keeping copies of upstream's files. See [UPSTREAM.md](UPSTREAM.md) — that choice

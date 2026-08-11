@@ -1,5 +1,13 @@
 name: CI
 
+# This builds and verifies. It does not publish.
+#
+# Releases are made by hand, because the binaries are signed on a hardware token
+# that cannot be handed to a runner. A tag is applied after signing, so anything
+# here that reacted to a tag by uploading would be racing to publish the unsigned
+# build of the very commit that was just signed. Tags still build, as a check on
+# the exact commit about to be released; the artefacts are for inspection.
+
 on:
   push:
     branches: [main]
@@ -79,22 +87,3 @@ jobs:
           name: wg-hem-descr${{ matrix.descr }}
           path: dist/
           retention-days: 14
-
-  release:
-    name: Release
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Collect both descr variants
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Publish
-        uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/**/*
-          generate_release_notes: true
