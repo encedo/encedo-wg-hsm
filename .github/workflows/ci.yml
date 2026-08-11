@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: descr ${{ matrix.descr }} B
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both record sizes are built and tested: the length is part of what the
+        # configuration MAC covers, so the two binaries cannot read each other's
+        # trees and a change that suits one can break the other.
+        descr: ["128", "64"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # hem-sdk-go is a submodule and go.mod resolves the SDK to it, so a
+          # shallow checkout without it does not build. If the SDK repository is
+          # private, GITHUB_TOKEN cannot read it — add a SUBMODULE_TOKEN secret
+          # holding a PAT with read access to encedo/hem-sdk-go.
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # This clones upstream wireguard-go and overlays our four files onto it.
+      # go.mod points golang.zx2c4.com/wireguard at that directory, so nothing
+      # compiles before it has run — not the tests, not even `go vet`.
+      - name: Build
+        env:
+          WG_HEM_DESCR: ${{ matrix.descr }}
+        run: ./build.sh
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l cmd/ internal/)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ${{ matrix.descr == '64' && '-tags descr64' || '' }} ./...
+
+      # -race needs cgo, which build.sh disables per-command for the release
+      # binaries only, so it is available here.
+      - name: Test
+        run: go test ${{ matrix.descr == '64' && '-tags descr64' || '' }} -race ./...
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: wg-hem-descr${{ matrix.descr }}
+          path: dist/
+          retention-days: 14
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Collect both descr variants
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
