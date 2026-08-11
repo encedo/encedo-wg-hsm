@@ -81,8 +81,42 @@ UI only, every HEM call through the same Go path, no second implementation of th
 codecs. A webview wrapper (Wails or equivalent) makes that look like an
 application rather than a browser tab. The "secrets in browser context" objection
 recorded against a hosted page does not apply here — the origin belongs to the
-binary. Open question: whether the hardware supports ExtAuth, because approving
-on a phone instead of typing a passphrase would be the better flow by some margin.
+binary.
+
+*Approvals are the currency, and the count is a firmware question.* ExtAuth is
+available, so the connect flow can be a phone approval instead of a typed
+passphrase — which is the better experience by a wide margin, and the reason the
+number below matters more than it looks. Tokens cache by scope, so asking for the
+same scope repeatedly is free; **each distinct scope is one notification**. That
+makes the two authentication methods behave in opposite directions: a passphrase
+buys every scope with one prompt, because the SDK caches the derived key, while
+ExtAuth charges per scope.
+
+Today `up` needs two (`keymgmt:get`, `keymgmt:use:<ifKID>`) and `provision` five.
+Multi-scope tokens in the coming firmware collapse that, and the largest bundle
+any single command needs is **six** — `provision --kid`, which can know all of
+them up front: `use:<kid>`, `get`, `imp`, `upd`, `search`, `del`. The last is only
+used when a failed run cleans up after itself, but it has to be in the bundle
+anyway: a token taken once at the start cannot go back and ask for more at the
+moment something has already gone wrong.
+
+*The binding constraint is ordering, not count.* `keymgmt:use:<KID>` names a key,
+and there are two places where the key is not yet known when the token would be
+requested. Provisioning a new identity learns the KID from `CreateKey`, so it
+needs two rounds however many scopes a token carries. `up`, `status` and `verify`
+learn it from the search for the `WG:if:` record — so if the device permits
+anonymous search, the whole of `up` fits in one token and the user taps once; if
+it does not, the search costs a token of its own and they tap twice.
+
+*Three things worth saying to whoever specifies the firmware.* A use-scope that is
+not bound to one KID — a list, or a wildcard — would make `up` a single approval
+in every case rather than only when anonymous search is on; provisioning a new key
+stays at two regardless, because a key that does not exist cannot be named.
+`keymgmt:get` should survive: one such scope reads every peer's public key, so the
+bundle stays a constant size, whereas per-key use-scopes would grow it with the
+number of peers. And `allow_keysearch` now carries user-visible weight rather than
+mere convenience — it is the difference between one tap and two on the path
+everybody uses every day.
 
 **A migration tool.** Read an existing `wg0.conf`, carry over everything that can
 be carried, and return the new public key; the administrator changes one line on
@@ -156,6 +190,12 @@ Deferred until the new firmware is available; the client side is ready.
 - Full-tunnel variant (`allowed-ips=0.0.0.0/0`). The only untested path in
   `internal/runtime`: endpoints the tunnel would swallow are pinned to the
   pre-tunnel gateway, and the HEM is probed but deliberately not pinned.
+
+**Multi-scope tokens.** The coming firmware issues one JWT covering several
+scopes, which changes how many approvals a command costs rather than what it can
+do. The analysis — the six-scope maximum, why ordering binds harder than count,
+and what a use-scope not tied to a single KID would buy — sits with the GUI entry
+above, because that is where the number is felt.
 
 **Remove the 64-byte record variant once the target firmware ships.** It is a
 temporary accommodation for current hardware, not a product characteristic, and
