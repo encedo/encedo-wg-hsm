@@ -1,6 +1,6 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 1.8 (2026-08-11) · Status: ready for implementation
+Version: 1.9 (2026-08-11) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
 HEM FW: v1.7b (current API, **zero firmware changes required**)
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
@@ -26,6 +26,11 @@ supported build target, and what stops fitting at that size.
 Changes in 1.8: §6.2 step 8 adds the HEM reachability check. The endpoint
 exception was already there; the HEM's own address needs the same treatment,
 because a handshake cannot complete without it.
+
+Changes in 1.9: corrects that check. A HEM inside the tunnel is informational,
+not a warning to confirm — rekeying overlaps a live session by 60 s, so it uses
+the tunnel it is renewing. Only a session that has lapsed entirely cannot
+rebuild itself, and a restart clears that.
 
 ## 1. Goal
 
@@ -193,10 +198,16 @@ Consequences:
    an unauthenticated `GET /api/system/version`.
    - HEM outside the tunnel (PPA on its USB link, or an EPA the AllowedIPs do not cover):
      nothing to do.
-   - HEM inside the tunnel but still answering: **warn and ask to continue.** It works, but
-     it cannot recover: rekeying every ~2 min needs the HEM, the HEM needs the tunnel, and
-     the tunnel needs the rekey. One outage and the client cannot rebuild the session that
-     would restore access to the HEM.
+   - HEM inside the tunnel but still answering: **inform and continue.** Steady-state
+     rekeying is unaffected: it starts at REKEY_AFTER_TIME (~120 s) while the previous
+     session is still valid to REJECT_AFTER_TIME (180 s), so the HEM call travels over the
+     live session — the 60 s overlap of §6.3. Nor does sending msg1 need the HEM at all;
+     `precomputedStaticStatic` was computed when the peer was configured. Only consuming
+     msg2 does.
+     The narrow case worth mentioning: if a session lapses completely, because the peer was
+     unreachable past that overlap, the client cannot finish a handshake — msg2 needs the
+     HEM and the HEM is behind the dead tunnel. It is not a lock-out; restarting `wg-hem up`
+     removes the routes, the HEM is reachable again, and the tunnel rebuilds.
    - HEM unreachable once the routes are in place: **refuse**, restore the previous routing
      and report. The first rekey would take the interface down anyway.
 9. Runtime: handshake monitoring + connection-error handling (§6.4).
