@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,6 +21,16 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 )
+
+// requireRoom skips a scenario the configured record size cannot express. The
+// 64-byte firmware leaves an interface record room for an address, two peer
+// references and the MAC, and nothing else.
+func requireRoom(t *testing.T, n int) {
+	t.Helper()
+	if descr.Size < n {
+		t.Skipf("scenario needs %d-byte records, this build uses %d", n, descr.Size)
+	}
+}
 
 // fakeHEM is enough of the device to run provisioning end to end: it records
 // what it was asked to store so a test can check the bytes that would land in a
@@ -262,6 +273,7 @@ const peerKeyA = "i14L0qgxykUZL7GVV2x/hBXwuvbcXbcv+TIEp60Pk0M="
 const peerKeyB = "9Sq9OSCbaKMqvV6MDwo1sVoYUqyBRcqCPEHEHZ2Zvhc="
 
 func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
+	requireRoom(t, 70) // this profile carries DNS and an MTU as well
 	f, srv := newFakeHEM(t)
 
 	out, err := runProvision(t,
@@ -460,12 +472,13 @@ func TestProvisionValidatesBeforeTouchingTheDevice(t *testing.T) {
 		{"psk on the command line", []string{"-address", "10.0.0.7/32", "-psk", "c2VjcmV0",
 			"-peer", "pubkey=" + peerKeyA + ",endpoint=1.2.3.4:1,allowed-ips=0.0.0.0/0"},
 			"visible in the process list"},
-		// The spec's own worked example: a 60-byte hostname plus a wrapped PSK
-		// comes to 130 bytes. It has to be caught before anything is stored.
-		{"peer over budget", []string{"-address", "10.0.0.7/32", "-psk", "generate",
-			"-peer", "pubkey=" + peerKeyA + ",endpoint=" + strings.Repeat("a", 48) + ".example.com:51820" +
-				",allowed-ips=10.0.0.0/24,allowed-ips=10.1.0.0/24,keepalive=25"},
-			"over the 128-byte limit"},
+		// Enough routes to overflow any supported record size. The overflow has
+		// to be caught before anything is stored, or a peer would be imported
+		// with no interface record referencing it.
+		{"peer over budget", []string{"-address", "10.0.0.7/32",
+			"-peer", "pubkey=" + peerKeyA + ",endpoint=203.0.113.1:51820" +
+				strings.Repeat(",allowed-ips=10.0.0.0/24", 18)},
+			fmt.Sprintf("over the %d-byte limit", descr.Size)},
 	}
 
 	for _, tc := range cases {

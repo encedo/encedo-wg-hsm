@@ -48,14 +48,30 @@ func runVerify(t *testing.T, args ...string) (stdout string, err error) {
 // self-consistent tree for verify to read back.
 func provisionInto(t *testing.T, srv string, extra ...string) {
 	t.Helper()
+	// This profile is sized to fit 64-byte records too: one address, no DNS,
+	// and two peers whose records stay inside the tighter budget.
 	args := append([]string{
 		"-hem", srv, "-broker", srv,
 		"-address", "10.0.0.7/32",
-		"-dns", "10.0.0.1",
 		"-peer", "pubkey=" + peerKeyA + ",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24,keepalive=25,label=hq",
 		"-peer", "pubkey=" + peerKeyB + ",endpoint=vpn.example.com:51820,allowed-ips=0.0.0.0/0,label=backup",
 	}, extra...)
 	if _, err := runProvision(t, args...); err != nil {
+		t.Fatalf("seed provisioning: %v", err)
+	}
+}
+
+// provisionWithPSK seeds a tree whose single peer carries a wrapped key. On
+// 64-byte firmware that record lands on exactly 64 bytes, which is why it has
+// an IPv4 endpoint, one route and no keepalive — there is room for nothing else.
+func provisionWithPSK(t *testing.T, srv string) {
+	t.Helper()
+	if _, err := runProvision(t,
+		"-hem", srv, "-broker", srv,
+		"-address", "10.0.0.7/32",
+		"-psk", "generate",
+		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=0.0.0.0/0,label=hq",
+	); err != nil {
 		t.Fatalf("seed provisioning: %v", err)
 	}
 }
@@ -74,7 +90,6 @@ func TestVerifyReadsBackWhatProvisionWrote(t *testing.T) {
 		"interface.pubkey " + base64.StdEncoding.EncodeToString(f.ifPub[:]),
 		"interface.address 10.0.0.7/32",
 		"interface.mtu 1420", // absent from the record, so the default applies
-		"interface.dns 10.0.0.1",
 		"peer.0.label hq",
 		"peer.0.endpoint 203.0.113.1:51820",
 		"peer.0.allowed-ips 10.0.0.0/24",
@@ -168,7 +183,7 @@ func TestVerifyFailsWhenAReferencedPeerIsGone(t *testing.T) {
 
 func TestVerifyWithPSK(t *testing.T) {
 	_, srv := newFakeHEM(t)
-	provisionInto(t, srv.URL, "-psk", "generate")
+	provisionWithPSK(t, srv.URL)
 
 	out, err := runVerify(t, "-hem", srv.URL, "-broker", srv.URL)
 	if err != nil {

@@ -25,6 +25,16 @@ func tlv(tag byte, value ...byte) []byte {
 	return append([]byte{tag, byte(len(value))}, value...)
 }
 
+// requireRoom skips a scenario that the configured record size cannot express.
+// The budgets differ enough between 128- and 64-byte firmware that some cases
+// only exist on one of them.
+func requireRoom(t *testing.T, n int) {
+	t.Helper()
+	if Size < n {
+		t.Skipf("scenario needs %d bytes, records are %d", n, Size)
+	}
+}
+
 func mustPrefix(t *testing.T, s string) netip.Prefix {
 	t.Helper()
 	p, err := netip.ParsePrefix(s)
@@ -35,6 +45,7 @@ func mustPrefix(t *testing.T, s string) netip.Prefix {
 }
 
 func TestInterfaceGoldenVector(t *testing.T) {
+	requireRoom(t, 74)
 	var macVal [MACLen]byte
 	for i := range macVal {
 		macVal[i] = byte(i)
@@ -90,6 +101,7 @@ func TestInterfaceGoldenVector(t *testing.T) {
 }
 
 func TestPeerGoldenVector(t *testing.T) {
+	requireRoom(t, 74)
 	psk := make([]byte, PSKWrappedLen)
 	for i := range psk {
 		psk[i] = byte(0xA0 + i%16)
@@ -181,6 +193,7 @@ func TestRoundTripIPv6(t *testing.T) {
 // This is the case the spec calls out: a 60-byte hostname fits only while there
 // is no wrapped PSK.
 func TestHostnamePSKBudget(t *testing.T) {
+	requireRoom(t, 128)
 	host := strings.Repeat("a", MaxHostname)
 	base := Peer{
 		Endpoint:   Endpoint{Host: host, Port: 51820},
@@ -437,4 +450,32 @@ func FuzzDecodePeer(f *testing.F) {
 			t.Fatalf("round trip changed the bytes\n in %x\nout %x", norm, enc)
 		}
 	})
+}
+
+// TestTightestPeerFits pins the smallest useful peer with a pre-shared key at
+// whatever the record size is. On 64-byte firmware it lands on exactly 64: the
+// header, an IPv4 endpoint, one allowed-ip range and the wrapped PSK, with no
+// room left for keepalive. That is the case worth knowing before provisioning
+// against such a device, not after.
+func TestTightestPeerFits(t *testing.T) {
+	p := Peer{
+		Endpoint:   Endpoint{IP: netip.MustParseAddr("203.0.113.1"), Port: 51820},
+		AllowedIPs: []netip.Prefix{mustPrefix(t, "0.0.0.0/0")},
+		PSKWrapped: make([]byte, PSKWrappedLen),
+	}
+	if _, err := p.Encode(); err != nil {
+		t.Fatalf("a peer with a PSK, an IPv4 endpoint and one route must fit in %d bytes: %v", Size, err)
+	}
+
+	used := headerLen + 8 + 7 + 2 + PSKWrappedLen
+	withKeepalive := p
+	withKeepalive.Keepalive = 25
+	_, err := withKeepalive.Encode()
+	if used+3 > Size && err == nil {
+		t.Errorf("keepalive takes the record to %d bytes, over the %d-byte limit, but it was accepted",
+			used+3, Size)
+	}
+	if used+3 <= Size && err != nil {
+		t.Errorf("keepalive fits at %d bytes but was rejected: %v", used+3, err)
+	}
 }

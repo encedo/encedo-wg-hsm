@@ -1,12 +1,12 @@
 // Package descr encodes and decodes the binary records the config-free client
 // stores in a HEM key's descr field. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md §3.
 //
-// A record is exactly 128 bytes: a 6-byte ASCII magic, a version byte, then a
-// TLV stream terminated by a 0x00 tag and zero-padded to the end. The 128-byte
-// ceiling is the device's, and it is tight enough that a legal-looking set of
-// fields can overflow it — so encoding validates the budget rather than
-// truncating, and the caller finds out at provisioning time instead of at
-// startup on someone else's machine.
+// A record is exactly Size bytes: a 6-byte ASCII magic, a version byte, then a
+// TLV stream terminated by a 0x00 tag and zero-padded to the end. The ceiling is
+// the device's — 128 bytes, or 64 on older firmware, see size_default.go — and
+// it is tight enough that a legal-looking set of fields can overflow it, so
+// encoding validates the budget rather than truncating and the caller finds out
+// at provisioning time instead of at startup on someone else's machine.
 //
 // Every field here is covered by the interface record's MAC (§4), including the
 // zero padding, so the parser is deliberately strict: unknown tags, malformed
@@ -21,9 +21,6 @@ import (
 	"fmt"
 	"net/netip"
 )
-
-// Size is the exact length of an encoded record, fixed by the device's descr field.
-const Size = 128
 
 // Magic prefixes. Both are exactly 6 bytes: the shortest prefix the device's
 // key search accepts, which is what makes a whole configuration reachable in
@@ -77,9 +74,12 @@ const MACLen = 32
 // PSKWrappedLen is the length of a 32-byte PSK under NIST AES key wrap.
 const PSKWrappedLen = 40
 
-// MaxHostname is the longest endpoint hostname the format can carry, and only
-// when the peer has no wrapped PSK. See Peer.Encode for the exact budget.
-const MaxHostname = 60
+// MaxHostname is the longest endpoint hostname the format can carry: the
+// format's own cap of 60, or whatever a record has room for once the header and
+// the tag's own 4 bytes are spent, whichever is smaller. Fitting is a further
+// question — this is the ceiling with nothing else in the record at all. See
+// Peer.Encode for the budget that actually applies.
+const MaxHostname = min(60, Size-headerLen-4)
 
 // PeerRefLen is the length of a peer reference: the first bytes of the SHA-256
 // of the peer's public key.
@@ -151,7 +151,7 @@ type Peer struct {
 
 var errShort = errors.New("descr: record shorter than its header")
 
-// writer accumulates a record and refuses to exceed the device's 128 bytes.
+// writer accumulates a record and refuses to exceed the device's capacity.
 type writer struct {
 	buf []byte
 	err error

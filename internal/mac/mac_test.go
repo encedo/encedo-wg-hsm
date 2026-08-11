@@ -186,11 +186,19 @@ func TestCanonicalRequiresExactPeerSet(t *testing.T) {
 }
 
 func TestMaxPeersMatchesDeviceLimit(t *testing.T) {
-	if MaxPeers != 11 {
-		t.Errorf("MaxPeers = %d, want 11 (spec §4)", MaxPeers)
+	// The limit is the device's 2048-byte message, so it moves with the record
+	// size. The spec quotes the figures for 128-byte records.
+	if descr.Size == 128 {
+		if MaxPeers != 11 {
+			t.Errorf("MaxPeers = %d, want 11 (spec §4)", MaxPeers)
+		}
+		if fixedLen+MaxPeers*perPeer != 1933 {
+			t.Errorf("a full tree is %d bytes, spec §4 says 1933", fixedLen+MaxPeers*perPeer)
+		}
 	}
-	if fixedLen+MaxPeers*perPeer != 1933 {
-		t.Errorf("a full tree is %d bytes, spec §4 says 1933", fixedLen+MaxPeers*perPeer)
+	if fixedLen+MaxPeers*perPeer > deviceMsgLimit {
+		t.Errorf("a full tree of %d peers is %d bytes, over the %d-byte limit",
+			MaxPeers, fixedLen+MaxPeers*perPeer, deviceMsgLimit)
 	}
 	if fixedLen+(MaxPeers+1)*perPeer <= deviceMsgLimit {
 		t.Error("one more peer should not fit in the device's message limit")

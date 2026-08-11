@@ -1,6 +1,6 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 1.6 (2026-08-11) · Status: ready for implementation
+Version: 1.7 (2026-08-11) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
 HEM FW: v1.7b (current API, **zero firmware changes required**)
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
@@ -19,6 +19,9 @@ locally) — the device has no randomness endpoint, so the previous "from the HE
 RNG" was not implementable. §6.2 corrects the call count at startup: search does
 not return public keys, so each candidate peer needs a pubkey read, all covered
 by one `keymgmt:get` token.
+
+Changes in 1.7: §3 records that the 64 B `descr` of older firmware is a
+supported build target, and what stops fitting at that size.
 
 ## 1. Goal
 
@@ -61,6 +64,16 @@ Common header:
 | 0 | 6 B | ASCII magic: `WG:if:` or `WG:pr:` (exactly 6 chars — the HEM prefix-search minimum) |
 | 6 | 1 B | version = `0x01` |
 | 7 | … | TLV stream: `tag(1B) len(1B) value(len B)`; terminated by tag `0x00` or end of buffer; zero-padded |
+
+**Record length.** 128 B, the capacity of the `descr` field. Firmware predating
+that capacity offers 64 B; build with `-tags descr64` (or `WG_HEM_DESCR=64 bash
+build.sh`) to target it. The length is not a private matter of the encoder — the
+canonical message of §4 includes each record at its full padded length, so a
+tree written against one length cannot be verified against the other. At 64 B a
+peer with a wrapped PSK fits only with a literal IPv4 endpoint, exactly one
+AllowedIPs range and no keepalive (7+8+7+42 = 64 exactly); a hostname endpoint
+and a PSK cannot coexist; and an interface record has room for one address, one
+option and two peer references beside its MAC.
 
 **Encoding rules (normative).** One configuration has exactly one encoding — the
 property DER gives ASN.1, and for the same reason: the record is authenticated,

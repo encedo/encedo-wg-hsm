@@ -24,14 +24,26 @@ mkdir -p dist
 
 # wg-quick-encedo: the config-file client (v1).
 # wg-hem:          the config-free client, everything in the HEM (docs/).
+# WG_HEM_DESCR=64 builds against firmware whose descr field is 64 bytes rather
+# than 128. The record length is part of what the configuration MAC covers, so
+# such a binary and a default one cannot read each other's trees; the suffix
+# keeps the two apart in dist/.
+TAGS=""
+SUFFIX=""
+if [ "${WG_HEM_DESCR:-128}" = "64" ]; then
+    TAGS="descr64"
+    SUFFIX="-descr64"
+    echo "    descr field: 64 bytes (legacy firmware)"
+fi
+
 PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
 for cmd in wg-quick-encedo wg-hem; do
     for platform in ${PLATFORMS}; do
         os="${platform%/*}"
         arch="${platform#*/}"
-        out="dist/${cmd}-${os}-${arch}"
+        out="dist/${cmd}-${os}-${arch}${SUFFIX}"
         [ "${os}" = "windows" ] && out="${out}.exe"
-        GOOS="${os}" GOARCH="${arch}" go build -o "${out}" "./cmd/${cmd}/"
+        GOOS="${os}" GOARCH="${arch}" go build ${TAGS:+-tags "${TAGS}"} -o "${out}" "./cmd/${cmd}/"
     done
 done
 

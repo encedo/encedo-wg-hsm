@@ -215,7 +215,11 @@ wg-hsm/
     ENCEDO-WG-CONFIGFREE-SPEC.md  <- spec for the config-free client (wg-hem)
 
   internal/                       <- shared by both CLIs
-    descr/                        <- TLV codec for the 128 B descr records (spec §3)
+    descr/                        <- TLV codec for the descr records (spec §3)
+                                     size_default.go / size_descr64.go pick 128 or
+                                     64 B. Build -tags descr64 for old firmware;
+                                     the record length is inside the MAC, so the
+                                     two builds cannot read each other's trees.
     mac/                          <- canonical message + Sign/Verify (spec §4)
     config/                       <- load + authenticate the whole tree (spec §6.2)
 
