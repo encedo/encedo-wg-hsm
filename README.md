@@ -1,10 +1,33 @@
 # wg-hsm
 
+[![CI](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml/badge.svg)](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml)
+
+**Version 0.9.0**
+
 WireGuard userspace implementation with hardware-backed private key protection via **Encedo HEM** — Hardware Encryption Module (EPA/PPA).
 
 The WireGuard private key **never leaves the HEM**. All Curve25519 operations requiring the static private key are delegated to the Encedo HEM at runtime.
 
 The configuration file contains **zero cryptographic material** — only opaque HEM key identifiers. It is safe to store in git, CMDB, or any backup system.
+
+## Two clients
+
+They differ in where the configuration lives, not in how the key is protected.
+
+| | `wg-quick-encedo` | `wg-hem` |
+|---|---|---|
+| Configuration | `wg1.conf`, keys replaced by HEM key ids | in the HEM, under a MAC computed inside the device |
+| On disk | one file | nothing |
+| Peer selection | the config file | interactive failover across stored peers |
+| Tampering with routes | possible, undetected | detectable — the MAC covers addresses, routes and DNS |
+
+`wg-quick-encedo` is the smaller step from a standard WireGuard deployment: the
+file you already have, with `PrivateKey` gone. `wg-hem` removes the file. Both
+share the same handshake path and the same failure behaviour.
+
+Both have been tested against a stock kernel WireGuard server — the far end runs
+unmodified `wireguard-tools` from the distribution and needs to know nothing
+about any of this.
 
 ---
 
@@ -21,18 +44,28 @@ This is acceptable for many use cases, but not for:
 
 ## Installation
 
-### Option A — Download pre-built binary
+### Option A — Download a pre-built binary
 
-Download the binary for your platform from the `dist/` directory:
+From the [releases page](https://github.com/encedo/encedo-wg-hsm/releases). Each
+release carries both clients for six platforms:
 
-| File | Platform |
+| Suffix | Platform |
 |---|---|
-| `wg-quick-encedo-linux-amd64` | Linux x86\_64 |
-| `wg-quick-encedo-linux-arm64` | Linux ARM64 (Raspberry Pi, Graviton) |
-| `wg-quick-encedo-darwin-amd64` | macOS Intel |
-| `wg-quick-encedo-darwin-arm64` | macOS Apple Silicon (M1/M2/M3) |
-| `wg-quick-encedo-windows-amd64.exe` | Windows x86\_64 |
-| `wg-quick-encedo-windows-arm64.exe` | Windows ARM64 |
+| `-linux-amd64` | Linux x86\_64 |
+| `-linux-arm64` | Linux ARM64 (Raspberry Pi, Graviton) |
+| `-darwin-amd64` | macOS Intel |
+| `-darwin-arm64` | macOS Apple Silicon |
+| `-windows-amd64.exe` | Windows x86\_64 |
+| `-windows-arm64.exe` | Windows ARM64 |
+
+**Pick the right record size.** Binaries with a `-descr64` suffix target firmware
+whose `descr` field is 64 bytes rather than 128. The length is part of what the
+configuration MAC covers, so a tree written by one build cannot be verified by
+the other — this is not a compatibility shim but two incompatible dialects. If
+unsure, run `wg-hem version`, which reports both the release and the size it was
+built for.
+
+All binaries are statically linked and depend on no system libraries.
 
 ### Option B — Build from source
 
@@ -40,8 +73,9 @@ Download the binary for your platform from the `dist/` directory:
 
 ```bash
 git clone --recurse-submodules https://github.com/encedo/encedo-wg-hsm
-cd wg-hsm
-bash build.sh
+cd encedo-wg-hsm
+bash build.sh                       # 128-byte records
+WG_HEM_DESCR=64 bash build.sh       # 64-byte records, suffixed -descr64
 ```
 
 The HEM SDK lives in its own repository and is wired in as the `hem-sdk-go`
@@ -49,7 +83,9 @@ submodule — `--recurse-submodules` is required, or `git submodule update --ini
 in an existing clone. The build resolves the module from the checked-out
 submodule, not from the module proxy.
 
-`build.sh` clones the upstream wireguard-go at the pinned commit, overlays the Encedo patches, and builds all 6 binaries into `dist/`.
+`build.sh` clones the upstream wireguard-go at the pinned commit, overlays the
+Encedo patches, and builds every binary into `dist/`, stamping the release number
+and the commit it came from.
 
 ---
 
@@ -233,6 +269,60 @@ When peers use `HEM_KID`, two auth prompts appear with a single password entry:
 
 ---
 
+## `wg-hem` — no config file at all
+
+The addresses, peers, routes, DNS and MTU live in the HEM beside the keys, under
+a single MAC computed inside the device. Nothing is written to disk, and altering
+the stored routing is detectable rather than merely unprofitable. Full
+specification: [docs/ENCEDO-WG-CONFIGFREE-SPEC.md](docs/ENCEDO-WG-CONFIGFREE-SPEC.md).
+
+**Write a configuration into the device.** No file is produced; the client public
+key goes to stdout, everything else to stderr, so it pipes.
+
+```bash
+wg-hem provision \
+  --address 10.99.0.7/32 \
+  --peer 'pubkey=<SERVER_PUBKEY>,endpoint=vpn.example.com:51820,allowed-ips=10.99.0.0/24,keepalive=25,label=hq' \
+  --mtu 1420
+```
+
+Repeat `--peer` for failover candidates; the order is the priority. A pre-shared
+key comes from the infrastructure over stdin (`--psk -`) or is generated locally
+(`--psk generate`), never from the command line, where it would sit in the
+process list. Hand the printed public key to whoever runs the other end — the far
+side sees an ordinary WireGuard peer.
+
+If provisioning cannot finish, it removes the identity key it created rather than
+leaving a key no record names and `wipe` cannot find.
+
+**Bring the tunnel up.** With several peers and no selection flag, it asks; a peer
+that does not answer within 15 seconds is reported and another offered.
+
+```bash
+sudo wg-hem up                    # add --debug to trace every handshake ECDH
+sudo wg-hem status                # state, live counters, and a fresh MAC check
+sudo wg-hem down
+```
+
+**Inspect and maintain.**
+
+```bash
+wg-hem verify                     # re-check the MAC and print the configuration
+wg-hem peer add|remove|update     # re-authenticates the whole tree
+wg-hem wipe                       # remove the WG:* records (typed confirmation)
+wg-hem version                    # release, and the record size it was built for
+```
+
+`--debug` prints one line per ECDH: which of the two Diffie-Hellmans it is, how
+long the device took, and the shared secret as its first and last four bytes.
+That is enough to watch the tunnel rekey — roughly every two minutes, two calls
+each — without putting key material in a log destined for a bug report.
+
+The device is reached at `https://192.168.7.1` unless `--hem` or `$WG_HEM_URL`
+says otherwise, so a PPA on its USB link needs no arguments at all.
+
+---
+
 ## Architecture
 
 ```
@@ -313,6 +403,11 @@ in the packet itself. The HEM must be reachable at all times.
 
 When `hsmSession == nil`, all patches fall through to standard wireguard-go behaviour. Existing WireGuard interfaces are unaffected.
 
+The three upstream files are changed by a patch applied at build time, not by
+keeping edited copies of them in this repository — 49 added lines against a
+pinned commit, so raising that pin stops the build if upstream has touched the
+same code. [UPSTREAM.md](UPSTREAM.md) explains the pin and how to move it.
+
 ---
 
 ## Lifecycle and failure handling
@@ -335,36 +430,52 @@ on Ctrl+C:  clean shutdown, interface removed
 - Key of type `CURVE25519` with scope `keymgmt:use:<KID>` for the private key
 - Optionally: peer public keys imported into HEM, scope `keymgmt:get` for lookup token
 
+`wg-hem` additionally uses `keymgmt:gen` and `keymgmt:imp` to write a
+configuration, `keymgmt:upd` to store the records, `keymgmt:search` to find them
+again, and `keymgmt:del` only to take back an identity key whose provisioning it
+could not finish.
+
+> One behaviour worth knowing before reading any error: a key id the device
+> cannot resolve comes back as **HTTP 406**, not 404. The status describes
+> existence, not permission, however much it reads like the latter.
+
 ---
 
 ## Project structure
 
 ```
-wg-hsm/
-  build.sh                        # clone wireguard-go + overlay patches + build all binaries
-  go.mod
-  dist/                           # pre-built binaries
+encedo-wg-hsm/
+  build.sh                        # clone upstream, apply the patch, build every binary
+  UPSTREAM.md                     # the wireguard-go relationship, and how to raise the pin
+  TODO.md                         # what is left, and why each item is where it is
   hem-sdk-go/                     # git submodule -> github.com/encedo/hem-sdk-go
-  _wireguard-go-encedo/           # ONLY our changes to wireguard-go (4 files)
-                                  # leading _ keeps the go tool out: these files
-                                  # only compile once overlaid on upstream
-    device/
-      hsm.go                      # new — HSMSession + hsmDH
-      device.go                   # patched — SetPrivateKey injects HEM public key
-      peer.go                     # patched — precomputedStaticStatic via hsmDH
-      noise-protocol.go           # patched — ConsumeMessageResponse via hsmDH
+  _wireguard-go-encedo/           # our changes to wireguard-go, and nothing of theirs
+                                  # leading _ keeps the go tool out: hsm.go references
+                                  # upstream symbols absent from this directory
+    device/hsm.go                 # new file — HSMSession + hsmDH dispatcher
+    patches/
+      0001-delegate-...patch      # the four call sites, as a diff against the pin
   docs/
-    ENCEDO-WG-CONFIGFREE-SPEC.md  # spec for the config-free client (wg-hem)
+    ENCEDO-WG-CONFIGFREE-SPEC.md  # specification for the config-free client
   internal/
-    descr/                        # TLV codec for the 128 B descr records
-    mac/                          # configuration MAC (self-ECDH, computed in HEM)
+    descr/                        # TLV codec; size_default.go / size_descr64.go pick 128 or 64 B
+    mac/                          # configuration MAC (self-ECDH, computed inside the HEM)
+    config/                       # load and authenticate the whole stored tree
+    runtime/                      # the OS half, shared by both clients:
+                                  #   hsm.go       handshake ECDH, retry policy, --debug trace
+                                  #   routing.go   endpoint pinning for full-tunnel
+                                  #   uapi.go      talks to a running interface
+                                  #   platform_{linux,darwin,windows}.go
+    version/                      # the release number both commands report
   cmd/
-    wg-quick-encedo/
-      main.go                     # CLI: up / down / pubkey
-      config.go                   # config parser
-      platform_linux.go           # Linux: netlink, resolvectl, UAPI socket
-      platform_darwin.go          # macOS: ifconfig, route, utun
-      platform_windows.go         # Windows: netsh, Wintun named pipe
+    wg-quick-encedo/              # config-file client: up / down / pubkey
+    wg-hem/                       # config-free client: provision, up, down, status,
+                                  # verify, peer, wipe — plus failover and state file
+  .github/workflows/ci.yml        # both record sizes, on every push
 ```
 
-> `wireguard-go/` is not stored in the repository — `build.sh` clones it at build time.
+> `wireguard-go/` and `dist/` are not stored in the repository. `build.sh` produces
+> both: it clones upstream at the pinned commit and applies the patch, rather than
+> keeping copies of upstream's files. See [UPSTREAM.md](UPSTREAM.md) — that choice
+> is what makes a version bump fail loudly instead of silently discarding upstream
+> changes to the handshake.
