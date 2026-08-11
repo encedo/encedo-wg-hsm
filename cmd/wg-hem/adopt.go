@@ -34,12 +34,18 @@ func placePeer(ctx context.Context, client *hem.Client, auth *authenticator,
 	}
 	existing, err := client.GetPubKey(ctx, getTok, kid)
 	if err != nil {
-		if he, ok := err.(*hem.HemError); ok && he.Status == 404 {
+		// An identifier the device cannot resolve comes back as 406, not 404:
+		// the firmware answers "not acceptable" where the status line would
+		// suggest a permission problem. That it tracks existence rather than
+		// permission was measured — the same key read with the same scope gives
+		// 200 while it is in the repository and 406 once it has been deleted.
+		if he, ok := err.(*hem.HemError); ok && (he.Status == 404 || he.Status == 406) {
 			return importPeer(ctx, client, auth, p, want)
 		}
 		// Anything else — no permission to look, a device in a bad state — is
 		// not evidence that the key is absent, and importing on a guess is how
-		// half-written configurations happen.
+		// half-written configurations happen. Import remains the authority in
+		// either case: the device refuses a second import of the same public key.
 		return "", false, classify(err, exitDevice, "checking whether peer %s is already in the device", kid)
 	}
 	if !bytes.Equal(existing.PubKey, p.PubKey) {

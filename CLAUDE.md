@@ -304,6 +304,17 @@ Tested: Linux client <-> server (remote WireGuard endpoint)
 
 ## Important technical facts
 
+- **An unknown key id comes back as HTTP 406, not 404.** `GET /api/keymgmt/get/<kid>`
+  answers "not acceptable" for an identifier the device cannot resolve, which reads like
+  a permission problem and is not one. Measured: the same key with the same scope gives
+  200 while it is in the repository and 406 once deleted, and the scope is irrelevant to
+  which of the two comes back. Treating only 404 as absence is what broke provisioning in
+  `195f5d2`; `adopt.go` now accepts both. Anything that asks the device whether a key
+  exists has to know this.
+- Scopes are not interchangeable and each names what it permits: `keymgmt:get` reads a
+  public key, `keymgmt:use:<KID>` grants use of that one key, `keymgmt:upd` changes a
+  descr, `keymgmt:del` removes a key. Provisioning holds the first three and asks for the
+  fourth only to remove an identity key its own run created and could not finish.
 - `hsmSession == nil` -> original wireguard-go behaviour unchanged (wg0 works normally)
 - `wg show` does not show public key -- because private key = 0, `wg` cannot derive it. Expected.
 - `ListenPort` in client config behind NAT = problem (server tries to reach a fixed port). Do not set.
