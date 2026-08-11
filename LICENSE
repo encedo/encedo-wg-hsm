@@ -1,6 +1,11 @@
 MIT License
 
-Copyright (c) 2026 Encedo Limited
+Copyright (c) 2026 Krzysztof Rutecki
+
+Portions of this software are derived from wireguard-go
+(https://git.zx2c4.com/wireguard-go), Copyright (C) 2017-2025 WireGuard LLC,
+also under the MIT license. Those files retain their original copyright notice
+and are marked as modified where changed.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MIT
  *
  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
+ *
+ * Modified 2026 by Krzysztof Rutecki for encedo-wg-hsm:
+ * the two live Diffie-Hellmans against the peer's ephemeral key, in
+ * ConsumeMessageInitiation and ConsumeMessageResponse, are delegated to
+ * the HEM.
  */
 
 package device

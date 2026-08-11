@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: MIT
  *
  * Copyright (C) 2017-2025 WireGuard LLC. All Rights Reserved.
+ *
+ * Modified 2026 by Krzysztof Rutecki for encedo-wg-hsm:
+ * SetPrivateKey takes the public key from the injected HEM session instead
+ * of deriving it, the private key being absent by design.
  */
 
 package device

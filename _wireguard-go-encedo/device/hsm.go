@@ -1,3 +1,11 @@
+/* SPDX-License-Identifier: MIT
+ *
+ * Copyright (c) 2026 Krzysztof Rutecki
+ *
+ * New file, not derived from wireguard-go: the seam through which the device
+ * package reaches an Encedo HEM.
+ */
+
 package device
 
 import "fmt"
