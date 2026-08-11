@@ -53,7 +53,8 @@ the foreground, needs privilege, and holds a token that cannot be renewed withou
 a human — so a process surviving the window would be the daemon this project
 deliberately does not build, holding a credential nobody is watching. Minimising
 to a tray icon keeps the session; closing ends it, and the first close should say
-so. Privileged work (TUN, routes, DNS) belongs in a helper that knows nothing
+so — though not every desktop has a tray, which is taken up under *toolkit*
+below. Privileged work (TUN, routes, DNS) belongs in a helper that knows nothing
 about keys; the session and the token stay in the GUI.
 
 *Module presence is the primary state, not a connect button.* Plugged in, ready,
@@ -76,12 +77,51 @@ its MAC check, HEM URL, last handshake. `status` already returns all of it.
 Provisioning stays out — the person running the tunnel is not the person who
 provisions it.
 
-*Implementation.* §10.4.4 already settles the shape: one embedded UI, browser as
-UI only, every HEM call through the same Go path, no second implementation of the
-codecs. A webview wrapper (Wails or equivalent) makes that look like an
-application rather than a browser tab. The "secrets in browser context" objection
-recorded against a hosted page does not apply here — the origin belongs to the
-binary.
+*The constraint that decides more than the toolkit does: cgo.* Every usable Go GUI
+library needs `CGO_ENABLED=1`, and that costs both of the properties `build.sh`
+was deliberately given. Cross-compilation ends — six targets from one machine
+becomes one build per operating system, so CI grows `macos-latest` and
+`windows-latest` runners beside the `ubuntu-latest` it has now. Static linking
+ends with it, and the glibc problem that made every binary static comes back
+wearing GUI libraries. **So the GUI is a separate artifact**, built per platform,
+sharing `internal/` with the CLI. `wg-hem` itself stays as it is: static,
+cross-compiled, portable. Letting a toolkit drag cgo into the command-line client
+would trade the thing that works everywhere for the thing that needs a window.
+
+*Toolkit.* The choice looks like it is settled by §10.4.4 and it is not. That
+section objects to *logic* duplication — reimplementing the TLV codec and the MAC
+canonicalisation in JavaScript, in a format bound for certification. A native UI
+calling Go functions directly duplicates nothing, and satisfies the intent more
+completely than a webview does, because there is no JavaScript at all.
+
+That leaves a plain trade. A webview wrapper (Wails) reuses the embedded HTML and
+looks like the browser it is, at the cost of a webview runtime on every platform —
+WebView2 on Windows, which would be the *second* runtime dependency there after
+`wintun.dll`, and WebKitGTK on Linux. A self-rendering toolkit (Fyne) needs
+nothing installed and produces one file, at the cost of not looking native
+anywhere.
+
+**Recommendation: a self-rendering toolkit for the user-facing application, and
+the embedded HTML form for administrator provisioning.** This interface is three
+states, a button, a countdown and an advanced panel; the richness a webview buys
+is wasted on it, and the runtime dependency is not. These are two presentations
+for two audiences and two shapes of task, both calling one Go core — not two
+implementations of anything.
+
+*The tray is not uniform, and it carries a design decision.* Windows has a
+notification area and macOS a menu bar, both idiomatic. Stock GNOME has neither:
+tray icons were removed and return only through an AppIndicator extension. That is
+easy to miss from a developer machine that happens to have it enabled. Since
+minimising to the tray is what distinguishes "keep the session" from "end it", a
+Linux desktop without a tray leaves the user no way to express the first. Detect
+the absence and stop offering minimise-to-tray as window behaviour rather than
+promising something the desktop will not deliver.
+
+*Signing and packaging.* CI still builds and does not publish; that does not
+change. A third artifact joins the two CLI binaries on the signing token, in the
+same order as before — sign, then package, never the reverse. If a webview
+wrapper is chosen after all, its Windows bootstrapper needs the same redistribution
+check that `wintun.dll` was given.
 
 *Approvals are the currency, and the count is a firmware question.* ExtAuth is
 available, so the connect flow can be a phone approval instead of a typed
