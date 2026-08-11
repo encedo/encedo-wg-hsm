@@ -56,6 +56,11 @@ type fakeHEM struct {
 	// requireSearchToken makes the device refuse an anonymous key search, as it
 	// does when allow_keysearch is off.
 	requireSearchToken bool
+
+	// refuseImport fails every peer import, which is how a test reaches the
+	// window between the identity key being created and the interface record
+	// being written — the only window in which provisioning owns what it made.
+	refuseImport bool
 }
 
 type importCall struct {
@@ -202,6 +207,11 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		io.WriteString(w, `{"pubkey":"`+b64(key)+`","type":"PKEY,ECDH,CURVE25519","updated":1}`)
 	case r.URL.Path == "/api/keymgmt/import":
+		if f.refuseImport {
+			w.WriteHeader(http.StatusInsufficientStorage)
+			io.WriteString(w, `{"error":"repository full"}`)
+			return
+		}
 		body := f.body(r)
 		pk, _ := base64.StdEncoding.DecodeString(body["pubkey"].(string))
 		d, _ := base64.StdEncoding.DecodeString(body["descr"].(string))
@@ -571,4 +581,48 @@ func asExit(err error, target **exitError) bool {
 		*target = ee
 	}
 	return ok
+}
+
+// A run that creates an identity key and then fails before the interface record
+// is written owns that key: no record names it, and `wipe` finds keys by the
+// WG: prefix, so nothing afterwards can identify it as litter.
+func TestProvisionRemovesTheIdentityKeyItCouldNotFinish(t *testing.T) {
+	f, srv := newFakeHEM(t)
+	f.refuseImport = true
+
+	_, err := runProvision(t,
+		"-hem", srv.URL, "-broker", srv.URL,
+		"-address", "10.0.0.7/32",
+		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24")
+	if err == nil {
+		t.Fatal("a refused import should have failed provisioning")
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.deleted) != 1 || f.deleted[0] != f.ifKID {
+		t.Fatalf("identity key %s should have been removed; deleted = %v", f.ifKID, f.deleted)
+	}
+}
+
+// The converse: a key the caller named with --kid was not created here and is
+// not this run's to remove, however the run ends.
+func TestProvisionLeavesAReusedIdentityKeyAlone(t *testing.T) {
+	f, srv := newFakeHEM(t)
+	f.refuseImport = true
+
+	_, err := runProvision(t,
+		"-hem", srv.URL, "-broker", srv.URL,
+		"-kid", f.ifKID,
+		"-address", "10.0.0.7/32",
+		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24")
+	if err == nil {
+		t.Fatal("a refused import should have failed provisioning")
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.deleted) != 0 {
+		t.Fatalf("a key passed with --kid must survive; deleted = %v", f.deleted)
+	}
 }

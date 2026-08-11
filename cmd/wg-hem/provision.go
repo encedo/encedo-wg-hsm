@@ -159,21 +159,46 @@ Flags:
 
 	ifKID := *kid
 	createdIdentity := false
-	// Anything created before a later step fails would otherwise be invisible:
-	// an identity key carries no WG:if: record until the last write, so a prefix
-	// search — and therefore `wg-hem wipe` — cannot find it.
+	importedPeers := 0
+	recordWritten := false
+	// A key this run created, which no record yet names, is litter only this run
+	// can identify: `wipe` searches by the WG: prefix and a bare key carries
+	// none. So it goes back out the way it came in. The condition is narrow on
+	// purpose — an adopted key belongs to the caller, and once the interface
+	// record is written the tree may be a working configuration, so a failure
+	// after that point is not licence to delete anything.
 	defer func() {
 		if retErr == nil {
 			return
 		}
-		fmt.Fprintln(os.Stderr, "\nProvisioning did not finish. The device now holds:")
-		if createdIdentity {
-			fmt.Fprintf(os.Stderr, "  identity key %s (no WG:if: record yet, so `wipe` cannot see it)\n", ifKID)
+		fmt.Fprintln(os.Stderr)
+
+		removed := false
+		if createdIdentity && !recordWritten {
+			if err := deleteKey(ctx, client, auth, ifKID); err != nil {
+				fmt.Fprintf(os.Stderr, "Provisioning did not finish, and the identity key it created (%s)\n"+
+					"could not be removed: %v\n"+
+					"It carries no %s record, so `wg-hem wipe` cannot find it; delete it by key id.\n",
+					ifKID, err, descr.MagicInterface)
+			} else {
+				fmt.Fprintf(os.Stderr, "Provisioning did not finish; the identity key it created (%s) was removed.\n", ifKID)
+				removed = true
+			}
+		} else {
+			fmt.Fprintln(os.Stderr, "Provisioning did not finish.")
 		}
-		fmt.Fprintln(os.Stderr, "  any peer keys reported as imported above")
-		fmt.Fprintln(os.Stderr, "To carry on where this left off, re-run with:")
-		fmt.Fprintf(os.Stderr, "  wg-hem wipe --peers-only --hem %s\n", url)
-		fmt.Fprintf(os.Stderr, "  wg-hem provision --kid %s ...    # reuses the identity key\n", ifKID)
+
+		// Peers are named only when some were actually imported: suggesting a
+		// wipe for peers that were never written sends the caller looking for
+		// something that is not there.
+		if importedPeers > 0 {
+			fmt.Fprintf(os.Stderr, "%d peer key(s) were imported before it failed; clear them with:\n", importedPeers)
+			fmt.Fprintf(os.Stderr, "  wg-hem wipe --peers-only --hem %s\n", url)
+		}
+		if !removed && ifKID != "" {
+			fmt.Fprintln(os.Stderr, "Re-run reusing the identity key with:")
+			fmt.Fprintf(os.Stderr, "  wg-hem provision --kid %s ...\n", ifKID)
+		}
 	}()
 
 	if ifKID == "" {
@@ -254,6 +279,7 @@ Flags:
 		pr.Descr = enc
 		peerRecords = append(peerRecords, pr)
 		if !adopted {
+			importedPeers++
 			fmt.Fprintf(os.Stderr, "Peer imported: %s (%s)\n", p.Label, p.Endpoint.String())
 		}
 	}
@@ -283,6 +309,10 @@ Flags:
 	if err := client.UpdateKey(ctx, updTok, ifKID, *label, signed[:]); err != nil {
 		return classify(err, exitDevice, "writing the interface record")
 	}
+	// From here the key is named by a record, so a later failure leaves
+	// something `wipe` can find — and something that may already be a working
+	// configuration. Either way it is no longer this run's to remove.
+	recordWritten = true
 
 	// Read it back and verify, so provisioning fails here rather than at the
 	// first startup on the machine that will actually use it.
@@ -299,6 +329,17 @@ Flags:
 		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once — the stored copy is wrapped and cannot be read back.")
 	}
 	return nil
+}
+
+// deleteKey removes a key this run created and then had to abandon. It asks for
+// its own token: provisioning holds scopes for generating, reading and updating,
+// and a device that grants those does not thereby grant deletion.
+func deleteKey(ctx context.Context, client *hem.Client, auth *authenticator, kid string) error {
+	tok, err := auth.token(ctx, "keymgmt:del")
+	if err != nil {
+		return err
+	}
+	return client.DeleteKey(ctx, tok, kid)
 }
 
 // readPSK resolves the -psk flag. A pre-shared key is a secret, so it is never
