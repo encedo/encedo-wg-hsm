@@ -1,6 +1,6 @@
 module github.com/encedo/encedo-wg-hsm
 
-go 1.23.1
+go 1.26.5
 
 require (
 	github.com/encedo/hem-sdk-go v0.0.0

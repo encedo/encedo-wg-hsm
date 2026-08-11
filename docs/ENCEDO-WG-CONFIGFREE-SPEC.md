@@ -302,7 +302,7 @@ Note: concurrent peers with disjoint AllowedIPs (split routing) are legal and su
 | Delete | `/api/keymgmt/delete/<kid>` | `wipe` |
 | ECDH | `/api/crypto/ecdh` | ss precompute + se/es per handshake |
 | HMAC | `/api/crypto/hmac/hash` + `/verify` (self-ECDH: kid + ext_kid, both `<if_kid>`) | provisioning / startup |
-| Wrap/Unwrap | `/api/crypto/cipher/wrap` + `/unwrap` (AES256 NIST KW, self-ECDH, `ctx="ENC-WG-PSK-v1"`) | PSK |
+| Wrap/Unwrap | `/api/crypto/cipher/wrap` + `/unwrap` (AES256 NIST KW, self-ECDH, `ctx="ENC-WG-PSK-v2\|"`+peer KID) | PSK |
 
 ## 8. Security invariants
 

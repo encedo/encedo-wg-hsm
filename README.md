@@ -36,7 +36,7 @@ Download the binary for your platform from the `dist/` directory:
 
 ### Option B — Build from source
 
-**Requirements:** Go 1.23+, git
+**Requirements:** Go 1.26+, git
 
 ```bash
 git clone --recurse-submodules https://github.com/encedo/encedo-wg-hsm
