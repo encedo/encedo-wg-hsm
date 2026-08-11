@@ -337,6 +337,67 @@ each — without putting key material in a log destined for a bug report.
 The device is reached at `https://192.168.7.1` unless `--hem` or `$WG_HEM_URL`
 says otherwise, so a PPA on its USB link needs no arguments at all.
 
+### Worked example, per platform
+
+The same tunnel on each. `provision` runs once and needs no privileges — it
+touches neither interfaces nor disk; everything after it does.
+
+**Linux**
+
+```bash
+sudo install -m755 wg-hem-linux-amd64 /usr/local/bin/wg-hem
+
+wg-hem provision \
+  --address 10.99.0.7/32 \
+  --peer 'pubkey=<SERVER_PUBKEY>,endpoint=vpn.example.com:51820,allowed-ips=10.99.0.0/24,keepalive=25,label=hq' \
+  --mtu 1420
+# stdout: the client public key — hand it to whoever runs the server
+
+sudo wg-hem up                    # holds the terminal; --debug traces each ECDH
+sudo wg-hem status                # from a second terminal
+sudo wg-hem down
+```
+
+**macOS**
+
+```bash
+sudo install -m755 wg-hem-darwin-arm64 /usr/local/bin/wg-hem
+
+wg-hem provision --address 10.99.0.7/32 --peer 'pubkey=…,endpoint=…,allowed-ips=…'
+
+sudo wg-hem up
+#   Interface utun5 is up.        <- macOS names it, not you
+sudo wg-hem status --interface utun5
+sudo wg-hem down --interface utun5
+```
+
+Two differences worth knowing before the first run. `--interface wg0` is a
+request macOS does not grant: the kernel assigns `utunN`, and the state file is
+written under the name it assigned, so `down` and `status` need that name rather
+than the one asked for. `up` prints it. And setting DNS is a no-op here with a
+warning — the tunnel carries traffic, but `--dns` from the stored configuration
+is not applied.
+
+**Windows** — PowerShell as Administrator, `wintun.dll` beside the executable:
+
+```powershell
+cd C:\WireGuard
+
+.\wg-hem.exe provision `
+  --address 10.99.0.7/32 `
+  --peer 'pubkey=<SERVER_PUBKEY>,endpoint=vpn.example.com:51820,allowed-ips=10.99.0.0/24,keepalive=25,label=hq'
+
+.\wg-hem.exe up
+.\wg-hem.exe status
+.\wg-hem.exe down
+```
+
+The interface keeps the name it is given, so no `--interface` juggling. Runtime
+files land in `%ProgramData%\WireGuard`.
+
+For `wg-quick-encedo` the per-platform differences are the same ones, and its
+setup is covered under [Setup](#setup) above.
+
 ---
 
 ## Architecture
