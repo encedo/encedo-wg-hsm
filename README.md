@@ -156,6 +156,12 @@ C:\WireGuard\wg-quick-encedo.exe up wg1 C:\WireGuard\wg1.conf
 
 All cryptographic keys are replaced with opaque HEM key identifiers (`HEM_KID`). The config file contains no key material.
 
+> A second client, `wg-hem`, removes the file entirely: the addresses, peers, routes and DNS
+> live in the HEM alongside the keys, under a MAC computed inside the device, so tampering with
+> the routing is detectable rather than merely unprofitable. It is under construction —
+> `wg-hem provision` writes a configuration today. See
+> [docs/ENCEDO-WG-CONFIGFREE-SPEC.md](docs/ENCEDO-WG-CONFIGFREE-SPEC.md).
+
 ```ini
 [Interface]
 Address = 10.1.1.5/24

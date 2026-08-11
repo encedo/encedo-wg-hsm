@@ -11,13 +11,13 @@ import (
 
 // Interface holds the [Interface] section of a WireGuard config with HSM extensions.
 type Interface struct {
-	Address    string
-	ListenPort int
-	HEMURL     string
-	HEMKID     string
+	Address      string
+	ListenPort   int
+	HEMURL       string
+	HEMKID       string
 	HEMBrokerURL string   // optional broker URL; falls back to built-in default if empty
-	DNS        []string // optional DNS servers (comma-separated in config)
-	MTU        int      // optional MTU (0 = system default)
+	DNS          []string // optional DNS servers (comma-separated in config)
+	MTU          int      // optional MTU (0 = system default)
 }
 
 // Peer holds a [Peer] section of a WireGuard config.
@@ -79,7 +79,7 @@ func ParseConfig(path string) (*Config, error) {
 			case "peer":
 				inPeer = true
 				currentPeer = &Peer{}
-			// unknown sections are silently ignored
+				// unknown sections are silently ignored
 			}
 			continue
 		}
@@ -126,7 +126,7 @@ func ParseConfig(path string) (*Config, error) {
 					return nil, fmt.Errorf("invalid MTU: %w", err)
 				}
 				cfg.Interface.MTU = mtu
-			// unknown keys silently ignored
+				// unknown keys silently ignored
 			}
 
 		case inPeer:
@@ -153,9 +153,9 @@ func ParseConfig(path string) (*Config, error) {
 					return nil, fmt.Errorf("invalid PersistentKeepalive: %w", err)
 				}
 				currentPeer.PersistentKeepalive = ka
-			// unknown keys silently ignored
+				// unknown keys silently ignored
 			}
-		// unknown section: silently ignored
+			// unknown section: silently ignored
 		}
 	}
 

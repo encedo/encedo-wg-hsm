@@ -22,12 +22,18 @@ cp -r "${PATCH_DIR}/." "${WG_DIR}/"
 echo "==> Building..."
 mkdir -p dist
 
-GOOS=linux   GOARCH=amd64 go build -o dist/wg-quick-encedo-linux-amd64        ./cmd/wg-quick-encedo/
-GOOS=linux   GOARCH=arm64 go build -o dist/wg-quick-encedo-linux-arm64         ./cmd/wg-quick-encedo/
-GOOS=darwin  GOARCH=amd64 go build -o dist/wg-quick-encedo-darwin-amd64        ./cmd/wg-quick-encedo/
-GOOS=darwin  GOARCH=arm64 go build -o dist/wg-quick-encedo-darwin-arm64        ./cmd/wg-quick-encedo/
-GOOS=windows GOARCH=amd64 go build -o dist/wg-quick-encedo-windows-amd64.exe   ./cmd/wg-quick-encedo/
-GOOS=windows GOARCH=arm64 go build -o dist/wg-quick-encedo-windows-arm64.exe   ./cmd/wg-quick-encedo/
+# wg-quick-encedo: the config-file client (v1).
+# wg-hem:          the config-free client, everything in the HEM (docs/).
+PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
+for cmd in wg-quick-encedo wg-hem; do
+    for platform in ${PLATFORMS}; do
+        os="${platform%/*}"
+        arch="${platform#*/}"
+        out="dist/${cmd}-${os}-${arch}"
+        [ "${os}" = "windows" ] && out="${out}.exe"
+        GOOS="${os}" GOARCH="${arch}" go build -o "${out}" "./cmd/${cmd}/"
+    done
+done
 
 echo "==> Done."
 ls -lh dist/
