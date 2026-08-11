@@ -274,11 +274,32 @@ wg-hsm/
 
 ---
 
-## Implementation status — v1
+## Implementation status
 
-Tested: Linux client <-> server (remote WireGuard endpoint)
-- HEM: Encedo PPA
-- Server: standard WireGuard (kernel), client: wg-hsm (wireguard-go + HEM)
+Release 0.9.1. Both clients build for six platforms in two record sizes; CI
+covers both on every push and publishes nothing (releases are signed by hand).
+
+**Tested end to end on 2026-08-11, Linux arm64 client to a stock server.** The
+far end is `blbx.pl`, ordinary Ubuntu `wireguard-tools` on the kernel module,
+which knows nothing about any of this: an unmodified `[Peer]` entry with a
+`PublicKey`. What was exercised, against a real HEM with 64-byte descr records
+and no PSK, split tunnel:
+
+- `provision` — identity key, peer import, MAC over the tree, read-back verify
+- `verify` — the MAC checks and the stored records decode to what went in
+- `up` — handshake completed, so a private key that exists only inside the
+  device satisfied the reference implementation's Noise handshake
+- failover — a peer that did not answer within 15 s was reported and re-offered,
+  and choosing it again swapped it back in without disturbing the interface
+- rekey — handshakes renewed at the expected interval, each costing two HEM calls
+- `status` — state file, live counters and a fresh MAC check agreed
+
+Round-trip time through the tunnel matched the raw RTT to the endpoint within
+about a millisecond: the HEM is on the handshake path, not the data path.
+
+**Not tested:** long rekey soak, HEM lost mid-tunnel, token expiry, full-tunnel
+routing, failover across more than one candidate, and both non-Linux platforms.
+`down` was not exercised in that session either. See `TODO.md`.
 
 ## Implemented
 
@@ -297,8 +318,11 @@ Tested: Linux client <-> server (remote WireGuard endpoint)
 
 ## TODO
 
-- Token refresh -- deliberate decision: not implemented (expiry = graceful shutdown, user restarts manually)
-- Daemonize -- deliberate decision: not implemented (auth problem on daemon restart without user interaction)
+In `TODO.md`, with the reasoning that makes each item resumable. Two entries
+there are decisions rather than omissions and are worth knowing before proposing
+either as an oversight: token refresh (expiry ends the tunnel; refreshing would
+need the passphrase to outlive the auth step) and daemonising (`up` holds the
+foreground because a daemon that restarts cannot re-authenticate).
 
 ---
 
