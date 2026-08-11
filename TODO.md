@@ -4,7 +4,7 @@ What is left, and why each item is where it is. Items carry enough context to be
 picked up cold; the specification sections they refer to are in
 `docs/ENCEDO-WG-CONFIGFREE-SPEC.md`.
 
-Status as of 0.9.0: `provision`, `verify`, `up`, `down`, `status`, `peer` and
+Status as of 0.9.1: `provision`, `verify`, `up`, `down`, `status`, `peer` and
 `wipe` all work against real hardware, tested Linux-to-Linux against a stock
 kernel WireGuard server.
 

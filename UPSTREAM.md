@@ -22,7 +22,7 @@ _wireguard-go-encedo/
 
 ## Why a patch and not a copy of the files
 
-Until 0.9.0 this repository held complete copies of the three upstream files it
+This repository used to hold complete copies of the three upstream files it
 changes — 1550 lines of upstream code carrying 38 lines of our own — and
 `build.sh` copied them over the checkout. That works only while the pin never
 moves. Raising `WG_COMMIT` would have silently reverted every upstream change to

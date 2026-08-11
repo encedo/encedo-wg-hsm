@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml/badge.svg)](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml)
 
-**Version 0.9.0**
+**Version 0.9.1**
 
 WireGuard userspace implementation with hardware-backed private key protection via **Encedo HEM** — Hardware Encryption Module (EPA/PPA).
 
