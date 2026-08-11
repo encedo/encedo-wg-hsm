@@ -10,6 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/encedo/encedo-wg-hsm/internal/descr"
+	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
 
 // Exit codes are distinct so a script can tell a wrong password from an
@@ -65,6 +68,12 @@ func main() {
 		err = cmdPeer(os.Args[2:])
 	case "wipe":
 		err = cmdWipe(os.Args[2:])
+	case "version", "--version":
+		// The record size goes with it: two builds of the same release talk to
+		// different firmware and cannot read each other's trees, so the number
+		// alone does not identify a binary.
+		fmt.Printf("wg-hem %s (descr %d B)\n", version.Version, descr.Size)
+		os.Exit(exitOK)
 	case "-h", "--help", "help":
 		usage()
 		os.Exit(exitOK)
@@ -85,9 +94,10 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `wg-hem — WireGuard with no config file and no keys on disk
+	fmt.Fprintf(os.Stderr, `wg-hem %s — WireGuard with no config file and no keys on disk
 
-Usage:
+Usage:`, version.Version)
+	fmt.Fprint(os.Stderr, `
   wg-hem provision [flags]    write a configuration into the HEM
   wg-hem up [flags]           bring the tunnel up from the stored configuration
   wg-hem down [flags]         stop a running interface

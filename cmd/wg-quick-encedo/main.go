@@ -24,6 +24,7 @@ import (
 	// Aliased: the package is internal/runtime, and rt keeps it visibly apart
 	// from the standard library's runtime wherever both might be read for one.
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
 
 func main() {
@@ -50,6 +51,8 @@ func main() {
 			os.Exit(1)
 		}
 		cmdPubkey(os.Args[2])
+	case "version", "--version":
+		fmt.Printf("wg-quick-encedo %s\n", version.Version)
 	default:
 		usage()
 		os.Exit(1)
@@ -57,8 +60,8 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, "Usage:\n  %s up <interface> <config>\n  %s down <interface>\n  %s pubkey <interface>\n",
-		os.Args[0], os.Args[0], os.Args[0])
+	fmt.Fprintf(os.Stderr, "wg-quick-encedo %s\n\nUsage:\n  %s up <interface> <config>\n  %s down <interface>\n  %s pubkey <interface>\n  %s version\n",
+		version.Version, os.Args[0], os.Args[0], os.Args[0], os.Args[0])
 }
 
 func cmdDown(ifname string) {

@@ -1,0 +1,11 @@
+# Built by build.sh: a pristine upstream checkout with our four files copied
+# over it. Nothing here is edited by hand — the patches live in
+# _wireguard-go-encedo/ and are overlaid at build time.
+/wireguard-go/
+
+# Release binaries.
+/dist/
+
+# Editor and OS noise.
+*.swp
+.DS_Store
