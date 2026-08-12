@@ -7,6 +7,7 @@ import (
 	_ "embed"
 
 	"context"
+	"flag"
 	"fmt"
 	"image/color"
 	"time"
@@ -38,6 +39,7 @@ type ui struct {
 	// values are monospaced because that is the vernacular of the subject —
 	// endpoints, byte counts, key identifiers — and the typeface the product
 	// page uses for exactly the same reason.
+	head     *fyne.Container
 	fields   *fyne.Container
 	fPeer    *widget.Label
 	fMoved   *widget.Label
@@ -64,6 +66,11 @@ var iconSVG []byte
 var appIcon = fyne.NewStaticResource("encedo-wg.svg", iconSVG)
 
 func main() {
+	// -scenario plays the life of a session end to end so somebody can watch it
+	// once rather than learn which debug button produces which state.
+	auto := flag.Bool("scenario", false, "play a scripted session instead of waiting for input")
+	flag.Parse()
+
 	a := app.New()
 	a.SetIcon(appIcon)
 	a.Settings().SetTheme(encedoTheme{})
@@ -74,6 +81,12 @@ func main() {
 
 	go u.consume()
 	go u.tickCountdown()
+	if *auto {
+		go u.sess.play(func(what string) {
+			fyne.Do(func() { u.status.SetText(u.status.Text) })
+			println("scenario:", what)
+		})
+	}
 
 	// Fixed: there is nothing here that benefits from more room, and a window
 	// of three states stretched across a large display reads as a mistake. It
@@ -125,7 +138,7 @@ func (u *ui) build() {
 	u.noticeBox = container.NewStack(u.noticeBG, container.NewPadded(u.noticeText))
 	u.noticeBox.Hide()
 
-	head := container.NewVBox(
+	u.head = container.NewVBox(
 		container.NewBorder(nil, nil,
 			container.NewCenter(container.NewGridWrap(fyne.NewSize(16, 16), u.dot)),
 			nil, u.status),
@@ -171,7 +184,7 @@ func (u *ui) build() {
 	// state keeps the top, so the window does not read as half-finished with a
 	// void beneath it.
 	u.win.SetContent(container.NewPadded(
-		container.NewBorder(head, foot, nil, nil, nil),
+		container.NewBorder(u.head, foot, nil, nil, nil),
 	))
 	u.render(u.sess.snapshot())
 }
@@ -294,6 +307,15 @@ func (u *ui) render(e Event) {
 	u.advText.SetText(fmt.Sprintf(
 		"state          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
 		e.State, dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+
+	// Last, because everything above can change which rows are visible — and
+	// renderCountdown is one of them, since the expiry warning appears from
+	// there. Showing or hiding a child changes what the column has to lay out
+	// and the container does not work that out by itself, so without this the
+	// rows keep their old positions and the next state draws over the last.
+	// Invisible when each state is rendered into a fresh window; plain the
+	// moment one window is driven through a sequence.
+	u.head.Refresh()
 }
 
 // showNotice gives the one line worth reading a ground of its own. Failover and

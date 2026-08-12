@@ -149,3 +149,51 @@ func TestRenderIcon(t *testing.T) {
 		w.Close()
 	}
 }
+
+// TestRenderScenario walks the same scenario the -scenario flag plays and
+// captures a frame per step. It is the flow rather than the states: a set of
+// screens each of which is fine on its own can still be a sequence that makes
+// no sense, and that is not visible one screen at a time.
+func TestRenderScenario(t *testing.T) {
+	dir := os.Getenv("WG_GUI_SHOTS")
+	if dir == "" {
+		t.Skip("set WG_GUI_SHOTS to a directory to render the scenario")
+	}
+	a := test.NewApp()
+	defer a.Quit()
+	a.Settings().SetTheme(encedoTheme{})
+
+	u := &ui{app: a, sess: newFakeSession()}
+	defer u.sess.Close()
+	u.win = test.NewWindow(nil)
+	defer u.win.Close()
+	u.build()
+	u.win.Resize(fyne.NewSize(630, 600))
+
+	for i, s := range scenario {
+		s.do(u.sess)
+
+		// Drain for a fixed window rather than waiting for quiet: a connected
+		// session emits continuously, so quiescence never arrives. The last
+		// event in the window is the settled state.
+		deadline := time.After(1600 * time.Millisecond)
+		var last Event
+		draining := true
+		for draining {
+			select {
+			case e, ok := <-u.sess.Events():
+				if !ok {
+					draining = false
+					break
+				}
+				last = e
+			case <-deadline:
+				draining = false
+			}
+		}
+		u.render(last)
+		u.renderCountdown(last)
+		writeShot(t, dir, fmt.Sprintf("flow-%d", i), 1, u.win.Canvas().Capture())
+		t.Logf("step %d: %s -> %s", i, s.what, last.State)
+	}
+}

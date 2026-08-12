@@ -33,7 +33,13 @@ type fakeSession struct {
 // session; nobody can test a flow at that speed.
 const (
 	fakeRekeyEvery = 4 * time.Second
-	fakeSessionLen = 90 * time.Second
+
+	// Comfortably longer than the warning threshold, so connecting does not
+	// immediately trip the warning. It did at ninety seconds, which made every
+	// connected state look like a session about to end — true of the fake and
+	// false of anything real. The scenario reaches the warning by moving the
+	// expiry deliberately instead.
+	fakeSessionLen = 12 * time.Minute
 	fakeConnectFor = 1200 * time.Millisecond
 )
 
@@ -141,6 +147,23 @@ func (f *fakeSession) triggerFailover() {
 	f.last = time.Now()
 	f.mu.Unlock()
 	f.emitNotice(`Moved to "backup site" — "head office" stopped answering`)
+}
+
+// connectWith is Connect without a context, for a script that has no caller to
+// cancel it.
+func (f *fakeSession) connectWith(pass string) {
+	_ = f.Connect(context.Background(), []byte(pass))
+}
+
+// expireIn moves the end of the session, which is how a scenario reaches the
+// warning without waiting out a real one.
+func (f *fakeSession) expireIn(d time.Duration) {
+	f.mu.Lock()
+	if f.state == Connected {
+		f.expiry = time.Now().Add(d)
+	}
+	f.mu.Unlock()
+	f.emit()
 }
 
 func (f *fakeSession) expireNow() {
