@@ -6,7 +6,9 @@ picked up cold; the specification sections they refer to are in
 
 Status as of 0.9.1: `provision`, `verify`, `up`, `down`, `status`, `peer` and
 `wipe` all work against real hardware, tested Linux-to-Linux against a stock
-kernel WireGuard server.
+kernel WireGuard server. A 7.5-hour soak on 2026-08-11 held 224 rekeys with no
+repeated secret, no retry and no drift in device latency, and ended on token
+expiry exactly as designed.
 
 ---
 
@@ -87,6 +89,26 @@ wearing GUI libraries. **So the GUI is a separate artifact**, built per platform
 sharing `internal/` with the CLI. `wg-hem` itself stays as it is: static,
 cross-compiled, portable. Letting a toolkit drag cgo into the command-line client
 would trade the thing that works everywhere for the thing that needs a window.
+
+*Linux does not need the helper, and measuring that changed the estimate.* Every
+privileged thing this client does on Linux — creating the interface, its
+addresses, its routes, its MTU — wants one capability, `cap_net_admin`, and not
+root. `/dev/net/tun` is world-writable already. What is left is `/var/run/wireguard`,
+which is root-owned, and a tmpfiles rule settles that. So on Linux the answer is
+`setcap` plus a directory, which the README has documented for the config-file
+client since before any of this: no helper process, no elevation, nothing new to
+write.
+
+`Preflight` in `internal/runtime` now reports both conditions before the
+passphrase is asked for, with the command to fix each. That matters more than it
+sounds: the failure it replaces is netlink returning "operation not permitted"
+from three layers down, after authentication, at which point the obvious move is
+sudo — which works, and teaches that this client needs root, which it does not.
+
+macOS and Windows are where the helper is actually required, because neither has
+an equivalent of `setcap`: there is no way to grant one binary one permission.
+That is two platforms rather than three, and the second of them is the one whose
+demo assumption is already in doubt.
 
 *Toolkit.* The choice looks like it is settled by §10.4.4 and it is not. That
 section objects to *logic* duplication — reimplementing the TLV codec and the MAC
@@ -217,7 +239,7 @@ countdown and a panel is about a week. What dominates is everything around it.
 |---|---|
 | A drivable session API extracted from `cmdUp` | 3–5 d |
 | The interface itself | 5–8 d |
-| Privileged helper, three platforms | **10–20 d** |
+| Privileged helper — macOS and Windows only, see below | **8–16 d** |
 | Module presence (poll the device; hotplug APIs are not worth it) | 1–2 d |
 | Tray, including desktops that have none | 3–5 d |
 | Packaging, signing, notarisation, CI | 5–10 d |
@@ -301,6 +323,15 @@ Deliberately set aside, not forgotten. The thread: a service provider wants to
 deploy keys for many users, and today `provision` serves one person at a
 terminal. Nothing here is started.
 
+**Extract the tunnel from the CLI shell.** Started, and the groundwork is done.
+The tunnel no longer reads a terminal to choose a peer after a failover, no
+longer writes to stderr, and no longer speaks in exit codes: all three are
+injected or named in `internal/session`, which is also where the state file now
+lives. What is left is the move itself — `tunnel`, `awaitHandshake` and the UAPI
+builders out of `cmd/wg-hem` — and it is mechanical, because the couplings that
+would have made it a redesign are gone. This is what the graphical client needs
+before it can drop its fake.
+
 **Extract the provisioner core from the CLI shell.** `cmdProvision` interleaves
 flag parsing, validation and device work in one function and returns its result
 through `fmt.Println`, so nothing but `os.Args` can drive it. Splitting it into
@@ -329,14 +360,9 @@ administrator's origin, re-trusted on every load.
 
 Deferred until the new firmware is available; the client side is ready.
 
-- Long rekey soak. Each handshake costs two HEM round trips and WireGuard rekeys
-  roughly every two minutes, so hours of running is the only way to see whether
-  the ECDH path is stable. Watch that the handshake age never approaches
-  `REJECT_AFTER_TIME` (180 s). `wg-hem up --debug` traces every ECDH for this.
 - HEM lost mid-tunnel: three retries, then a clean interface shutdown rather than
-  a tunnel that stays up and silent.
-- Token expiry, which is the same shutdown by a different route and needs to be
-  told apart from the above.
+  a tunnel that stays up and silent. Token expiry exercises the same shutdown by
+  a different route and has now been seen; losing the device itself has not.
 - Full-tunnel variant (`allowed-ips=0.0.0.0/0`). The only untested path in
   `internal/runtime`: endpoints the tunnel would swallow are pinned to the
   pre-tunnel gateway, and the HEM is probed but deliberately not pinned.

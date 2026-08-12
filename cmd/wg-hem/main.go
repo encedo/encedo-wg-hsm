@@ -29,9 +29,15 @@ const (
 // pubKeyLen is the length of a Curve25519 public key.
 const pubKeyLen = 32
 
-// defaultHEM is the PPA's fixed address. It is what lets `wg-hem up` run with
-// no arguments at all: the device is always at the same place on the USB link.
-const defaultHEM = "https://192.168.7.1"
+// defaultHEM is where a personal appliance answers. It is what lets `wg-hem up`
+// run with no arguments at all: the device is always in the same place.
+//
+// A name rather than the address it stands for, because the connection is TLS
+// and certificates are issued for names. Pointing the default at the literal
+// address would mean every first run began with a verification failure and the
+// advice to work around it — which is the wrong first thing to teach about a
+// product whose argument is that the key never leaves the module.
+const defaultHEM = "https://my.ence.do"
 
 // exitError carries the code a failure should exit with.
 type exitError struct {

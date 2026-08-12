@@ -2,6 +2,8 @@ package main
 
 import (
 	"os"
+
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 	"strings"
 	"syscall"
 	"testing"
@@ -12,9 +14,14 @@ import (
 // allowed to write to.
 func withRunDir(t *testing.T) {
 	t.Helper()
-	prev := runDir
-	t.Cleanup(func() { runDir = prev })
-	runDir = t.TempDir()
+	prevRun, prevDir := runDir, session.Dir
+	t.Cleanup(func() { runDir, session.Dir = prevRun, prevDir })
+	dir := t.TempDir()
+	// Both, because the two are the same directory seen from either side of the
+	// move: the command writes public keys through runDir and the state through
+	// the package. Setting one and not the other passes the tests it happens to
+	// touch and leaves the rest writing to /var/run.
+	runDir, session.Dir = dir, dir
 }
 
 func writeState(t *testing.T, ifname string, pid int) *state {
@@ -24,7 +31,7 @@ func writeState(t *testing.T, ifname string, pid int) *state {
 		PeerLabel: "hq", Endpoint: "203.0.113.1:51820",
 		HEMURL: "https://192.168.7.1", Started: time.Now().Add(-time.Minute),
 	}
-	if err := st.save(); err != nil {
+	if err := st.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	return st

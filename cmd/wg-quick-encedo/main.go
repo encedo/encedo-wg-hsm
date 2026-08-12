@@ -202,8 +202,11 @@ func cmdUp(ifname, cfgPath string) {
 	// the one that runs on Ctrl+C.
 	exceptions := &rt.Pins{}
 	teardown := func() {
-		wgdev.Close()
+		// See the note in wg-hem's teardown: reverting DNS after the device is
+		// closed makes resolvectl complain about an interface that is already
+		// gone, on every clean shutdown.
 		rt.RevertDNS(ifname)
+		wgdev.Close()
 		_ = rt.Down(ifname)
 		exceptions.Restore()
 		_ = os.Remove(filepath.Join(rt.RunDir, ifname+".pub"))

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	hem "github.com/encedo/hem-sdk-go"
+
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 	"golang.org/x/term"
 )
 
@@ -80,21 +82,43 @@ func zero(b []byte) {
 	}
 }
 
-// classify maps an SDK error onto the exit code that describes it, so a script
-// can distinguish "wrong passphrase" from "no device on that address".
+// classify names what went wrong and gives it this command's exit code.
+//
+// The naming lives in internal/session, because a window needs the same
+// distinction and has no exit codes to express it with; the numbering stays
+// here, because it is the only part that is genuinely a command's.
 func classify(err error, fallback int, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
-	code := fallback
-	if he, ok := err.(*hem.HemError); ok {
-		switch {
-		case he.Code == "network" || he.Code == "timeout" || he.Code == "aborted":
-			code = exitNetwork
-		case he.Status == 401 || he.Status == 403:
-			code = exitAuth
-		}
+	e := session.Classify(err, kindFor(fallback), format, args...)
+	return failf(exitFor(session.KindOf(e)), "%w", e)
+}
+
+// kindFor and exitFor are the two directions of the same small table. Keeping
+// them adjacent is the only guard against them drifting apart.
+func kindFor(code int) session.Kind {
+	switch code {
+	case exitNetwork:
+		return session.KindNetwork
+	case exitAuth:
+		return session.KindAuth
+	case exitIntegrit:
+		return session.KindIntegrity
+	default:
+		return session.KindDevice
 	}
-	args = append(args, err)
-	return failf(code, format+": %w", args...)
+}
+
+func exitFor(k session.Kind) int {
+	switch k {
+	case session.KindNetwork:
+		return exitNetwork
+	case session.KindAuth:
+		return exitAuth
+	case session.KindIntegrity:
+		return exitIntegrit
+	default:
+		return exitDevice
+	}
 }

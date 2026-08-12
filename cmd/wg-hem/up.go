@@ -66,6 +66,16 @@ A peer that never answers is reported and another is offered.
 		rt.SetDebug(true)
 	}
 
+	// Before the passphrase, not after. Everything this checks is knowable
+	// without touching the device, and discovering it later means the person has
+	// authenticated, waited, and then been told "operation not permitted" by
+	// netlink — at which point the obvious move is sudo, which works and teaches
+	// the wrong lesson. Nothing here wants root; one capability and a writable
+	// directory are the whole of it.
+	if err := rt.Preflight(); err != nil {
+		return failf(exitUsage, "%w", err)
+	}
+
 	ctx := context.Background()
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {
@@ -88,6 +98,8 @@ A peer that never answers is reported and another is offered.
 	t := &tunnel{
 		ctx: ctx, client: client, tree: tree,
 		useTok: useTok, hemURL: dev.url(), ifname: *ifname,
+		selectNext: repromptPeer,
+		notify:     func(line string) { fmt.Fprintln(os.Stderr, line) },
 	}
 	return t.run(peer)
 }
@@ -109,6 +121,21 @@ type tunnel struct {
 
 	peer *config.Peer
 	psk  []byte
+
+	// notify carries what the tunnel has to say. Five sentences over the life of
+	// a session, and every one of them is something a window would show
+	// differently — a status line, a toast, a coloured dot — so the tunnel
+	// states the fact and lets whoever is watching decide how it appears.
+	notify func(string)
+
+	// selectNext is asked for another peer when the current one never answers.
+	//
+	// A function rather than a call to the prompt: choosing is the one part of
+	// failover that belongs to whoever is watching. A terminal asks and reads a
+	// line; a window will put up a dialogue, or try the next peer itself and say
+	// so afterwards. The tunnel does not need to know which, and the moment it
+	// does it can only ever be driven from a terminal.
+	selectNext func(tree *config.Tree, failed *config.Peer) (*config.Peer, error)
 
 	// hemInside is whether the current peer's AllowedIPs cover the HEM. The
 	// probe that acts on it waits until the routes are actually in.
@@ -139,8 +166,9 @@ func (t *tunnel) run(peer *config.Peer) error {
 		PID: os.Getpid(), Interface: t.ifname, IfKID: t.tree.IfKID,
 		PeerKID: peer.KID, PeerLabel: peer.Label, Endpoint: peer.Endpoint.String(),
 		HEMURL: t.hemURL, Started: time.Now(),
+		TokenExpiry: hem.TokenExpiry(t.useTok),
 	}
-	if err := st.save(); err != nil {
+	if err := st.Save(); err != nil {
 		t.teardown()
 		return failf(exitDevice, "recording the interface state: %w", err)
 	}
@@ -181,17 +209,17 @@ func (t *tunnel) run(peer *config.Peer) error {
 		close(ending)
 	}()
 
-	fmt.Fprintf(os.Stderr, "Interface %s is up.\n", t.ifname)
+	t.notify(fmt.Sprintf("Interface %s is up.", t.ifname))
 
 	if err := t.hold(st, ending); err != nil {
 		t.teardown()
 		return err
 	}
 	if endMsg != "" {
-		fmt.Fprintln(os.Stderr, endMsg)
+		t.notify(endMsg)
 	}
 	t.teardown()
-	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", t.ifname)
+	t.notify(fmt.Sprintf("Interface %s is down.", t.ifname))
 	return nil
 }
 
@@ -202,7 +230,7 @@ func (t *tunnel) run(peer *config.Peer) error {
 func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 	for {
 		if awaitHandshake(t.ifname, ending) {
-			fmt.Fprintf(os.Stderr, "Handshake with %q completed.\n", t.peer.Label)
+			t.notify(fmt.Sprintf("Handshake with %q completed.", t.peer.Label))
 			<-ending
 			return nil
 		}
@@ -212,7 +240,7 @@ func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 		default:
 		}
 
-		next, err := repromptPeer(t.tree, t.peer)
+		next, err := t.selectNext(t.tree, t.peer)
 		if err != nil {
 			return err
 		}
@@ -220,8 +248,8 @@ func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 			return err
 		}
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
-		if err := st.save(); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: the state file no longer names the active peer: %v\n", err)
+		if err := st.Save(); err != nil {
+			t.notify(fmt.Sprintf("WARNING: the state file no longer names the active peer: %v", err))
 		}
 	}
 }
@@ -342,10 +370,15 @@ func (t *tunnel) pubPath() string { return runDir + "/" + t.ifname + ".pub" }
 // host as it was found. Every way out goes through it, so the abort path cannot
 // drift from the one that runs on Ctrl+C.
 func (t *tunnel) teardown() {
+	// DNS goes back before the device closes, not after. Closing removes the
+	// interface, and `resolvectl revert` on an interface that is gone prints
+	// "Failed to resolve interface: No such device" on its own stderr — so every
+	// clean shutdown ended with an error message about a failure that had not
+	// happened. Seen in the 7.5-hour soak of 2026-08-11.
+	rt.RevertDNS(t.ifname)
 	if t.dev != nil {
 		t.dev.Close()
 	}
-	rt.RevertDNS(t.ifname)
 	_ = rt.Down(t.ifname)
 	if t.pins != nil {
 		t.pins.Restore()

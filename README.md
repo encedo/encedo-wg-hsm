@@ -344,8 +344,10 @@ long the device took, and the shared secret as its first and last four bytes.
 That is enough to watch the tunnel rekey — roughly every two minutes, two calls
 each — without putting key material in a log destined for a bug report.
 
-The device is reached at `https://192.168.7.1` unless `--hem` or `$WG_HEM_URL`
-says otherwise, so a PPA on its USB link needs no arguments at all.
+The device is reached at `https://my.ence.do` unless `--hem` or `$WG_HEM_URL`
+says otherwise, so a PPA needs no arguments at all. The default is a name and
+not the address behind it: the connection is TLS, and a certificate is issued
+for a name.
 
 ### Worked example, per platform
 

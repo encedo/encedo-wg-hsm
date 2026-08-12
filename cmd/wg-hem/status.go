@@ -47,6 +47,18 @@ device, which needs a token and therefore the passphrase.
 	fmt.Printf("interface %s\n", st.Interface)
 	fmt.Printf("pid %d\n", st.PID)
 	fmt.Printf("uptime %s\n", time.Since(st.Started).Truncate(time.Second))
+	if !st.TokenExpiry.IsZero() {
+		// Both forms: the instant is what a person plans around, the remaining
+		// time is what they act on. Past the expiry the tunnel is already gone or
+		// about to be, so say so rather than print a negative duration.
+		left := time.Until(st.TokenExpiry).Truncate(time.Second)
+		if left <= 0 {
+			fmt.Printf("session.expired %s\n", st.TokenExpiry.UTC().Format(time.RFC3339))
+		} else {
+			fmt.Printf("session.ends %s\n", st.TokenExpiry.UTC().Format(time.RFC3339))
+			fmt.Printf("session.ends-in %s\n", left)
+		}
+	}
 	fmt.Printf("hem %s\n", st.HEMURL)
 	fmt.Printf("if-kid %s\n", st.IfKID)
 	fmt.Printf("peer.kid %s\n", st.PeerKID)
