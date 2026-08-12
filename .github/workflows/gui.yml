@@ -44,16 +44,23 @@ jobs:
           go-version-file: gui/go.mod
           cache-dependency-path: gui/go.sum
 
-      # A GUI toolkit needs cgo, and cgo on Linux needs headers. libxxf86vm-dev
-      # is the one that is missing often enough to be worth naming: everything
-      # else compiles and the failure appears only at the link step, as
-      # "cannot find -lXxf86vm".
+      # A GUI toolkit needs cgo, and cgo on Linux needs headers — for both
+      # display servers, because GLFW compiles an X11 backend and a Wayland one
+      # into the same binary and chooses at run time. Leaving either set out
+      # fails the build on a machine that would never have used that backend.
+      #
+      # Two of these are worth naming because each cost a red build, and because
+      # a developer's machine has them and so gives no warning. libxxf86vm-dev
+      # surfaces only at the link step, as "cannot find -lXxf86vm"; libwayland-dev
+      # surfaces during compilation, as a missing wayland-client-core.h.
       - name: Linux build dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            gcc pkg-config libgl1-mesa-dev xorg-dev libxxf86vm-dev
+            gcc pkg-config \
+            libgl1-mesa-dev xorg-dev libxxf86vm-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
 
       - name: gofmt
         working-directory: gui
