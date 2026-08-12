@@ -1,0 +1,16 @@
+# Line endings are LF everywhere, on every platform, in the working tree.
+#
+# Without this, Git on Windows checks out text files with CRLF, and the Windows
+# CI runner then reports every Go file as unformatted — gofmt wants LF and says
+# so about all of them at once, which reads like a formatting catastrophe and is
+# really a checkout setting. The build was red on six files that were correct.
+#
+# Go itself is unambiguous about this: gofmt writes LF, so anything that turns it
+# into CRLF is changing gofmt's output.
+* text=auto eol=lf
+
+# Binaries must not be touched at all. An icon is not text and a byte changed in
+# one is a corrupted file, not a tidied one.
+*.png binary
+*.ico binary
+*.icns binary
