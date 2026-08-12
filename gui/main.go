@@ -59,6 +59,7 @@ type ui struct {
 
 	statusRow *fyne.Container
 	rule      *widget.Separator
+	topRule   *widget.Separator
 	dot       *canvas.Circle
 	status    *widget.Label
 	detail    *widget.Label
@@ -193,6 +194,7 @@ func (u *ui) build() {
 	// one the two run together, and the eye has to work out from wording alone
 	// where reading stops and acting starts.
 	u.rule = widget.NewSeparator()
+	u.topRule = widget.NewSeparator()
 	u.head, u.foot = container.NewVBox(), container.NewVBox()
 
 	// Border rather than a plain column: the controls keep the bottom and the
@@ -211,7 +213,11 @@ func (u *ui) build() {
 // list is declarative, has one path per state, and cannot leave a stale row
 // behind because nothing is left over to go stale.
 func (u *ui) compose(e Event) {
-	head := []fyne.CanvasObject{u.statusRow}
+	// The status row is closed on both sides rather than only underneath, so it
+	// reads as a header rather than as the first of a list of lines. The rule
+	// appears only when something follows it — a line under the last thing on
+	// screen is a line to nowhere.
+	head := []fyne.CanvasObject{u.statusRow, u.topRule}
 	if u.detail.Text != "" {
 		head = append(head, u.detail)
 	}
@@ -234,6 +240,9 @@ func (u *ui) compose(e Event) {
 		foot = append(foot, u.adv)
 	}
 
+	if len(head) == 2 {
+		head = head[:1]
+	}
 	u.head.Objects, u.foot.Objects = head, foot
 	u.head.Refresh()
 	u.foot.Refresh()
