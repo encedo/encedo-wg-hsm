@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -26,10 +27,20 @@ type ui struct {
 	hasTr  bool
 	latest Event
 
-	dot      *canvas.Circle
-	status   *widget.Label
-	detail   *widget.Label
-	countLbl *widget.Label
+	dot    *canvas.Circle
+	status *widget.Label
+	detail *widget.Label
+
+	// fields is the middle of the window: what the tunnel is doing, as label
+	// and value. It fills space that was empty with something true, and the
+	// values are monospaced because that is the vernacular of the subject —
+	// endpoints, byte counts, key identifiers — and the typeface the product
+	// page uses for exactly the same reason.
+	fields   *fyne.Container
+	fPeer    *widget.Label
+	fMoved   *widget.Label
+	fShake   *widget.Label
+	fExpires *widget.Label
 
 	noticeText *widget.Label
 	warned     bool
@@ -75,7 +86,21 @@ func (u *ui) build() {
 	u.status = widget.NewLabel("")
 	u.status.TextStyle = fyne.TextStyle{Bold: true}
 	u.detail = widget.NewLabel("")
-	u.countLbl = widget.NewLabel("")
+	u.detail.Wrapping = fyne.TextWrapWord
+
+	mono := func() *widget.Label {
+		l := widget.NewLabel("")
+		l.TextStyle = fyne.TextStyle{Monospace: true}
+		return l
+	}
+	u.fPeer, u.fMoved, u.fShake, u.fExpires = mono(), mono(), mono(), mono()
+	u.fields = container.New(layout.NewFormLayout(),
+		widget.NewLabel("peer"), u.fPeer,
+		widget.NewLabel("transferred"), u.fMoved,
+		widget.NewLabel("last handshake"), u.fShake,
+		widget.NewLabel("session ends"), u.fExpires,
+	)
+	u.fields.Hide()
 
 	// One line, ellipsised. A wrapping label inside a background box cannot be
 	// sized reliably — the height is computed before the width is known, so long
@@ -95,7 +120,7 @@ func (u *ui) build() {
 			container.NewCenter(container.NewGridWrap(fyne.NewSize(16, 16), u.dot)),
 			nil, u.status),
 		u.detail,
-		u.countLbl,
+		u.fields,
 		u.noticeBox,
 	)
 
@@ -180,26 +205,35 @@ func (u *ui) render(e Event) {
 
 	switch e.State {
 	case NoModule:
+		u.fields.Hide()
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Plug in your key")
 		u.detail.SetText("The tunnel needs the module that holds its identity.")
 	case Ready:
+		u.fields.Hide()
 		u.setDot(theme.ColorNameForeground)
 		u.status.SetText("Ready")
 		u.detail.SetText("Module present.")
 	case Connecting:
+		u.fields.Hide()
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Connecting…")
 		u.detail.SetText("Waiting for the first handshake.")
 	case Connected:
 		u.setDot(theme.ColorNameSuccess)
 		u.status.SetText("Connected")
-		u.detail.SetText(fmt.Sprintf("%s · %s in, %s out", e.Peer, human(e.Rx), human(e.Tx)))
+		u.detail.SetText("")
+		u.fPeer.SetText(dash(e.Peer))
+		u.fMoved.SetText(human(e.Rx) + " in / " + human(e.Tx) + " out")
+		u.fShake.SetText(ago(e.LastHandshake))
+		u.fields.Show()
 	case Disconnecting:
+		u.fields.Hide()
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Disconnecting…")
 		u.detail.SetText("")
 	case Ended:
+		u.fields.Hide()
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Closed")
 		u.detail.SetText("")
@@ -238,6 +272,14 @@ func (u *ui) render(e Event) {
 		u.noticeBox.Hide()
 	}
 
+	// An empty label still occupies a row, which left a hole between the status
+	// and whatever followed it.
+	if u.detail.Text == "" {
+		u.detail.Hide()
+	} else {
+		u.detail.Show()
+	}
+
 	u.renderCountdown(e)
 	u.advText.SetText(fmt.Sprintf(
 		"state          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
@@ -269,13 +311,13 @@ func (u *ui) setDot(name fyne.ThemeColorName) {
 
 func (u *ui) renderCountdown(e Event) {
 	if e.State != Connected || e.ExpiresAt.IsZero() {
-		u.countLbl.SetText("")
+		u.fExpires.SetText("—")
 		return
 	}
 	left := time.Until(e.ExpiresAt)
 	// Named as an ending rather than a duration: the session does not renew
 	// itself, and a countdown that does not say so invites the assumption.
-	u.countLbl.SetText("Session ends in " + fmtLeft(left))
+	u.fExpires.SetText(fmtLeft(left))
 
 	// The tunnel does not renew itself, so the end of the session arrives as a
 	// disconnection in the middle of somebody's afternoon unless they are told
@@ -369,6 +411,16 @@ func human(n uint64) string {
 	default:
 		return fmt.Sprintf("%.1f MiB", float64(n)/(1024*1024))
 	}
+}
+
+// ago renders a moment as distance from now, which is how a person reads a
+// handshake: "41s ago" answers the question, an absolute timestamp makes them
+// do arithmetic first.
+func ago(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return fmtLeft(time.Since(t)) + " ago"
 }
 
 func stamp(t time.Time) string {
