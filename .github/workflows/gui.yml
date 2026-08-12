@@ -1,0 +1,78 @@
+name: GUI
+
+# The skeleton exists to find out whether it builds and runs on all three
+# platforms before any of it touches a device, so this is the point of it. It
+# builds and does not publish, like the other workflow, and it is scoped to the
+# gui/ module: a change to the CLI cannot break it and does not run it.
+
+on:
+  push:
+    branches: [gui]
+    paths: ["gui/**", ".github/workflows/gui.yml"]
+  pull_request:
+    paths: ["gui/**", ".github/workflows/gui.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gui/ resolves the core through a relative replace, so the parent
+          # module has to be present. The SDK submodule is not needed while the
+          # session is faked, but fetching it keeps this identical to a
+          # developer's checkout.
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: gui/go.mod
+          cache-dependency-path: gui/go.sum
+
+      # A GUI toolkit needs cgo, and cgo on Linux needs headers. libxxf86vm-dev
+      # is the one that is missing often enough to be worth naming: everything
+      # else compiles and the failure appears only at the link step, as
+      # "cannot find -lXxf86vm".
+      - name: Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc pkg-config libgl1-mesa-dev xorg-dev libxxf86vm-dev
+
+      - name: gofmt
+        working-directory: gui
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: Vet
+        working-directory: gui
+        run: go vet ./...
+
+      - name: Build
+        working-directory: gui
+        run: go build -o ../dist-gui/ ./...
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.os }}
+          path: dist-gui/
+          retention-days: 7

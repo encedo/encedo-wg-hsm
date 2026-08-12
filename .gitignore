@@ -9,3 +9,8 @@
 # Editor and OS noise.
 *.swp
 .DS_Store
+/dist-gui/
+
+# GUI build output; the binary takes its name from the directory.
+/gui/gui
+/gui/gui.exe
