@@ -241,10 +241,10 @@ func (u *ui) compose(e Event) {
 // footer is placed against it, and the rows that do not fit are drawn over the
 // top of each other. That is what this replaces.
 const (
-	compactHeight  = 480
-	noticeHeight   = 60 // a notice is one more row, and it arrives unannounced
-	advancedHeight = 860
-	windowWidth    = 630
+	compactHeight  = 720
+	noticeHeight   = 90 // a notice is one more row, and it arrives unannounced
+	advancedHeight = 1290
+	windowWidth    = 945
 )
 
 // resizeForContent gives the window the height the current content needs. Two

@@ -125,7 +125,7 @@ func (encedoTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.Defau
 // leaves one number to argue about instead of a dozen. It composes with the
 // display scale rather than replacing it: this decides how dense the interface
 // is, the operating system decides how large a pixel is.
-const uiScale = 1.5
+const uiScale = 2.25
 
 func (encedoTheme) Size(n fyne.ThemeSizeName) float32 {
 	// Every size here is in device-independent units, so this and the display

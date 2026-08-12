@@ -107,7 +107,7 @@ func TestRenderStates(t *testing.T) {
 				u.advBox.SetChecked(true)
 			}
 			u.render(tc.event)
-			u.win.Resize(fyne.NewSize(630, 600))
+			u.resizeForContent()
 
 			// Render at each scale a real display might ask for. Nothing here
 			// is in pixels, so this should change the size of the image and
@@ -172,7 +172,7 @@ func TestRenderScenario(t *testing.T) {
 	u.win = test.NewWindow(nil)
 	defer u.win.Close()
 	u.build()
-	u.win.Resize(fyne.NewSize(630, 600))
+	u.resizeForContent()
 
 	for i, s := range scenario {
 		s.do(u.sess)

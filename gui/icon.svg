@@ -5,17 +5,20 @@
        window's status dot promoted to a mark, so the application and its icon say
        the same thing in the same colours.
 
-       Proportioned at 16 px, where a tray draws it, and the constraint is the
-       GAP rather than the ring: the gap is what makes this containment instead
-       of a blob, and it is the first thing to close. So the ring is thinner than
-       it would be if the icon were only ever seen large — a sixteenth of the
-       width — and the gap takes what it gives up.
+       Proportioned at 16 px, where a tray draws it, and the constraint is the GAP
+       rather than the ring: the gap is what makes this containment instead of a
+       blob, and it is the first thing to close. Measured — at six units the gap
+       all but vanished, at three the ring broke up under antialiasing.
 
-       Measured, not guessed. Four weights were rendered at 16 px and magnified:
-       at six units the gap all but disappeared and the mark read as a light disc
-       with a speck in it; at three the ring itself began to break up under
-       antialiasing. Four holds both. -->
-  <rect width="64" height="64" rx="14" fill="#0A0E0E"/>
+       Everything outside is transparent, and the ground is a disc rather than a
+       rounded rectangle: the rectangle's corners showed as dark chips against a
+       tray that has its own background, which no icon controls.
+
+       The disc runs a little past the ring on purpose. Flush with it, the light
+       ring met a light tray directly and disappeared into it, leaving a dark
+       blob with a green centre. A unit and a half of dark rim separates the mark
+       from whatever is behind it without bringing back a corner. -->
+  <circle cx="32" cy="32" r="27" fill="#0A0E0E"/>
   <circle cx="32" cy="32" r="23.5" fill="none" stroke="#C7D4CF" stroke-width="4"/>
   <circle cx="32" cy="32" r="7" fill="#47C6A3"/>
 </svg>
