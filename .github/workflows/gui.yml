@@ -29,10 +29,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # gui/ resolves the core through a relative replace, so the parent
-          # module has to be present. The SDK submodule is not needed while the
-          # session is faked, but fetching it keeps this identical to a
-          # developer's checkout.
+          # The submodule is not reachable from here yet — the session is faked,
+          # so gui/ imports nothing from the core and the SDK never enters the
+          # build. Fetching it anyway keeps this identical to a developer's
+          # checkout, and it becomes load-bearing the moment the fake is
+          # replaced. If the SDK repository is private, GITHUB_TOKEN cannot read
+          # it and a SUBMODULE_TOKEN secret is needed.
           submodules: recursive
           token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
 

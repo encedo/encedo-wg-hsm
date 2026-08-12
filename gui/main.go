@@ -54,6 +54,15 @@ func main() {
 	go u.consume()
 	go u.tickCountdown()
 
+	// Fixed: there is nothing here that benefits from more room, and a window
+	// of three states stretched across a large display reads as a mistake. It
+	// also removes the maximise button, which is the honest signal — a control
+	// that does nothing useful is worse than no control.
+	//
+	// The size accommodates the advanced panel with its debug rows open, so
+	// nothing is clipped when it is; the alternative, sizing to content, would
+	// make the window jump every time the state changed.
+	u.win.SetFixedSize(true)
 	u.win.Resize(fyne.NewSize(630, 600))
 	u.win.ShowAndRun()
 }
