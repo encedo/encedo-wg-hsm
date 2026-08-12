@@ -168,16 +168,17 @@ func (encedoTheme) Font(s fyne.TextStyle) fyne.Resource { return theme.DefaultTh
 
 func (encedoTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
 
-// uiScale enlarges every metric uniformly. Fyne's defaults are dense for a
-// window somebody glances at rather than works in, and the density was the
-// complaint: text, padding and controls all read as too small at 100%.
+// uiScale multiplies every metric uniformly, and is 1 — the interface is as
+// dense as the toolkit intends, and the desktop alone decides how large that is.
 //
-// Multiplying the defaults rather than listing values keeps the proportions the
-// toolkit already balanced — headings against body, padding against text — and
-// leaves one number to argue about instead of a dozen. It composes with the
-// display scale rather than replacing it: this decides how dense the interface
-// is, the operating system decides how large a pixel is.
-const uiScale = 1.5
+// It was 1.5 for a while, to answer a window that read as too small. That was
+// the wrong instrument: a desktop already says how large a unit should be, and
+// multiplying on top of it makes the window bigger than everything beside it on
+// a display that is scaled correctly, which is what happened on two machines.
+// The number stays because the window sizes are expressed in it, so density and
+// the window that holds it cannot drift apart again — but changing it is second
+// -guessing the desktop, and the desktop is usually right.
+const uiScale = 1
 
 func (encedoTheme) Size(n fyne.ThemeSizeName) float32 {
 	// Every size here is in device-independent units, so this and the display

@@ -43,6 +43,21 @@ const prefHEM = "hem-url"
 // else stored is a decision and is left alone.
 const legacyHEM = "https://192.168.7.1"
 
+// appID identifies the application to the desktop it runs on, and it is not
+// decoration. Without it the toolkit refuses to load or save preferences at all
+// — the address typed into the window was written nowhere and read back never —
+// and it is the name under which the settings of this application, and no other,
+// are kept.
+const appID = "com.encedo.wg"
+
+// wmClass is what the window announces itself as, and what a desktop entry has
+// to name in StartupWMClass for the two to be recognised as the same thing.
+// Measured rather than assumed: GLFW takes both parts of WM_CLASS from the
+// window title when nothing else sets them, so a window titled encedo-wg
+// announces ("encedo-wg", "encedo-wg"). It follows windowTitle, which is why
+// they are one constant apart.
+const windowTitle = "encedo-wg"
+
 // guiVersion is this interface's own number, not the client's. They are separate
 // artifacts built differently — the command-line client is static and
 // cross-compiled from one machine, this one needs cgo and a build per platform —
@@ -130,11 +145,22 @@ func main() {
 		os.Exit(2)
 	}
 
-	a := app.New()
+	// Metadata before the application exists, because it is read while it is
+	// being built. Declaring the fyneDo migration is not a formality either: the
+	// toolkit otherwise prints three lines of warning to the terminal at every
+	// launch, about a threading model this program already follows.
+	app.SetMetadata(fyne.AppMetadata{
+		ID:         appID,
+		Name:       windowTitle,
+		Version:    guiVersion,
+		Migrations: map[string]bool{"fyneDo": true},
+	})
+
+	a := app.NewWithID(appID)
 	a.SetIcon(appIcon)
 	a.Settings().SetTheme(th)
 
-	u := &ui{app: a, win: a.NewWindow("encedo-wg"), sess: newFakeSession()}
+	u := &ui{app: a, win: a.NewWindow(windowTitle), sess: newFakeSession()}
 	u.build()
 	u.installTray()
 	u.installCloseIntercept()
@@ -292,11 +318,16 @@ func (u *ui) compose(e Event) {
 // layout does when asked for the impossible: the header keeps its minimum, the
 // footer is placed against it, and the rows that do not fit are drawn over the
 // top of each other. That is what this replaces.
+// Each is a multiple of uiScale rather than a number, because that is what they
+// are: every metric inside the window is scaled by it, so the window that holds
+// them has to be. Written as constants they drift apart at exactly the moment
+// nobody is looking — changing the density and not the window is how the rows
+// came to be drawn over each other once already.
 const (
-	compactHeight  = 480
-	noticeHeight   = 60  // a notice is one more row, and it arrives unannounced
-	advancedHeight = 884 // one row per line in the panel; adding a line costs one
-	windowWidth    = 630
+	compactHeight  = 320 * uiScale
+	noticeHeight   = 40 * uiScale  // a notice is one more row, and it arrives unannounced
+	advancedHeight = 590 * uiScale // one row per line in the panel; adding a line costs one
+	windowWidth    = 420 * uiScale
 )
 
 // resizeForContent gives the window the height the current content needs. Two
@@ -534,19 +565,40 @@ func (u *ui) installCloseIntercept() {
 			return
 		}
 		msg := "Closing this window disconnects the tunnel."
+		dismiss := "Stay connected"
 		if u.hasTr {
-			msg += "\n\nTo keep it running, minimise to the tray instead."
+			msg = "Closing this window disconnects the tunnel. It can wait in the tray instead, with the tunnel up."
+			dismiss = "Keep it in the tray"
 		}
 		d := dialog.NewConfirm("Disconnect?", msg, func(leave bool) {
-			if !leave {
+			if leave {
+				u.quit()
 				return
 			}
-			u.quit()
+			// Declining is not cancelling, where there is a tray: what was
+			// offered was to put the window away and keep the tunnel, so put it
+			// away. Hiding and not minimising is the difference somebody
+			// actually sees — a minimised window keeps its place in the task
+			// bar, so it looks as though nothing was sent anywhere.
+			if u.hasTr {
+				u.win.Hide()
+			}
 		}, u.win)
 		d.SetConfirmText("Disconnect and close")
-		d.SetDismissText("Stay connected")
+		d.SetDismissText(dismiss)
 		d.Show()
 	})
+}
+
+// present brings the window back from wherever it went.
+//
+// Show on its own is not enough, and Windows is where that shows: a window put
+// down by the task bar is minimised rather than hidden, and showing something
+// already shown does nothing at all — the task bar entry blinks and the window
+// stays where it was. Asking for focus is what raises it.
+func (u *ui) present() {
+	u.win.Show()
+	u.win.RequestFocus()
 }
 
 // quit ends the session and the process together.
@@ -572,8 +624,8 @@ func (u *ui) installTray() {
 	if !ok {
 		return
 	}
-	desk.SetSystemTrayMenu(fyne.NewMenu("encedo-wg",
-		fyne.NewMenuItem("Show", func() { u.win.Show() }),
+	desk.SetSystemTrayMenu(fyne.NewMenu(windowTitle,
+		fyne.NewMenuItem("Show", u.present),
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
 		// A tray with no way out is a trap: minimising to it is what keeps the
 		// session, so it has to offer the other thing too.

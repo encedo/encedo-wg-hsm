@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=encedo-wg
+GenericName=VPN client
+Comment=A WireGuard tunnel whose private key never leaves the module
+Exec=encedo-wg-gui
+Icon=encedo-wg
+Terminal=false
+Categories=Network;Security;System;
+Keywords=VPN;WireGuard;Encedo;HEM;
+
+# StartupWMClass is how the desktop recognises the window as belonging to this
+# entry. Without a match GNOME has an entry with an icon and a window with no
+# icon, and cannot tell they are the same application: the dash shows its own
+# placeholder beside a tray icon that is correct, which is exactly as unfinished
+# as it looks.
+#
+# The value is measured, not guessed. GLFW takes both parts of WM_CLASS from the
+# window title when nothing sets them, and the window is titled encedo-wg, so it
+# announces ("encedo-wg", "encedo-wg"). Changing the title changes this.
+StartupWMClass=encedo-wg
