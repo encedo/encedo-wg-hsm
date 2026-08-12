@@ -99,6 +99,7 @@ A peer that never answers is reported and another is offered.
 		ctx: ctx, client: client, tree: tree,
 		useTok: useTok, hemURL: dev.url(), ifname: *ifname,
 		selectNext: repromptPeer,
+		notify:     func(line string) { fmt.Fprintln(os.Stderr, line) },
 	}
 	return t.run(peer)
 }
@@ -120,6 +121,12 @@ type tunnel struct {
 
 	peer *config.Peer
 	psk  []byte
+
+	// notify carries what the tunnel has to say. Five sentences over the life of
+	// a session, and every one of them is something a window would show
+	// differently — a status line, a toast, a coloured dot — so the tunnel
+	// states the fact and lets whoever is watching decide how it appears.
+	notify func(string)
 
 	// selectNext is asked for another peer when the current one never answers.
 	//
@@ -202,17 +209,17 @@ func (t *tunnel) run(peer *config.Peer) error {
 		close(ending)
 	}()
 
-	fmt.Fprintf(os.Stderr, "Interface %s is up.\n", t.ifname)
+	t.notify(fmt.Sprintf("Interface %s is up.", t.ifname))
 
 	if err := t.hold(st, ending); err != nil {
 		t.teardown()
 		return err
 	}
 	if endMsg != "" {
-		fmt.Fprintln(os.Stderr, endMsg)
+		t.notify(endMsg)
 	}
 	t.teardown()
-	fmt.Fprintf(os.Stderr, "Interface %s is down.\n", t.ifname)
+	t.notify(fmt.Sprintf("Interface %s is down.", t.ifname))
 	return nil
 }
 
@@ -223,7 +230,7 @@ func (t *tunnel) run(peer *config.Peer) error {
 func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 	for {
 		if awaitHandshake(t.ifname, ending) {
-			fmt.Fprintf(os.Stderr, "Handshake with %q completed.\n", t.peer.Label)
+			t.notify(fmt.Sprintf("Handshake with %q completed.", t.peer.Label))
 			<-ending
 			return nil
 		}
@@ -242,7 +249,7 @@ func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 		}
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
 		if err := st.save(); err != nil {
-			fmt.Fprintf(os.Stderr, "WARNING: the state file no longer names the active peer: %v\n", err)
+			t.notify(fmt.Sprintf("WARNING: the state file no longer names the active peer: %v", err))
 		}
 	}
 }
