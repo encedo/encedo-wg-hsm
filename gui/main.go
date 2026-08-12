@@ -473,8 +473,7 @@ func (u *ui) renderCountdown(e Event) {
 func (u *ui) installCloseIntercept() {
 	u.win.SetCloseIntercept(func() {
 		if u.latest.State != Connected {
-			_ = u.sess.Close()
-			u.win.Close()
+			u.quit()
 			return
 		}
 		msg := "Closing this window disconnects the tunnel."
@@ -485,13 +484,26 @@ func (u *ui) installCloseIntercept() {
 			if !leave {
 				return
 			}
-			_ = u.sess.Close()
-			u.win.Close()
+			u.quit()
 		}, u.win)
 		d.SetConfirmText("Disconnect and close")
 		d.SetDismissText("Stay connected")
 		d.Show()
 	})
+}
+
+// quit ends the session and the process together.
+//
+// Closing the window is not enough and the tray is why: a tray icon tells the
+// toolkit the application is meant to outlive its windows, so closing the last
+// one left the process running with nothing on screen. For most applications
+// that is the point of a tray. Here it contradicts the arrangement the whole
+// design rests on — the window is the session, and a process that survives it
+// is one holding a credential nobody is watching, which is the thing this
+// client exists not to do.
+func (u *ui) quit() {
+	_ = u.sess.Close()
+	u.app.Quit()
 }
 
 // installTray records whether a tray exists rather than assuming one. Stock
@@ -506,6 +518,9 @@ func (u *ui) installTray() {
 	desk.SetSystemTrayMenu(fyne.NewMenu("encedo-wg",
 		fyne.NewMenuItem("Show", func() { u.win.Show() }),
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
+		// A tray with no way out is a trap: minimising to it is what keeps the
+		// session, so it has to offer the other thing too.
+		fyne.NewMenuItem("Quit", u.quit),
 	))
 	u.hasTr = true
 }
