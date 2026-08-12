@@ -98,6 +98,7 @@ A peer that never answers is reported and another is offered.
 	t := &tunnel{
 		ctx: ctx, client: client, tree: tree,
 		useTok: useTok, hemURL: dev.url(), ifname: *ifname,
+		selectNext: repromptPeer,
 	}
 	return t.run(peer)
 }
@@ -119,6 +120,15 @@ type tunnel struct {
 
 	peer *config.Peer
 	psk  []byte
+
+	// selectNext is asked for another peer when the current one never answers.
+	//
+	// A function rather than a call to the prompt: choosing is the one part of
+	// failover that belongs to whoever is watching. A terminal asks and reads a
+	// line; a window will put up a dialogue, or try the next peer itself and say
+	// so afterwards. The tunnel does not need to know which, and the moment it
+	// does it can only ever be driven from a terminal.
+	selectNext func(tree *config.Tree, failed *config.Peer) (*config.Peer, error)
 
 	// hemInside is whether the current peer's AllowedIPs cover the HEM. The
 	// probe that acts on it waits until the routes are actually in.
@@ -223,7 +233,7 @@ func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 		default:
 		}
 
-		next, err := repromptPeer(t.tree, t.peer)
+		next, err := t.selectNext(t.tree, t.peer)
 		if err != nil {
 			return err
 		}
