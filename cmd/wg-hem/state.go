@@ -24,7 +24,7 @@ func statePath(ifname string) string { return session.Path(ifname) }
 func loadState(ifname string) (*state, error) {
 	s, err := session.Load(ifname)
 	if err != nil {
-		return nil, exitFor(err)
+		return nil, stateExit(err)
 	}
 	return s, nil
 }
@@ -34,12 +34,12 @@ func resolveState(ifname string, explicit bool) (*state, error) {
 		fmt.Fprintf(os.Stderr, "No interface named %s; using %s, the only one running.\n", asked, using)
 	})
 	if err != nil {
-		return nil, exitFor(err)
+		return nil, stateExit(err)
 	}
 	return s, nil
 }
 
-func exitFor(err error) error {
+func stateExit(err error) error {
 	switch {
 	case errors.Is(err, session.ErrNotRunning):
 		return failf(exitUsage, "%w", err)
