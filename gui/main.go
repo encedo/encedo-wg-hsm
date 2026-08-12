@@ -559,35 +559,46 @@ func (u *ui) renderCountdown(e Event) {
 // matters. Closing the window ends the tunnel, because the process holding the
 // token is this one; minimising keeps it, where there is a tray to minimise to.
 func (u *ui) installCloseIntercept() {
-	u.win.SetCloseIntercept(func() {
-		if u.latest.State != Connected {
+	u.win.SetCloseIntercept(u.askToClose)
+}
+
+// askToClose is the single place that decides what leaving means, because there
+// is more than one way to ask for it and they were not agreeing: the window made
+// somebody confirm, and the tray's Quit — the same decision, two clicks away —
+// ended the tunnel without a word.
+func (u *ui) askToClose() {
+	if u.latest.State != Connected {
+		u.quit()
+		return
+	}
+	// The question needs a window to be asked in. Reached from the tray the
+	// window may be hidden, and a dialogue drawn on a hidden window is, from the
+	// outside, an application that has stopped responding.
+	u.present()
+
+	msg := "Closing this window disconnects the tunnel."
+	dismiss := "Stay connected"
+	if u.hasTr {
+		msg = "Closing this window disconnects the tunnel. It can wait in the tray instead, with the tunnel up."
+		dismiss = "Keep it in the tray"
+	}
+	d := dialog.NewConfirm("Disconnect?", msg, func(leave bool) {
+		if leave {
 			u.quit()
 			return
 		}
-		msg := "Closing this window disconnects the tunnel."
-		dismiss := "Stay connected"
+		// Declining is not cancelling, where there is a tray: what was offered
+		// was to put the window away and keep the tunnel, so put it away.
+		// Hiding and not minimising is the difference somebody actually sees —
+		// a minimised window keeps its place in the task bar, so it looks as
+		// though nothing was sent anywhere.
 		if u.hasTr {
-			msg = "Closing this window disconnects the tunnel. It can wait in the tray instead, with the tunnel up."
-			dismiss = "Keep it in the tray"
+			u.win.Hide()
 		}
-		d := dialog.NewConfirm("Disconnect?", msg, func(leave bool) {
-			if leave {
-				u.quit()
-				return
-			}
-			// Declining is not cancelling, where there is a tray: what was
-			// offered was to put the window away and keep the tunnel, so put it
-			// away. Hiding and not minimising is the difference somebody
-			// actually sees — a minimised window keeps its place in the task
-			// bar, so it looks as though nothing was sent anywhere.
-			if u.hasTr {
-				u.win.Hide()
-			}
-		}, u.win)
-		d.SetConfirmText("Disconnect and close")
-		d.SetDismissText(dismiss)
-		d.Show()
-	})
+	}, u.win)
+	d.SetConfirmText("Disconnect and close")
+	d.SetDismissText(dismiss)
+	d.Show()
 }
 
 // present brings the window back from wherever it went.
@@ -628,8 +639,10 @@ func (u *ui) installTray() {
 		fyne.NewMenuItem("Show", u.present),
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
 		// A tray with no way out is a trap: minimising to it is what keeps the
-		// session, so it has to offer the other thing too.
-		fyne.NewMenuItem("Quit", u.quit),
+		// session, so it has to offer the other thing too — and it asks the
+		// same question the window asks, rather than ending a live tunnel from
+		// a menu without one.
+		fyne.NewMenuItem("Quit", u.askToClose),
 	))
 	u.hasTr = true
 }
