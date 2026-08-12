@@ -294,8 +294,8 @@ func (u *ui) compose(e Event) {
 // top of each other. That is what this replaces.
 const (
 	compactHeight  = 480
-	noticeHeight   = 60 // a notice is one more row, and it arrives unannounced
-	advancedHeight = 860
+	noticeHeight   = 60  // a notice is one more row, and it arrives unannounced
+	advancedHeight = 884 // one row per line in the panel; adding a line costs one
 	windowWidth    = 630
 )
 
@@ -454,10 +454,28 @@ func (u *ui) render(e Event) {
 
 	u.renderCountdown(e)
 	u.advText.SetText(fmt.Sprintf(
-		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v\ndisplay        %s",
+		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr, u.displayInfo()))
 
 	u.compose(e)
+}
+
+// displayInfo reports the scale the toolkit was given and the size that produces
+// on this screen.
+//
+// It is here because "the window is too small" is not something two people can
+// compare. Every measurement in the program is in device-independent units, so
+// the same window is physically larger or smaller purely by what the desktop
+// says a unit is worth — and a virtual machine can report 1 on a panel where the
+// host reports 2, which looks exactly like a layout that was built too small.
+// One number tells those two apart; no amount of looking does.
+func (u *ui) displayInfo() string {
+	if u.win == nil || u.win.Canvas() == nil {
+		return "—"
+	}
+	s := u.win.Canvas().Scale()
+	sz := u.win.Canvas().Size()
+	return fmt.Sprintf("%.2fx → %.0f×%.0f px", s, sz.Width*s, sz.Height*s)
 }
 
 // showNotice gives the one line worth reading a ground of its own. Failover and
