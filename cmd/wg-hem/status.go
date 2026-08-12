@@ -44,6 +44,28 @@ device, which needs a token and therefore the passphrase.
 		return err
 	}
 
+	// The device is spoken to first, though what it says is printed last.
+	//
+	// It is the only step here that asks for anything, and asked in the place
+	// its answer belongs — under the live figures — the passphrase prompt
+	// arrived at the foot of a screenful of output, where it reads as a program
+	// that has finished rather than one waiting for a person. The report keeps
+	// the order it had; only the question moved.
+	var (
+		tree    *config.Tree
+		loadErr error
+	)
+	if !*noVerify {
+		if *dev.hem == "" {
+			*dev.hem = st.HEMURL
+		}
+		var auth *authenticator
+		_, auth, tree, loadErr = dev.load(context.Background())
+		if auth != nil {
+			defer auth.wipe()
+		}
+	}
+
 	fmt.Printf("interface %s\n", st.Interface)
 	fmt.Printf("pid %d\n", st.PID)
 	fmt.Printf("uptime %s\n", time.Since(st.Started).Truncate(time.Second))
@@ -99,16 +121,10 @@ device, which needs a token and therefore the passphrase.
 		fmt.Printf("config.verified skipped\n")
 		return nil
 	}
-
-	if *dev.hem == "" {
-		*dev.hem = st.HEMURL
-	}
-	_, auth, tree, err := dev.load(context.Background())
-	if err != nil {
+	if loadErr != nil {
 		fmt.Printf("config.verified false\n")
-		return err
+		return loadErr
 	}
-	defer auth.wipe()
 
 	fmt.Printf("config.verified true\n")
 	fmt.Printf("config.peers %d\n", len(tree.Peers))
