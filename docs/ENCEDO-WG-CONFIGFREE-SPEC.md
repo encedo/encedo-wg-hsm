@@ -244,7 +244,7 @@ Consequences:
 
 ### 6.2 Client startup (`wg-hem up`)
 
-1. Authenticate to HEM. For PPA the address is known (192.168.7.1) — startup with literally no arguments; for EPA: URL from argument/env (still not a file) or discovery.
+1. Authenticate to HEM. For PPA the address is known (`https://my.ence.do`, a name because the connection is TLS) — startup with literally no arguments; for EPA: URL from argument/env (still not a file) or discovery.
 2. `key/search` prefix `WG:if:` → if key + descr (search returns descr in results — confirmed in docs) → parse.
 3. `key/search` prefix `WG:pr:` → all peer records with descr (paginated; the device returns 15 per page by default). Search does not return public keys, so each candidate needs `/api/keymgmt/get/<kid>` before its PEER_REF can be computed — one `keymgmt:get` token covers all of them, and the same token reads the interface public key. **2 search calls plus one pubkey read per candidate peer.**
 4. Assemble the canonical message → `hmac/verify`. **Failure = hard stop, no fallback.**
@@ -349,7 +349,7 @@ wg-hem provision \
   [--peer …]                        # repeatable; order = PEER_REF priority
   [--psk -]                         # infra-supplied PSK via stdin (NEVER via argv — visible in ps/history)
   [--dns 10.0.0.1] [--mtu 1380] \
-  [--hem https://192.168.7.1]       # default PPA; EPA via flag or env WG_HEM_URL
+  [--hem https://my.ence.do]        # default PPA; EPA via flag or env WG_HEM_URL
 ```
 
 - No flags → interactive wizard (prompts follow the admin data table).
