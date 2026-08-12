@@ -105,6 +105,21 @@ sounds: the failure it replaces is netlink returning "operation not permitted"
 from three layers down, after authentication, at which point the obvious move is
 sudo — which works, and teaches that this client needs root, which it does not.
 
+*One thing on Linux is outside the capability, and it is DNS.* `resolvectl` is a
+privileged interface of its own, and `cap_net_admin` is not a way in: a client
+running on the capability rather than as root is one polkit asks a human about,
+with a dialogue box. Tested on 2026-08-12 — running as root had hidden it
+completely, because root is never asked.
+
+Teardown no longer reverts what it never set, so a tunnel without DNS of its own
+— the ordinary case, and the one that was raising a dialogue on Ctrl+C to undo
+nothing — is clean. A tunnel that *does* carry DNS will still be asked, twice,
+and that is not fixed. Three ways out, in the order they are worth considering:
+ship a polkit rule with the package; give the helper this one job on Linux too,
+where it is otherwise not needed; or write `/etc/resolv.conf` directly, which is
+what wg-quick does and which loses split DNS. Nothing is decided; nobody has hit
+it yet, because the stored configurations in use carry no DNS.
+
 macOS and Windows are where the helper is actually required, because neither has
 an equivalent of `setcap`: there is no way to grant one binary one permission.
 That is two platforms rather than three, and the second of them is the one whose
