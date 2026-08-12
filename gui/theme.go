@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
@@ -16,7 +18,47 @@ import (
 // module; "exposed" means on the host, where anyone with access can read it.
 // Nothing else in the palette competes with them, which is why connecting is the
 // only thing tinted green and failure the only thing tinted rust.
-type encedoTheme struct{}
+type encedoTheme struct {
+	// variant, when it is not variantAuto, overrides what the toolkit reports
+	// the desktop is set to. The zero value follows the desktop, so an
+	// encedoTheme{} means what it always meant.
+	variant variantChoice
+}
+
+// variantChoice is what somebody asked for, which is not always what the desktop
+// says.
+//
+// Two things make the desktop's answer wrong. The one that prompted this: an
+// appearance setting belongs to the account a process runs as, so the window run
+// under sudo — which it must be until the privileged helper lands — asks root
+// and is told light, on a desktop that is set to dark. It comes up as the one
+// pale window among dark ones, and there is nothing to say otherwise with. The
+// other is simply that some people want one scheme regardless, which is a
+// preference and not a bug.
+type variantChoice int
+
+const (
+	variantAuto variantChoice = iota // follow the desktop
+	variantLight
+	variantDark
+)
+
+// themeFor turns what was typed into a theme, or says what it should have been.
+// Refusing an unknown name rather than falling back to the desktop matters
+// because the fallback looks exactly like the problem being worked around: a
+// mistyped -theme dsrk would silently do nothing and read as the override not
+// working.
+func themeFor(name string) (encedoTheme, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "auto", "system":
+		return encedoTheme{}, nil
+	case "dark":
+		return encedoTheme{variant: variantDark}, nil
+	case "light":
+		return encedoTheme{variant: variantLight}, nil
+	}
+	return encedoTheme{}, fmt.Errorf("unknown theme %q: expected auto, dark or light", name)
+}
 
 var _ fyne.Theme = encedoTheme{}
 
@@ -65,7 +107,17 @@ func alpha(c color.Color, a uint8) color.Color {
 	return color.NRGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: a}
 }
 
-func (encedoTheme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
+func (t encedoTheme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
+	// Every colour in the window arrives through here, including the ones the
+	// widgets fetch themselves through theme.Color, so overriding the variant at
+	// this one point covers the whole interface.
+	switch t.variant {
+	case variantLight:
+		v = theme.VariantLight
+	case variantDark:
+		v = theme.VariantDark
+	}
+
 	p := darkPalette
 	if v == theme.VariantLight {
 		p = lightPalette

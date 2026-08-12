@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"os"
 	"strings"
 	"time"
 
@@ -24,15 +25,23 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// defaultHEM is where a personal appliance answers: a fixed address on its own
-// USB link, the same constant the command-line client uses. An enterprise
-// appliance sits somewhere on the network instead, which is why the window has
-// to let somebody say where.
-const defaultHEM = "https://192.168.7.1"
+// defaultHEM is where a personal appliance answers, the same constant the
+// command-line client uses. A name rather than the address behind it, because
+// the connection is TLS and certificates are issued for names. An enterprise
+// appliance sits somewhere else on the network entirely, which is why the window
+// has to let somebody say where.
+const defaultHEM = "https://my.ence.do"
 
 // prefHEM is the key the address is remembered under. It is set once per machine
 // and never again, so remembering it is kinder than asking every launch.
 const prefHEM = "hem-url"
+
+// legacyHEM is what the default used to be, before the appliance was reached by
+// name. Finding it stored is not somebody's choice — it is the old default,
+// written the first time the window was opened — so it is read as unset rather
+// than carried forward into a certificate that was never issued for it. Anything
+// else stored is a decision and is left alone.
+const legacyHEM = "https://192.168.7.1"
 
 // guiVersion is this interface's own number, not the client's. They are separate
 // artifacts built differently — the command-line client is static and
@@ -106,15 +115,24 @@ func main() {
 	// once rather than learn which debug button produces which state.
 	auto := flag.Bool("scenario", false, "play a scripted session instead of waiting for input")
 	showVersion := flag.Bool("version", false, "print the version and exit")
+	// -theme exists because the desktop's answer is not always the right one:
+	// under sudo the appearance setting consulted is root's, not the one whose
+	// desktop this is. See variantChoice.
+	themeName := flag.String("theme", "auto", "colour scheme: auto, dark or light (auto follows the desktop, which under sudo is root's)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("encedo-wg-gui", guiVersion)
 		return
 	}
+	th, err := themeFor(*themeName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	a := app.New()
 	a.SetIcon(appIcon)
-	a.Settings().SetTheme(encedoTheme{})
+	a.Settings().SetTheme(th)
 
 	u := &ui{app: a, win: a.NewWindow("encedo-wg"), sess: newFakeSession()}
 	u.build()
@@ -152,7 +170,7 @@ func (u *ui) build() {
 	u.detail.Wrapping = fyne.TextWrapWord
 
 	u.hem = widget.NewEntry()
-	u.hem.SetText(u.app.Preferences().StringWithFallback(prefHEM, defaultHEM))
+	u.hem.SetText(rememberedHEM(u.app.Preferences().StringWithFallback(prefHEM, defaultHEM)))
 	u.hem.OnSubmitted = u.applyHEM
 	u.hemRow = container.New(layout.NewFormLayout(), widget.NewLabel("looking at"), u.hem)
 
@@ -326,6 +344,15 @@ func (u *ui) onAction() {
 	case Connected:
 		_ = u.sess.Disconnect()
 	}
+}
+
+// rememberedHEM is what was stored, unless what was stored is the address the
+// default used to be. See legacyHEM.
+func rememberedHEM(stored string) string {
+	if strings.TrimSpace(stored) == legacyHEM {
+		return defaultHEM
+	}
+	return stored
 }
 
 // applyHEM remembers the address and points the session at it. Remembered

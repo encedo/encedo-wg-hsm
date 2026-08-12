@@ -28,6 +28,21 @@ import (
 // GNOME offers, and the doubling a 4K panel uses.
 var scales = []float32{1, 1.5, 2}
 
+// shotTheme picks the scheme to render in. The test driver has one variant and
+// it is not a choice anybody makes, so without this only half the palette is
+// ever looked at — and the half that goes unseen is the one somebody eventually
+// runs into by accident:
+//
+//	WG_GUI_SHOTS=/tmp/shots WG_GUI_THEME=light go test -run TestRenderStates
+func shotTheme(t *testing.T) encedoTheme {
+	t.Helper()
+	th, err := themeFor(os.Getenv("WG_GUI_THEME"))
+	if err != nil {
+		t.Fatalf("WG_GUI_THEME: %v", err)
+	}
+	return th
+}
+
 func writeShot(t *testing.T, dir, name string, scale float32, img image.Image) {
 	t.Helper()
 	path := filepath.Join(dir, fmt.Sprintf("%s@%gx.png", name, scale))
@@ -56,7 +71,7 @@ func TestRenderStates(t *testing.T) {
 		event    Event
 		advanced bool
 	}{
-		{"1-no-module", Event{State: NoModule, HEM: "https://192.168.7.1"}, false},
+		{"1-no-module", Event{State: NoModule, HEM: "https://my.ence.do"}, false},
 		{"2-ready", Event{State: Ready}, false},
 		{"3-connecting", Event{State: Connecting}, false},
 		{"4-connected", Event{
@@ -94,7 +109,7 @@ func TestRenderStates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a := test.NewApp()
 			defer a.Quit()
-			a.Settings().SetTheme(encedoTheme{})
+			a.Settings().SetTheme(shotTheme(t))
 
 			u := &ui{app: a, sess: newFakeSession()}
 			defer u.sess.Close()
@@ -139,7 +154,7 @@ func TestRenderIcon(t *testing.T) {
 	}
 	a := test.NewApp()
 	defer a.Quit()
-	a.Settings().SetTheme(encedoTheme{})
+	a.Settings().SetTheme(shotTheme(t))
 
 	for _, px := range []float32{128, 64, 32, 16} {
 		img := canvas.NewImageFromResource(appIcon)
@@ -165,7 +180,7 @@ func TestRenderScenario(t *testing.T) {
 	}
 	a := test.NewApp()
 	defer a.Quit()
-	a.Settings().SetTheme(encedoTheme{})
+	a.Settings().SetTheme(shotTheme(t))
 
 	u := &ui{app: a, sess: newFakeSession()}
 	defer u.sess.Close()
