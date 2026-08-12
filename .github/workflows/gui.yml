@@ -66,13 +66,41 @@ jobs:
         working-directory: gui
         run: go vet ./...
 
+      # cgo means one build per operating system: the compilers and SDKs cannot
+      # be crossed the way the CLI's can. macOS is the exception in the other
+      # direction — one runner holds both architectures' SDKs, so it produces
+      # both. Windows on arm64 would need its own toolchain and is not built.
       - name: Build
         working-directory: gui
-        run: go build -o ../dist-gui/ ./...
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p ../dist-gui
+          case "${{ runner.os }}" in
+            Linux)
+              CGO_ENABLED=1 GOARCH=amd64 go build \
+                -o ../dist-gui/encedo-wg-gui-linux-amd64 .
+              ;;
+            macOS)
+              for arch in arm64 amd64; do
+                CGO_ENABLED=1 GOARCH="$arch" go build \
+                  -o "../dist-gui/encedo-wg-gui-darwin-$arch" .
+              done
+              ;;
+            Windows)
+              # -H=windowsgui suppresses the console window that would otherwise
+              # open behind the interface. Without it every launch shows a black
+              # rectangle nobody asked for.
+              CGO_ENABLED=1 GOARCH=amd64 go build \
+                -ldflags "-H=windowsgui" \
+                -o ../dist-gui/encedo-wg-gui-windows-amd64.exe .
+              ;;
+          esac
+          ls -l ../dist-gui
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: gui-${{ matrix.os }}
+          name: encedo-wg-gui-${{ runner.os }}
           path: dist-gui/
           retention-days: 7
