@@ -58,6 +58,7 @@ type ui struct {
 	body       *fyne.Container
 
 	statusRow *fyne.Container
+	rule      *widget.Separator
 	dot       *canvas.Circle
 	status    *widget.Label
 	detail    *widget.Label
@@ -83,11 +84,12 @@ type ui struct {
 	noticeBox  *fyne.Container
 	warned     bool
 
-	pass    *widget.Entry
-	action  *widget.Button
-	advBox  *widget.Check
-	adv     *fyne.Container
-	advText *widget.Label
+	pass      *widget.Entry
+	action    *widget.Button
+	actionBox fyne.CanvasObject
+	advBox    *widget.Check
+	adv       *fyne.Container
+	advText   *widget.Label
 }
 
 func main() {
@@ -168,6 +170,7 @@ func (u *ui) build() {
 	u.pass.SetPlaceHolder("HEM passphrase")
 	u.pass.OnSubmitted = func(string) { u.onAction() }
 	u.action = widget.NewButton("Connect", u.onAction)
+	u.actionBox = outlined(u.action)
 
 	// The debug panel drives the fake into states that are awkward to reach on
 	// real hardware — a peer going quiet, a token running out — which is the
@@ -178,14 +181,18 @@ func (u *ui) build() {
 		widget.NewSeparator(),
 		u.advText,
 		container.NewGridWithColumns(3,
-			widget.NewButton("Module in", func() { u.sess.setModulePresent(true) }),
-			widget.NewButton("Module out", func() { u.sess.setModulePresent(false) }),
-			widget.NewButton("Peer fails", func() { u.sess.triggerFailover() }),
+			outlined(widget.NewButton("Module in", func() { u.sess.setModulePresent(true) })),
+			outlined(widget.NewButton("Module out", func() { u.sess.setModulePresent(false) })),
+			outlined(widget.NewButton("Peer fails", func() { u.sess.triggerFailover() })),
 		),
-		widget.NewButton("Expire the session now", func() { u.sess.expireNow() }),
+		outlined(widget.NewButton("Expire the session now", func() { u.sess.expireNow() })),
 	)
 	u.advBox = widget.NewCheck("Advanced", func(bool) { u.compose(u.latest) })
 
+	// A rule between what the tunnel is and what you can do about it. Without
+	// one the two run together, and the eye has to work out from wording alone
+	// where reading stops and acting starts.
+	u.rule = widget.NewSeparator()
 	u.head, u.foot = container.NewVBox(), container.NewVBox()
 
 	// Border rather than a plain column: the controls keep the bottom and the
@@ -218,11 +225,11 @@ func (u *ui) compose(e Event) {
 		head = append(head, u.noticeBox)
 	}
 
-	foot := make([]fyne.CanvasObject, 0, 4)
+	foot := []fyne.CanvasObject{u.rule}
 	if e.State == Ready {
 		foot = append(foot, u.pass)
 	}
-	foot = append(foot, u.action, u.advBox)
+	foot = append(foot, u.actionBox, u.advBox)
 	if u.advBox.Checked {
 		foot = append(foot, u.adv)
 	}
@@ -241,10 +248,10 @@ func (u *ui) compose(e Event) {
 // footer is placed against it, and the rows that do not fit are drawn over the
 // top of each other. That is what this replaces.
 const (
-	compactHeight  = 720
-	noticeHeight   = 90 // a notice is one more row, and it arrives unannounced
-	advancedHeight = 1290
-	windowWidth    = 945
+	compactHeight  = 480
+	noticeHeight   = 60 // a notice is one more row, and it arrives unannounced
+	advancedHeight = 860
+	windowWidth    = 630
 )
 
 // resizeForContent gives the window the height the current content needs. Two
@@ -260,6 +267,22 @@ func (u *ui) resizeForContent() {
 		h = advancedHeight
 	}
 	u.win.Resize(fyne.NewSize(windowWidth, h))
+}
+
+// outlined gives a button an edge. Fyne draws a filled rectangle and no border,
+// which on a ground this dark leaves a control that has to be inferred from its
+// label rather than seen as a control.
+//
+// The rule goes behind, with the button inset over it, rather than on top: an
+// overlay would sit between the pointer and the thing it is outlining, and a
+// button that looks right and does not respond is worse than one that looks
+// flat.
+func outlined(b *widget.Button) fyne.CanvasObject {
+	r := canvas.NewRectangle(color.Transparent)
+	r.StrokeColor = theme.Color(theme.ColorNameInputBorder)
+	r.StrokeWidth = 1
+	r.CornerRadius = 4
+	return container.NewStack(r, b)
 }
 
 // onAction is the single button: what it does depends on the state, so nobody
