@@ -54,7 +54,7 @@ func main() {
 	go u.consume()
 	go u.tickCountdown()
 
-	u.win.Resize(fyne.NewSize(420, 400))
+	u.win.Resize(fyne.NewSize(630, 600))
 	u.win.ShowAndRun()
 }
 
@@ -83,7 +83,7 @@ func (u *ui) build() {
 
 	head := container.NewVBox(
 		container.NewBorder(nil, nil,
-			container.NewCenter(container.NewGridWrap(fyne.NewSize(12, 12), u.dot)),
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(16, 16), u.dot)),
 			nil, u.status),
 		u.detail,
 		u.countLbl,

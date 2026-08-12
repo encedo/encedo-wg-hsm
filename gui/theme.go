@@ -116,19 +116,19 @@ func (encedoTheme) Font(s fyne.TextStyle) fyne.Resource { return theme.DefaultTh
 
 func (encedoTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
 
+// uiScale enlarges every metric uniformly. Fyne's defaults are dense for a
+// window somebody glances at rather than works in, and the density was the
+// complaint: text, padding and controls all read as too small at 100%.
+//
+// Multiplying the defaults rather than listing values keeps the proportions the
+// toolkit already balanced — headings against body, padding against text — and
+// leaves one number to argue about instead of a dozen. It composes with the
+// display scale rather than replacing it: this decides how dense the interface
+// is, the operating system decides how large a pixel is.
+const uiScale = 1.5
+
 func (encedoTheme) Size(n fyne.ThemeSizeName) float32 {
-	// Every one of these is in device-independent units, so they scale with the
-	// display rather than against it. There is not a pixel constant anywhere in
-	// this program, which is what makes a 4K screen a non-event.
-	switch n {
-	case theme.SizeNamePadding:
-		return 6
-	case theme.SizeNameInnerPadding:
-		return 10
-	case theme.SizeNameText:
-		return 14
-	case theme.SizeNameInputBorder:
-		return 1
-	}
-	return theme.DefaultTheme().Size(n)
+	// Every size here is in device-independent units, so this and the display
+	// scale multiply cleanly. There is not a pixel constant in the program.
+	return theme.DefaultTheme().Size(n) * uiScale
 }

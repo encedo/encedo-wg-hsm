@@ -106,7 +106,7 @@ func TestRenderStates(t *testing.T) {
 				u.advBox.SetChecked(true)
 			}
 			u.render(tc.event)
-			u.win.Resize(fyne.NewSize(420, 400))
+			u.win.Resize(fyne.NewSize(630, 600))
 
 			// Render at each scale a real display might ask for. Nothing here
 			// is in pixels, so this should change the size of the image and
@@ -116,7 +116,7 @@ func TestRenderStates(t *testing.T) {
 				if c, ok := u.win.Canvas().(test.WindowlessCanvas); ok {
 					c.SetScale(scale)
 				}
-				u.win.Resize(fyne.NewSize(420, 400))
+				u.win.Resize(fyne.NewSize(630, 600))
 				writeShot(t, dir, tc.name, scale, u.win.Canvas().Capture())
 			}
 			t.Logf("wrote %s at %v", tc.name, scales)
