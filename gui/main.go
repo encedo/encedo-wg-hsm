@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -31,6 +32,7 @@ type ui struct {
 	countLbl *widget.Label
 
 	noticeText *widget.Label
+	warned     bool
 	noticeBG   *canvas.Rectangle
 	noticeBox  *fyne.Container
 
@@ -193,7 +195,13 @@ func (u *ui) render(e Event) {
 		u.detail.SetText("")
 	}
 
-	u.pass.Hidden = e.State != Ready
+	// Show/Hide rather than setting Hidden: assigning the field does not tell
+	// the layout to recompute, so the field left a hole where it used to be.
+	if e.State == Ready {
+		u.pass.Show()
+	} else {
+		u.pass.Hide()
+	}
 
 	// Emphasis follows what the user is likely to want next. Connecting is the
 	// act worth highlighting; disconnecting is not something to invite, so the
@@ -254,9 +262,25 @@ func (u *ui) renderCountdown(e Event) {
 		u.countLbl.SetText("")
 		return
 	}
+	left := time.Until(e.ExpiresAt)
 	// Named as an ending rather than a duration: the session does not renew
 	// itself, and a countdown that does not say so invites the assumption.
-	u.countLbl.SetText("Session ends in " + fmtLeft(time.Until(e.ExpiresAt)))
+	u.countLbl.SetText("Session ends in " + fmtLeft(left))
+
+	// The tunnel does not renew itself, so the end of the session arrives as a
+	// disconnection in the middle of somebody's afternoon unless they are told
+	// while there is still time to act. Once, not every second.
+	if left > 0 && left <= warnBefore && !u.warned {
+		u.warned = true
+		// The countdown above already says how long. This says the part it
+		// cannot: that nothing will renew it.
+		u.showNotice("Reconnect before it ends — the session does not renew itself", false)
+		u.app.SendNotification(fyne.NewNotification("encedo-wg",
+			"The tunnel will disconnect in "+fmtLeft(left)+"."))
+	}
+	if left > warnBefore {
+		u.warned = false
+	}
 }
 
 // installCloseIntercept makes the architecture visible at the one moment it
@@ -273,17 +297,20 @@ func (u *ui) installCloseIntercept() {
 		if u.hasTr {
 			msg += "\n\nTo keep it running, minimise to the tray instead."
 		}
-		d := widget.NewLabel(msg)
-		d.Wrapping = fyne.TextWrapWord
-		leave := widget.NewButton("Disconnect and close", func() {
+		// A dialogue over the window, not a replacement for it. Rebuilding the
+		// content to ask a question threw away everything the window was
+		// showing — the notice, the advanced panel, whether it was open — and
+		// answering "stay" rebuilt it from scratch rather than returning to it.
+		d := dialog.NewConfirm("Disconnect?", msg, func(leave bool) {
+			if !leave {
+				return
+			}
 			_ = u.sess.Close()
 			u.win.Close()
-		})
-		leave.Importance = widget.DangerImportance
-		u.win.SetContent(container.NewPadded(container.NewVBox(
-			d, leave,
-			widget.NewButton("Stay connected", func() { u.build() }),
-		)))
+		}, u.win)
+		d.SetConfirmText("Disconnect and close")
+		d.SetDismissText("Stay connected")
+		d.Show()
 	})
 }
 
@@ -305,6 +332,10 @@ func (u *ui) installTray() {
 
 // fmtLeft renders a remaining time the way somebody reads a clock, not the way
 // Go prints a duration: "7h 32m", not "7h32m0s".
+// warnBefore is how much of the session is left when the warning appears. Long
+// enough to finish a call and reconnect; short enough not to nag.
+const warnBefore = 5 * time.Minute
+
 func fmtLeft(d time.Duration) string {
 	if d < 0 {
 		d = 0

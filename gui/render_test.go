@@ -55,6 +55,12 @@ func TestRenderStates(t *testing.T) {
 			State:  Ready,
 			Notice: "the session has expired — connect again to continue",
 		}, false},
+		{"8-expiring", Event{
+			State: Connected, Peer: "head office",
+			ExpiresAt:     now.Add(3 * time.Minute),
+			LastHandshake: now.Add(-12 * time.Second),
+			Rx:            9_112_004, Tx: 2_004_881,
+		}, false},
 		{"7-advanced", Event{
 			State: Connected, Peer: "head office",
 			ExpiresAt:     now.Add(58 * time.Minute),
