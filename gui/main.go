@@ -34,6 +34,13 @@ const defaultHEM = "https://192.168.7.1"
 // and never again, so remembering it is kinder than asking every launch.
 const prefHEM = "hem-url"
 
+// guiVersion is this interface's own number, not the client's. They are separate
+// artifacts built differently — the command-line client is static and
+// cross-compiled from one machine, this one needs cgo and a build per platform —
+// and they will not move in step, so pretending they share a version would be a
+// claim neither of them keeps.
+const guiVersion = "0.9"
+
 // warnBefore is how much of the session is left when the warning appears. Long
 // enough to finish a call and reconnect; short enough not to nag.
 const warnBefore = 5 * time.Minute
@@ -98,7 +105,12 @@ func main() {
 	// -scenario plays the life of a session end to end so somebody can watch it
 	// once rather than learn which debug button produces which state.
 	auto := flag.Bool("scenario", false, "play a scripted session instead of waiting for input")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("encedo-wg-gui", guiVersion)
+		return
+	}
 
 	a := app.New()
 	a.SetIcon(appIcon)
@@ -415,8 +427,8 @@ func (u *ui) render(e Event) {
 
 	u.renderCountdown(e)
 	u.advText.SetText(fmt.Sprintf(
-		"state          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
+		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
 }
