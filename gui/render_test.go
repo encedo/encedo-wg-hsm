@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -20,6 +22,24 @@ import (
 // Set WG_GUI_SHOTS to a directory to keep the images:
 //
 //	WG_GUI_SHOTS=/tmp/shots go test -run TestRenderStates ./...
+//
+// scales are the ones a real display asks for: unscaled, the fractional step
+// GNOME offers, and the doubling a 4K panel uses.
+var scales = []float32{1, 1.5, 2}
+
+func writeShot(t *testing.T, dir, name string, scale float32, img image.Image) {
+	t.Helper()
+	path := filepath.Join(dir, fmt.Sprintf("%s@%gx.png", name, scale))
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create %s: %v", path, err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("encode %s: %v", path, err)
+	}
+}
+
 func TestRenderStates(t *testing.T) {
 	dir := os.Getenv("WG_GUI_SHOTS")
 	if dir == "" {
@@ -73,6 +93,7 @@ func TestRenderStates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			a := test.NewApp()
 			defer a.Quit()
+			a.Settings().SetTheme(encedoTheme{})
 
 			u := &ui{app: a, sess: newFakeSession()}
 			defer u.sess.Close()
@@ -87,17 +108,18 @@ func TestRenderStates(t *testing.T) {
 			u.render(tc.event)
 			u.win.Resize(fyne.NewSize(420, 400))
 
-			img := u.win.Canvas().Capture()
-			path := filepath.Join(dir, tc.name+".png")
-			f, err := os.Create(path)
-			if err != nil {
-				t.Fatalf("create %s: %v", path, err)
+			// Render at each scale a real display might ask for. Nothing here
+			// is in pixels, so this should change the size of the image and
+			// nothing else — if a layout breaks at 2x, it breaks because
+			// something was measured in the wrong units.
+			for _, scale := range scales {
+				if c, ok := u.win.Canvas().(test.WindowlessCanvas); ok {
+					c.SetScale(scale)
+				}
+				u.win.Resize(fyne.NewSize(420, 400))
+				writeShot(t, dir, tc.name, scale, u.win.Canvas().Capture())
 			}
-			defer f.Close()
-			if err := png.Encode(f, img); err != nil {
-				t.Fatalf("encode %s: %v", path, err)
-			}
-			t.Logf("wrote %s (%v)", path, img.Bounds().Size())
+			t.Logf("wrote %s at %v", tc.name, scales)
 		})
 	}
 }

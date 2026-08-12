@@ -45,6 +45,7 @@ type ui struct {
 
 func main() {
 	a := app.New()
+	a.Settings().SetTheme(encedoTheme{})
 	u := &ui{app: a, win: a.NewWindow("encedo-wg"), sess: newFakeSession()}
 	u.build()
 	u.installTray()
