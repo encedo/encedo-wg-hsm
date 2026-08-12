@@ -342,10 +342,15 @@ func (t *tunnel) pubPath() string { return runDir + "/" + t.ifname + ".pub" }
 // host as it was found. Every way out goes through it, so the abort path cannot
 // drift from the one that runs on Ctrl+C.
 func (t *tunnel) teardown() {
+	// DNS goes back before the device closes, not after. Closing removes the
+	// interface, and `resolvectl revert` on an interface that is gone prints
+	// "Failed to resolve interface: No such device" on its own stderr — so every
+	// clean shutdown ended with an error message about a failure that had not
+	// happened. Seen in the 7.5-hour soak of 2026-08-11.
+	rt.RevertDNS(t.ifname)
 	if t.dev != nil {
 		t.dev.Close()
 	}
-	rt.RevertDNS(t.ifname)
 	_ = rt.Down(t.ifname)
 	if t.pins != nil {
 		t.pins.Restore()

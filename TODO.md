@@ -6,7 +6,9 @@ picked up cold; the specification sections they refer to are in
 
 Status as of 0.9.1: `provision`, `verify`, `up`, `down`, `status`, `peer` and
 `wipe` all work against real hardware, tested Linux-to-Linux against a stock
-kernel WireGuard server.
+kernel WireGuard server. A 7.5-hour soak on 2026-08-11 held 224 rekeys with no
+repeated secret, no retry and no drift in device latency, and ended on token
+expiry exactly as designed.
 
 ---
 
@@ -329,14 +331,9 @@ administrator's origin, re-trusted on every load.
 
 Deferred until the new firmware is available; the client side is ready.
 
-- Long rekey soak. Each handshake costs two HEM round trips and WireGuard rekeys
-  roughly every two minutes, so hours of running is the only way to see whether
-  the ECDH path is stable. Watch that the handshake age never approaches
-  `REJECT_AFTER_TIME` (180 s). `wg-hem up --debug` traces every ECDH for this.
 - HEM lost mid-tunnel: three retries, then a clean interface shutdown rather than
-  a tunnel that stays up and silent.
-- Token expiry, which is the same shutdown by a different route and needs to be
-  told apart from the above.
+  a tunnel that stays up and silent. Token expiry exercises the same shutdown by
+  a different route and has now been seen; losing the device itself has not.
 - Full-tunnel variant (`allowed-ips=0.0.0.0/0`). The only untested path in
   `internal/runtime`: endpoints the tunnel would swallow are pinned to the
   pre-tunnel gateway, and the HEM is probed but deliberately not pinned.

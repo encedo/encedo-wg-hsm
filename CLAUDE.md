@@ -297,9 +297,15 @@ and no PSK, split tunnel:
 Round-trip time through the tunnel matched the raw RTT to the endpoint within
 about a millisecond: the HEM is on the handshake path, not the data path.
 
-**Not tested:** long rekey soak, HEM lost mid-tunnel, token expiry, full-tunnel
-routing, failover across more than one candidate, and both non-Linux platforms.
-`down` was not exercised in that session either. See `TODO.md`.
+**Soaked on 2026-08-11**, 7.5 hours on one tunnel: 225 ECDH calls with no gap in
+the sequence, 224 ephemeral shared secrets and 224 distinct values, rekeys at
+120-123 s against a 180 s limit, and device latency flat from first hour to last
+(238 ms median, 237 ms in the second half). Not one call needed a retry. It ended
+on token expiry — three attempts, then a clean shutdown — which is the documented
+behaviour and the second thing that run confirmed.
+
+**Still not tested:** losing the device mid-tunnel, full-tunnel routing, failover
+across more than one candidate, and both non-Linux platforms. See `TODO.md`.
 
 ## Implemented
 
