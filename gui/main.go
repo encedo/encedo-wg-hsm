@@ -4,6 +4,8 @@
 package main
 
 import (
+	_ "embed"
+
 	"context"
 	"fmt"
 	"image/color"
@@ -54,8 +56,16 @@ type ui struct {
 	advText *widget.Label
 }
 
+//go:embed icon.svg
+var iconSVG []byte
+
+// appIcon is the mark in the dock, the task bar and the tray. SVG rather than a
+// bitmap so it is drawn at whatever size each of those asks for.
+var appIcon = fyne.NewStaticResource("encedo-wg.svg", iconSVG)
+
 func main() {
 	a := app.New()
+	a.SetIcon(appIcon)
 	a.Settings().SetTheme(encedoTheme{})
 	u := &ui{app: a, win: a.NewWindow("encedo-wg"), sess: newFakeSession()}
 	u.build()

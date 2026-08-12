@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- The boundary and what stays inside it. The ring is the module; the dot is
+       the key, which never crosses it. Two shapes, and neither borrowed from the
+       category's shared vocabulary: not a padlock, not a shield, not a globe,
+       not a keyhole. It is the window's status dot promoted to a mark, so the
+       application and its icon say the same thing in the same colours.
+
+       Proportioned for 16 px, where a tray puts it, rather than for the 128 px
+       where it looks best. A first attempt used a 5-unit ring and a 20-unit
+       radius: legible large, and at 16 px the ring simply disappeared, leaving a
+       dark square with a speck in it. The ring is now an eighth of the width and
+       the contrast is carried by a light stroke on a dark ground, both of which
+       survive being drawn two pixels wide. -->
+  <rect width="64" height="64" rx="14" fill="#0A0E0E"/>
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#C7D4CF" stroke-width="8"/>
+  <circle cx="32" cy="32" r="10" fill="#47C6A3"/>
+</svg>

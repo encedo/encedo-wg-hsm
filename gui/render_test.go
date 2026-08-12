@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/test"
 )
 
@@ -121,5 +122,30 @@ func TestRenderStates(t *testing.T) {
 			}
 			t.Logf("wrote %s at %v", tc.name, scales)
 		})
+	}
+}
+
+// TestRenderIcon draws the application mark at the sizes a dock, a task bar and
+// a tray actually ask for. A mark that only works at 64 px is a mark nobody sees
+// working, since every place it appears is smaller than that.
+func TestRenderIcon(t *testing.T) {
+	dir := os.Getenv("WG_GUI_SHOTS")
+	if dir == "" {
+		t.Skip("set WG_GUI_SHOTS to a directory to render the icon")
+	}
+	a := test.NewApp()
+	defer a.Quit()
+	a.Settings().SetTheme(encedoTheme{})
+
+	for _, px := range []float32{128, 64, 32, 16} {
+		img := canvas.NewImageFromResource(appIcon)
+		img.FillMode = canvas.ImageFillContain
+		w := test.NewWindow(img)
+		// Without this the window pads the image, and at 16 px the padding is
+		// most of the icon — measuring the padding rather than the mark.
+		w.SetPadded(false)
+		w.Resize(fyne.NewSize(px, px))
+		writeShot(t, dir, fmt.Sprintf("icon-%gpx", px), 1, w.Canvas().Capture())
+		w.Close()
 	}
 }
