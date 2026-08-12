@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -145,6 +146,23 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Before anything is drawn: a window that appears and vanishes is worse than
+	// no window. A failure to tell either way is not a reason to refuse to
+	// start — it leaves the rule unenforced, which is where this began.
+	var ln net.Listener
+	if dir, derr := instanceDir(); derr != nil {
+		fmt.Fprintf(os.Stderr, "WARNING: cannot tell whether another window is open: %v\n", derr)
+	} else {
+		var handedOver bool
+		ln, handedOver, err = claimInstance(dir)
+		if handedOver {
+			return
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: cannot tell whether another window is open: %v\n", err)
+		}
+	}
+
 	// Metadata before the application exists, because it is read while it is
 	// being built. Declaring the fyneDo migration is not a formality either: the
 	// toolkit otherwise prints three lines of warning to the terminal at every
@@ -162,6 +180,11 @@ func main() {
 
 	u := &ui{app: a, win: a.NewWindow(windowTitle), sess: newFakeSession()}
 	u.build()
+	// Now that there is a window to show, start answering the launches that ask
+	// for it. Through fyne.Do: the request arrives on the listener's goroutine.
+	if ln != nil {
+		go serveInstance(ln, func() { fyne.Do(u.present) })
+	}
 	u.installTray()
 	u.installCloseIntercept()
 
