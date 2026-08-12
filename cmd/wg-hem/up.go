@@ -119,6 +119,17 @@ type tunnel struct {
 	hsm  *rt.HSM
 	pins *rt.Pins
 
+	// dnsSet records that this process gave the resolver something, so that
+	// teardown only takes back what it gave.
+	//
+	// Undoing what was never done is not free here. `resolvectl revert` is a
+	// privileged call, and now that the client runs on a capability instead of
+	// as root, a privileged call it is not entitled to make is one polkit asks a
+	// human about: Ctrl+C on a tunnel with no DNS of its own raised an
+	// authentication dialogue, on a desktop, to undo nothing. Running as root
+	// hid this — root is never asked.
+	dnsSet bool
+
 	peer *config.Peer
 	psk  []byte
 
@@ -350,8 +361,11 @@ func (t *tunnel) configureInterface() error {
 	if err := rt.AddRoutes(t.ifname, t.peer.AllowedIPs); err != nil {
 		return failf(exitDevice, "installing routes: %w", err)
 	}
-	if err := rt.SetDNS(t.ifname, dnsServers(t.tree)); err != nil {
-		return failf(exitDevice, "setting DNS: %w", err)
+	if servers := dnsServers(t.tree); len(servers) > 0 {
+		if err := rt.SetDNS(t.ifname, servers); err != nil {
+			return failf(exitDevice, "setting DNS: %w", err)
+		}
+		t.dnsSet = true
 	}
 	// With the routes in place, confirm the HEM is still there. It is consulted
 	// at every handshake, so losing it is not a degraded tunnel — it is one that
@@ -375,7 +389,9 @@ func (t *tunnel) teardown() {
 	// "Failed to resolve interface: No such device" on its own stderr — so every
 	// clean shutdown ended with an error message about a failure that had not
 	// happened. Seen in the 7.5-hour soak of 2026-08-11.
-	rt.RevertDNS(t.ifname)
+	if t.dnsSet {
+		rt.RevertDNS(t.ifname)
+	}
 	if t.dev != nil {
 		t.dev.Close()
 	}

@@ -4,10 +4,12 @@ package runtime
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/vishvananda/netlink"
@@ -167,11 +169,34 @@ func SetDNS(ifname string, servers []string) error {
 	return run("resolvectl", "domain", ifname, "~.")
 }
 
+// RevertDNS gives the resolver back what it had. It is best-effort by
+// construction — it runs while the tunnel is being dismantled, where there is
+// nothing useful left to do about a failure.
+//
+// Its output is captured rather than passed through, which is the difference
+// between a clean shutdown and one that appears to have gone wrong. resolvectl
+// writes to its own stderr, so `Failed to resolve interface "wg0": No such
+// device` used to appear over our shoulder, in systemd's voice, as the last line
+// of a normal exit. When the interface is already gone there is nothing left to
+// revert and nothing to say; anything else is worth one line, in ours.
 func RevertDNS(ifname string) {
 	if _, err := exec.LookPath("resolvectl"); err != nil {
 		return
 	}
-	_ = run("resolvectl", "revert", ifname)
+	out, err := exec.Command("resolvectl", "revert", ifname).CombinedOutput()
+	if err == nil || !linkExists(ifname) {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "WARNING: leaving the DNS settings on %s: %s\n",
+		ifname, strings.TrimSpace(string(out)))
+}
+
+// linkExists reports whether the interface is still there. It separates the two
+// reasons a revert fails: one where the settings went with the interface, and
+// one where they did not.
+func linkExists(ifname string) bool {
+	_, err := netlink.LinkByName(ifname)
+	return err == nil
 }
 
 func UAPIListen(ifname string) (net.Listener, error) {

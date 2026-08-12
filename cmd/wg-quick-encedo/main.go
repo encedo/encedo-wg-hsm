@@ -201,11 +201,19 @@ func cmdUp(ifname, cfgPath string) {
 	// same teardown serves both ways out, so the abort path cannot drift from
 	// the one that runs on Ctrl+C.
 	exceptions := &rt.Pins{}
+
+	// dnsSet records that the resolver was given something, so teardown takes
+	// back only what was given. See the note on wg-hem's field of the same name:
+	// reverting what was never set is a privileged call this process is not
+	// entitled to make, and polkit answers that with a dialogue box on Ctrl+C.
+	dnsSet := false
 	teardown := func() {
 		// See the note in wg-hem's teardown: reverting DNS after the device is
 		// closed makes resolvectl complain about an interface that is already
 		// gone, on every clean shutdown.
-		rt.RevertDNS(ifname)
+		if dnsSet {
+			rt.RevertDNS(ifname)
+		}
 		wgdev.Close()
 		_ = rt.Down(ifname)
 		exceptions.Restore()
@@ -232,8 +240,11 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 10d. DNS
-	if err := rt.SetDNS(ifname, cfg.Interface.DNS); err != nil {
-		fail("setting DNS: %v", err)
+	if len(cfg.Interface.DNS) > 0 {
+		if err := rt.SetDNS(ifname, cfg.Interface.DNS); err != nil {
+			fail("setting DNS: %v", err)
+		}
+		dnsSet = true
 	}
 
 	// 10e. With the routes in place, confirm the HEM is still there. It is
