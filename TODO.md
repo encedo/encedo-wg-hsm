@@ -323,6 +323,15 @@ Deliberately set aside, not forgotten. The thread: a service provider wants to
 deploy keys for many users, and today `provision` serves one person at a
 terminal. Nothing here is started.
 
+**Extract the tunnel from the CLI shell.** Started, and the groundwork is done.
+The tunnel no longer reads a terminal to choose a peer after a failover, no
+longer writes to stderr, and no longer speaks in exit codes: all three are
+injected or named in `internal/session`, which is also where the state file now
+lives. What is left is the move itself — `tunnel`, `awaitHandshake` and the UAPI
+builders out of `cmd/wg-hem` — and it is mechanical, because the couplings that
+would have made it a redesign are gone. This is what the graphical client needs
+before it can drop its fake.
+
 **Extract the provisioner core from the CLI shell.** `cmdProvision` interleaves
 flag parsing, validation and device work in one function and returns its result
 through `fmt.Println`, so nothing but `os.Args` can drive it. Splitting it into
