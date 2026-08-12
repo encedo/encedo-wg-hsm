@@ -56,7 +56,7 @@ func TestRenderStates(t *testing.T) {
 		event    Event
 		advanced bool
 	}{
-		{"1-no-module", Event{State: NoModule}, false},
+		{"1-no-module", Event{State: NoModule, HEM: "https://192.168.7.1"}, false},
 		{"2-ready", Event{State: Ready}, false},
 		{"3-connecting", Event{State: Connecting}, false},
 		{"4-connected", Event{
@@ -83,7 +83,7 @@ func TestRenderStates(t *testing.T) {
 			Rx:            9_112_004, Tx: 2_004_881,
 		}, false},
 		{"7-advanced", Event{
-			State: Connected, Peer: "head office",
+			State: Connected, Peer: "head office", HEM: "https://epa.acme.example",
 			ExpiresAt:     now.Add(58 * time.Minute),
 			LastHandshake: now.Add(-9 * time.Second),
 			Rx:            902_144, Tx: 331_008,
@@ -117,7 +117,11 @@ func TestRenderStates(t *testing.T) {
 				if c, ok := u.win.Canvas().(test.WindowlessCanvas); ok {
 					c.SetScale(scale)
 				}
-				u.win.Resize(fyne.NewSize(630, 600))
+				// Resize to a different size first: the driver lays out on a
+				// size change, and asking for the size it already has is a
+				// no-op, so a window whose children changed visibility would be
+				// captured with the layout it had before they did.
+				u.resizeForContent()
 				writeShot(t, dir, tc.name, scale, u.win.Canvas().Capture())
 			}
 			t.Logf("wrote %s at %v", tc.name, scales)

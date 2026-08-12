@@ -42,6 +42,14 @@ type Event struct {
 	State State
 	Peer  string
 
+	// HEM is where the module is being looked for. It belongs in the state
+	// rather than in a settings dialogue: a personal appliance answers at a
+	// fixed address on its own link and nobody ever changes it, while an
+	// enterprise one is somewhere on the network and cannot be guessed. The
+	// window has to be able to say which it is looking at, or "no module" is
+	// indistinguishable from "wrong address".
+	HEM string
+
 	// ExpiresAt is read from the token, never computed from the requested
 	// session length. A soak run on 2026-08-11 asked for eight hours and the
 	// session ended after seven and a half; a countdown derived from the request

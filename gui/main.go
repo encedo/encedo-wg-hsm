@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"image/color"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -23,6 +24,27 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// defaultHEM is where a personal appliance answers: a fixed address on its own
+// USB link, the same constant the command-line client uses. An enterprise
+// appliance sits somewhere on the network instead, which is why the window has
+// to let somebody say where.
+const defaultHEM = "https://192.168.7.1"
+
+// prefHEM is the key the address is remembered under. It is set once per machine
+// and never again, so remembering it is kinder than asking every launch.
+const prefHEM = "hem-url"
+
+// warnBefore is how much of the session is left when the warning appears. Long
+// enough to finish a call and reconnect; short enough not to nag.
+const warnBefore = 5 * time.Minute
+
+//go:embed icon.svg
+var iconSVG []byte
+
+// appIcon is the mark in the dock, the task bar and the tray. SVG rather than a
+// bitmap so it is drawn at whatever size each of them asks for.
+var appIcon = fyne.NewStaticResource("encedo-wg.svg", iconSVG)
+
 type ui struct {
 	app    fyne.App
 	win    fyne.Window
@@ -30,16 +52,26 @@ type ui struct {
 	hasTr  bool
 	latest Event
 
-	dot    *canvas.Circle
-	status *widget.Label
-	detail *widget.Label
+	// The two columns are rebuilt from the state rather than having their rows
+	// shown and hidden. See compose.
+	head, foot *fyne.Container
+	body       *fyne.Container
 
-	// fields is the middle of the window: what the tunnel is doing, as label
-	// and value. It fills space that was empty with something true, and the
-	// values are monospaced because that is the vernacular of the subject —
-	// endpoints, byte counts, key identifiers — and the typeface the product
-	// page uses for exactly the same reason.
-	head     *fyne.Container
+	statusRow *fyne.Container
+	dot       *canvas.Circle
+	status    *widget.Label
+	detail    *widget.Label
+
+	// hemRow says which address the module is being looked for at. Offered on
+	// the one screen where the question arises, because "no module" and "wrong
+	// address" are indistinguishable from the outside.
+	hem    *widget.Entry
+	hemRow *fyne.Container
+
+	// fields is the middle of the window: what the tunnel is doing, as label and
+	// value. Values are monospaced because that is the vernacular of the subject
+	// — endpoints, byte counts, key identifiers — and the typeface the product
+	// page uses for the same reason.
 	fields   *fyne.Container
 	fPeer    *widget.Label
 	fMoved   *widget.Label
@@ -47,23 +79,16 @@ type ui struct {
 	fExpires *widget.Label
 
 	noticeText *widget.Label
-	warned     bool
 	noticeBG   *canvas.Rectangle
 	noticeBox  *fyne.Container
+	warned     bool
 
 	pass    *widget.Entry
 	action  *widget.Button
-	adv     *fyne.Container
 	advBox  *widget.Check
+	adv     *fyne.Container
 	advText *widget.Label
 }
-
-//go:embed icon.svg
-var iconSVG []byte
-
-// appIcon is the mark in the dock, the task bar and the tray. SVG rather than a
-// bitmap so it is drawn at whatever size each of those asks for.
-var appIcon = fyne.NewStaticResource("encedo-wg.svg", iconSVG)
 
 func main() {
 	// -scenario plays the life of a session end to end so somebody can watch it
@@ -74,6 +99,7 @@ func main() {
 	a := app.New()
 	a.SetIcon(appIcon)
 	a.Settings().SetTheme(encedoTheme{})
+
 	u := &ui{app: a, win: a.NewWindow("encedo-wg"), sess: newFakeSession()}
 	u.build()
 	u.installTray()
@@ -82,34 +108,37 @@ func main() {
 	go u.consume()
 	go u.tickCountdown()
 	if *auto {
-		go u.sess.play(func(what string) {
-			fyne.Do(func() { u.status.SetText(u.status.Text) })
-			println("scenario:", what)
-		})
+		go u.sess.play(func(what string) { println("scenario:", what) })
 	}
 
-	// Fixed: there is nothing here that benefits from more room, and a window
-	// of three states stretched across a large display reads as a mistake. It
-	// also removes the maximise button, which is the honest signal — a control
-	// that does nothing useful is worse than no control.
-	//
-	// The size accommodates the advanced panel with its debug rows open, so
-	// nothing is clipped when it is; the alternative, sizing to content, would
-	// make the window jump every time the state changed.
+	// Fixed: nothing here benefits from more room, and three states stretched
+	// across a large display read as a mistake. It also removes the maximise
+	// button, which is the honest signal — a control that does nothing useful is
+	// worse than no control. The size accommodates the advanced panel with its
+	// debug rows open, so nothing is clipped when somebody opens it.
 	u.win.SetFixedSize(true)
-	u.win.Resize(fyne.NewSize(630, 600))
+	u.resizeForContent()
 	u.win.ShowAndRun()
 }
 
 func (u *ui) build() {
-	// The dot carries the state before any word is read. That is the one thing
-	// this interface has to do well: somebody restoring the window from the tray
-	// should know where they stand without parsing a sentence.
+	// The dot carries the state before any word is read: somebody restoring the
+	// window from the tray should know where they stand without parsing a
+	// sentence.
 	u.dot = canvas.NewCircle(color.Transparent)
 	u.status = widget.NewLabel("")
 	u.status.TextStyle = fyne.TextStyle{Bold: true}
+	u.statusRow = container.NewBorder(nil, nil,
+		container.NewCenter(container.NewGridWrap(fyne.NewSize(16, 16), u.dot)),
+		nil, u.status)
+
 	u.detail = widget.NewLabel("")
 	u.detail.Wrapping = fyne.TextWrapWord
+
+	u.hem = widget.NewEntry()
+	u.hem.SetText(u.app.Preferences().StringWithFallback(prefHEM, defaultHEM))
+	u.hem.OnSubmitted = u.applyHEM
+	u.hemRow = container.New(layout.NewFormLayout(), widget.NewLabel("looking at"), u.hem)
 
 	mono := func() *widget.Label {
 		l := widget.NewLabel("")
@@ -123,34 +152,21 @@ func (u *ui) build() {
 		widget.NewLabel("last handshake"), u.fShake,
 		widget.NewLabel("session ends"), u.fExpires,
 	)
-	u.fields.Hide()
 
 	// One line, ellipsised. A wrapping label inside a background box cannot be
-	// sized reliably — the height is computed before the width is known, so long
-	// text is clipped rather than wrapped. Deciding that the in-window notice is
-	// a single line removes the gamble, and it is better as an alert anyway: the
-	// full text goes to the system notification, which is where prose belongs.
+	// sized reliably — its height is computed before its width is known, so long
+	// text is clipped rather than wrapped. A single line removes the gamble and
+	// is the better alert anyway; the full text goes to the system notification.
 	u.noticeText = widget.NewLabel("")
 	u.noticeText.Wrapping = fyne.TextWrapOff
 	u.noticeText.Truncation = fyne.TextTruncateEllipsis
 	u.noticeBG = canvas.NewRectangle(color.Transparent)
 	u.noticeBG.CornerRadius = 4
 	u.noticeBox = container.NewStack(u.noticeBG, container.NewPadded(u.noticeText))
-	u.noticeBox.Hide()
-
-	u.head = container.NewVBox(
-		container.NewBorder(nil, nil,
-			container.NewCenter(container.NewGridWrap(fyne.NewSize(16, 16), u.dot)),
-			nil, u.status),
-		u.detail,
-		u.fields,
-		u.noticeBox,
-	)
 
 	u.pass = widget.NewPasswordEntry()
 	u.pass.SetPlaceHolder("HEM passphrase")
 	u.pass.OnSubmitted = func(string) { u.onAction() }
-
 	u.action = widget.NewButton("Connect", u.onAction)
 
 	// The debug panel drives the fake into states that are awkward to reach on
@@ -168,29 +184,86 @@ func (u *ui) build() {
 		),
 		widget.NewButton("Expire the session now", func() { u.sess.expireNow() }),
 	)
-	u.adv.Hide()
+	u.advBox = widget.NewCheck("Advanced", func(bool) { u.compose(u.latest) })
 
-	u.advBox = widget.NewCheck("Advanced", func(on bool) {
-		if on {
-			u.adv.Show()
-		} else {
-			u.adv.Hide()
-		}
-	})
+	u.head, u.foot = container.NewVBox(), container.NewVBox()
 
-	foot := container.NewVBox(u.pass, u.action, u.advBox, u.adv)
-
-	// Border rather than a plain column: the controls sit at the bottom and the
-	// state keeps the top, so the window does not read as half-finished with a
-	// void beneath it.
-	u.win.SetContent(container.NewPadded(
-		container.NewBorder(u.head, foot, nil, nil, nil),
-	))
+	// Border rather than a plain column: the controls keep the bottom and the
+	// state keeps the top, so the window does not read as half-drawn.
+	u.body = container.NewBorder(u.head, u.foot, nil, nil, nil)
+	u.win.SetContent(container.NewPadded(u.body))
 	u.render(u.sess.snapshot())
 }
 
-// onAction is the single button: what it does depends on the state, so the user
-// never has to decide which of several controls applies.
+// compose rebuilds both columns from what the state says belongs in them.
+//
+// The alternative — keeping every row in place and calling Show and Hide — is
+// what this replaces, and it did not work. A hidden container still claimed its
+// row, so the footer drew through the middle of the header; and one Hide that
+// was never wired left a field on screen in every state. Rebuilding the object
+// list is declarative, has one path per state, and cannot leave a stale row
+// behind because nothing is left over to go stale.
+func (u *ui) compose(e Event) {
+	head := []fyne.CanvasObject{u.statusRow}
+	if u.detail.Text != "" {
+		head = append(head, u.detail)
+	}
+	if e.State == Connected {
+		head = append(head, u.fields)
+	}
+	if e.State == NoModule {
+		head = append(head, u.hemRow)
+	}
+	if u.noticeText.Text != "" {
+		head = append(head, u.noticeBox)
+	}
+
+	foot := make([]fyne.CanvasObject, 0, 4)
+	if e.State == Ready {
+		foot = append(foot, u.pass)
+	}
+	foot = append(foot, u.action, u.advBox)
+	if u.advBox.Checked {
+		foot = append(foot, u.adv)
+	}
+
+	u.head.Objects, u.foot.Objects = head, foot
+	u.head.Refresh()
+	u.foot.Refresh()
+	u.body.Refresh()
+	u.resizeForContent()
+}
+
+// Window heights. Fixed size stops somebody dragging the window about, but the
+// program may still choose one — and it has to, because the advanced panel adds
+// more than the compact height can hold. Squeezing it instead is what a border
+// layout does when asked for the impossible: the header keeps its minimum, the
+// footer is placed against it, and the rows that do not fit are drawn over the
+// top of each other. That is what this replaces.
+const (
+	compactHeight  = 480
+	noticeHeight   = 60 // a notice is one more row, and it arrives unannounced
+	advancedHeight = 860
+	windowWidth    = 630
+)
+
+// resizeForContent gives the window the height the current content needs. Two
+// sizes rather than a measurement: the difference is a panel that is either open
+// or closed, and a window that changes size by a few pixels as text changes
+// would be worse than one that changes by a lot when a panel does.
+func (u *ui) resizeForContent() {
+	h := float32(compactHeight)
+	if u.noticeText != nil && u.noticeText.Text != "" {
+		h += noticeHeight
+	}
+	if u.advBox != nil && u.advBox.Checked {
+		h = advancedHeight
+	}
+	u.win.Resize(fyne.NewSize(windowWidth, h))
+}
+
+// onAction is the single button: what it does depends on the state, so nobody
+// has to decide which of several controls applies.
 func (u *ui) onAction() {
 	switch u.latest.State {
 	case Ready:
@@ -198,10 +271,24 @@ func (u *ui) onAction() {
 		u.pass.SetText("")
 		if err := u.sess.Connect(context.Background(), pass); err != nil {
 			u.showNotice(err.Error(), true)
+			u.compose(u.latest)
 		}
 	case Connected:
 		_ = u.sess.Disconnect()
 	}
+}
+
+// applyHEM remembers the address and points the session at it. Remembered
+// because it is set once per machine: asking again every launch would be asking
+// somebody to retype a constant.
+func (u *ui) applyHEM(url string) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		url = defaultHEM
+		u.hem.SetText(url)
+	}
+	u.app.Preferences().SetString(prefHEM, url)
+	u.sess.setHEM(url)
 }
 
 // consume is the only writer of interface state. Fyne requires updates to come
@@ -214,11 +301,14 @@ func (u *ui) consume() {
 }
 
 // tickCountdown redraws the remaining time once a second. The value comes from
-// the session's ExpiresAt and is never computed from a requested duration —
-// see the comment on Event.ExpiresAt.
+// the session's ExpiresAt and is never computed from a requested duration — see
+// the comment on Event.ExpiresAt.
 func (u *ui) tickCountdown() {
 	for range time.Tick(time.Second) {
-		fyne.Do(func() { u.renderCountdown(u.latest) })
+		fyne.Do(func() {
+			u.renderCountdown(u.latest)
+			u.compose(u.latest)
+		})
 	}
 }
 
@@ -228,17 +318,14 @@ func (u *ui) render(e Event) {
 
 	switch e.State {
 	case NoModule:
-		u.fields.Hide()
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Plug in your key")
 		u.detail.SetText("The tunnel needs the module that holds its identity.")
 	case Ready:
-		u.fields.Hide()
 		u.setDot(theme.ColorNameForeground)
 		u.status.SetText("Ready")
 		u.detail.SetText("Module present.")
 	case Connecting:
-		u.fields.Hide()
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Connecting…")
 		u.detail.SetText("Waiting for the first handshake.")
@@ -249,28 +336,17 @@ func (u *ui) render(e Event) {
 		u.fPeer.SetText(dash(e.Peer))
 		u.fMoved.SetText(human(e.Rx) + " in / " + human(e.Tx) + " out")
 		u.fShake.SetText(ago(e.LastHandshake))
-		u.fields.Show()
 	case Disconnecting:
-		u.fields.Hide()
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Disconnecting…")
 		u.detail.SetText("")
 	case Ended:
-		u.fields.Hide()
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Closed")
 		u.detail.SetText("")
 	}
 
-	// Show/Hide rather than setting Hidden: assigning the field does not tell
-	// the layout to recompute, so the field left a hole where it used to be.
-	if e.State == Ready {
-		u.pass.Show()
-	} else {
-		u.pass.Hide()
-	}
-
-	// Emphasis follows what the user is likely to want next. Connecting is the
+	// Emphasis follows what somebody is likely to want next. Connecting is the
 	// act worth highlighting; disconnecting is not something to invite, so the
 	// button goes quiet once there is a tunnel to lose.
 	switch e.State {
@@ -283,6 +359,10 @@ func (u *ui) render(e Event) {
 		u.action.Importance = widget.MediumImportance
 		u.action.Enable()
 	default:
+		// Naming the action that will be available, not the one that was. Left
+		// alone, the button still said "Disconnect" after the module was pulled
+		// out — offering, in disabled grey, something it could no longer do.
+		u.action.SetText("Connect")
 		u.action.Importance = widget.MediumImportance
 		u.action.Disable()
 	}
@@ -292,35 +372,20 @@ func (u *ui) render(e Event) {
 		u.showNotice(e.Notice, e.Err != nil)
 		u.app.SendNotification(fyne.NewNotification("encedo-wg", e.Notice))
 	} else if e.Notice == "" && prev.Notice != "" {
-		u.noticeBox.Hide()
-	}
-
-	// An empty label still occupies a row, which left a hole between the status
-	// and whatever followed it.
-	if u.detail.Text == "" {
-		u.detail.Hide()
-	} else {
-		u.detail.Show()
+		u.noticeText.SetText("")
 	}
 
 	u.renderCountdown(e)
 	u.advText.SetText(fmt.Sprintf(
-		"state          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		e.State, dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+		"state          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
+		e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
-	// Last, because everything above can change which rows are visible — and
-	// renderCountdown is one of them, since the expiry warning appears from
-	// there. Showing or hiding a child changes what the column has to lay out
-	// and the container does not work that out by itself, so without this the
-	// rows keep their old positions and the next state draws over the last.
-	// Invisible when each state is rendered into a fresh window; plain the
-	// moment one window is driven through a sequence.
-	u.head.Refresh()
+	u.compose(e)
 }
 
 // showNotice gives the one line worth reading a ground of its own. Failover and
-// expiry both arrive as prose in the middle of other prose otherwise, which is
-// how a person misses the only sentence that changed.
+// expiry both arrive as prose among other prose otherwise, which is how a person
+// misses the only sentence that changed.
 func (u *ui) showNotice(text string, bad bool) {
 	name := theme.ColorNameWarning
 	if bad {
@@ -333,7 +398,6 @@ func (u *ui) showNotice(text string, bad bool) {
 	u.noticeBG.StrokeWidth = 1
 	u.noticeBG.Refresh()
 	u.noticeText.SetText(text)
-	u.noticeBox.Show()
 }
 
 func (u *ui) setDot(name fyne.ThemeColorName) {
@@ -347,17 +411,15 @@ func (u *ui) renderCountdown(e Event) {
 		return
 	}
 	left := time.Until(e.ExpiresAt)
-	// Named as an ending rather than a duration: the session does not renew
-	// itself, and a countdown that does not say so invites the assumption.
 	u.fExpires.SetText(fmtLeft(left))
 
-	// The tunnel does not renew itself, so the end of the session arrives as a
-	// disconnection in the middle of somebody's afternoon unless they are told
-	// while there is still time to act. Once, not every second.
+	// The tunnel does not renew itself, so the end of a session arrives as a
+	// disconnection in the middle of an afternoon unless somebody is told while
+	// there is still time to act. Once, not every second.
 	if left > 0 && left <= warnBefore && !u.warned {
 		u.warned = true
-		// The countdown above already says how long. This says the part it
-		// cannot: that nothing will renew it.
+		// The countdown above already says how long; this says the part it
+		// cannot, which is that nothing will renew it.
 		u.showNotice("Reconnect before it ends — the session does not renew itself", false)
 		u.app.SendNotification(fyne.NewNotification("encedo-wg",
 			"The tunnel will disconnect in "+fmtLeft(left)+"."))
@@ -381,10 +443,6 @@ func (u *ui) installCloseIntercept() {
 		if u.hasTr {
 			msg += "\n\nTo keep it running, minimise to the tray instead."
 		}
-		// A dialogue over the window, not a replacement for it. Rebuilding the
-		// content to ask a question threw away everything the window was
-		// showing — the notice, the advanced panel, whether it was open — and
-		// answering "stay" rebuilt it from scratch rather than returning to it.
 		d := dialog.NewConfirm("Disconnect?", msg, func(leave bool) {
 			if !leave {
 				return
@@ -400,8 +458,8 @@ func (u *ui) installCloseIntercept() {
 
 // installTray records whether a tray exists rather than assuming one. Stock
 // GNOME has none, and on such a desktop the gesture that means "keep the
-// session" does not exist — so the close dialogue above stops offering it
-// instead of promising something the desktop will not honour.
+// session" does not exist — so the close dialogue stops offering it instead of
+// promising what the desktop will not honour.
 func (u *ui) installTray() {
 	desk, ok := u.app.(desktop.App)
 	if !ok {
@@ -416,10 +474,6 @@ func (u *ui) installTray() {
 
 // fmtLeft renders a remaining time the way somebody reads a clock, not the way
 // Go prints a duration: "7h 32m", not "7h32m0s".
-// warnBefore is how much of the session is left when the warning appears. Long
-// enough to finish a call and reconnect; short enough not to nag.
-const warnBefore = 5 * time.Minute
-
 func fmtLeft(d time.Duration) string {
 	if d < 0 {
 		d = 0
@@ -434,6 +488,16 @@ func fmtLeft(d time.Duration) string {
 	}
 }
 
+// ago renders a moment as distance from now, which is how a person reads a
+// handshake: "41s ago" answers the question, a timestamp makes them do
+// arithmetic first.
+func ago(t time.Time) string {
+	if t.IsZero() {
+		return "never"
+	}
+	return fmtLeft(time.Since(t)) + " ago"
+}
+
 func human(n uint64) string {
 	switch {
 	case n < 1024:
@@ -443,16 +507,6 @@ func human(n uint64) string {
 	default:
 		return fmt.Sprintf("%.1f MiB", float64(n)/(1024*1024))
 	}
-}
-
-// ago renders a moment as distance from now, which is how a person reads a
-// handshake: "41s ago" answers the question, an absolute timestamp makes them
-// do arithmetic first.
-func ago(t time.Time) string {
-	if t.IsZero() {
-		return "never"
-	}
-	return fmtLeft(time.Since(t)) + " ago"
 }
 
 func stamp(t time.Time) string {

@@ -26,6 +26,7 @@ type fakeSession struct {
 	rx, tx uint64
 	closed bool
 
+	hem  string
 	stop chan struct{}
 }
 
@@ -47,6 +48,7 @@ func newFakeSession() *fakeSession {
 	f := &fakeSession{
 		events: make(chan Event, 16),
 		state:  NoModule,
+		hem:    defaultHEM,
 		stop:   make(chan struct{}),
 	}
 	go f.run()
@@ -166,6 +168,16 @@ func (f *fakeSession) expireIn(d time.Duration) {
 	f.emit()
 }
 
+// setHEM points the session at a different device. Changing it while nothing is
+// connected is the only time it makes sense, which is the only time the window
+// offers it.
+func (f *fakeSession) setHEM(url string) {
+	f.mu.Lock()
+	f.hem = url
+	f.mu.Unlock()
+	f.emit()
+}
+
 func (f *fakeSession) expireNow() {
 	f.mu.Lock()
 	if f.state != Connected {
@@ -221,7 +233,7 @@ func (f *fakeSession) snapshot() Event {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return Event{
-		State: f.state, Peer: f.peer, ExpiresAt: f.expiry,
+		State: f.state, Peer: f.peer, HEM: f.hem, ExpiresAt: f.expiry,
 		LastHandshake: f.last, Rx: f.rx, Tx: f.tx,
 	}
 }
