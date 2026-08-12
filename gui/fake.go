@@ -140,7 +140,7 @@ func (f *fakeSession) triggerFailover() {
 	f.peer = "backup site"
 	f.last = time.Now()
 	f.mu.Unlock()
-	f.emitNotice(`"head office" stopped answering — moved to "backup site"`)
+	f.emitNotice(`Moved to "backup site" — "head office" stopped answering`)
 }
 
 func (f *fakeSession) expireNow() {

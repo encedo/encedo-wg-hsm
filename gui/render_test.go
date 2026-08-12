@@ -49,7 +49,7 @@ func TestRenderStates(t *testing.T) {
 			ExpiresAt:     now.Add(6*time.Hour + 5*time.Minute),
 			LastHandshake: now,
 			Rx:            5_1290, Tx: 33_400,
-			Notice: `"head office" stopped answering — moved to "backup site"`,
+			Notice: `Moved to "backup site" — "head office" stopped answering`,
 		}, false},
 		{"6-expired", Event{
 			State:  Ready,

@@ -6,12 +6,15 @@ package main
 import (
 	"context"
 	"fmt"
+	"image/color"
 	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -22,15 +25,20 @@ type ui struct {
 	hasTr  bool
 	latest Event
 
+	dot      *canvas.Circle
 	status   *widget.Label
 	detail   *widget.Label
-	pass     *widget.Entry
-	action   *widget.Button
-	notice   *widget.Label
-	adv      *fyne.Container
-	advBox   *widget.Check
-	advText  *widget.Label
 	countLbl *widget.Label
+
+	noticeText *widget.Label
+	noticeBG   *canvas.Rectangle
+	noticeBox  *fyne.Container
+
+	pass    *widget.Entry
+	action  *widget.Button
+	adv     *fyne.Container
+	advBox  *widget.Check
+	advText *widget.Label
 }
 
 func main() {
@@ -43,24 +51,47 @@ func main() {
 	go u.consume()
 	go u.tickCountdown()
 
-	u.win.Resize(fyne.NewSize(420, 380))
+	u.win.Resize(fyne.NewSize(420, 400))
 	u.win.ShowAndRun()
 }
 
 func (u *ui) build() {
+	// The dot carries the state before any word is read. That is the one thing
+	// this interface has to do well: somebody restoring the window from the tray
+	// should know where they stand without parsing a sentence.
+	u.dot = canvas.NewCircle(color.Transparent)
 	u.status = widget.NewLabel("")
 	u.status.TextStyle = fyne.TextStyle{Bold: true}
 	u.detail = widget.NewLabel("")
 	u.countLbl = widget.NewLabel("")
-	u.notice = widget.NewLabel("")
-	u.notice.Wrapping = fyne.TextWrapWord
+
+	// One line, ellipsised. A wrapping label inside a background box cannot be
+	// sized reliably — the height is computed before the width is known, so long
+	// text is clipped rather than wrapped. Deciding that the in-window notice is
+	// a single line removes the gamble, and it is better as an alert anyway: the
+	// full text goes to the system notification, which is where prose belongs.
+	u.noticeText = widget.NewLabel("")
+	u.noticeText.Wrapping = fyne.TextWrapOff
+	u.noticeText.Truncation = fyne.TextTruncateEllipsis
+	u.noticeBG = canvas.NewRectangle(color.Transparent)
+	u.noticeBG.CornerRadius = 4
+	u.noticeBox = container.NewStack(u.noticeBG, container.NewPadded(u.noticeText))
+	u.noticeBox.Hide()
+
+	head := container.NewVBox(
+		container.NewBorder(nil, nil,
+			container.NewCenter(container.NewGridWrap(fyne.NewSize(12, 12), u.dot)),
+			nil, u.status),
+		u.detail,
+		u.countLbl,
+		u.noticeBox,
+	)
 
 	u.pass = widget.NewPasswordEntry()
 	u.pass.SetPlaceHolder("HEM passphrase")
 	u.pass.OnSubmitted = func(string) { u.onAction() }
 
 	u.action = widget.NewButton("Connect", u.onAction)
-	u.action.Importance = widget.HighImportance
 
 	// The debug panel drives the fake into states that are awkward to reach on
 	// real hardware — a peer going quiet, a token running out — which is the
@@ -87,16 +118,13 @@ func (u *ui) build() {
 		}
 	})
 
-	u.win.SetContent(container.NewVBox(
-		u.status,
-		u.detail,
-		u.countLbl,
-		u.notice,
-		widget.NewSeparator(),
-		u.pass,
-		u.action,
-		u.advBox,
-		u.adv,
+	foot := container.NewVBox(u.pass, u.action, u.advBox, u.adv)
+
+	// Border rather than a plain column: the controls sit at the bottom and the
+	// state keeps the top, so the window does not read as half-finished with a
+	// void beneath it.
+	u.win.SetContent(container.NewPadded(
+		container.NewBorder(head, foot, nil, nil, nil),
 	))
 	u.render(u.sess.snapshot())
 }
@@ -109,7 +137,7 @@ func (u *ui) onAction() {
 		pass := []byte(u.pass.Text)
 		u.pass.SetText("")
 		if err := u.sess.Connect(context.Background(), pass); err != nil {
-			u.notice.SetText(err.Error())
+			u.showNotice(err.Error(), true)
 		}
 	case Connected:
 		_ = u.sess.Disconnect()
@@ -140,43 +168,56 @@ func (u *ui) render(e Event) {
 
 	switch e.State {
 	case NoModule:
+		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Plug in your key")
 		u.detail.SetText("The tunnel needs the module that holds its identity.")
 	case Ready:
+		u.setDot(theme.ColorNameForeground)
 		u.status.SetText("Ready")
 		u.detail.SetText("Module present.")
 	case Connecting:
+		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Connecting…")
 		u.detail.SetText("Waiting for the first handshake.")
 	case Connected:
+		u.setDot(theme.ColorNameSuccess)
 		u.status.SetText("Connected")
-		u.detail.SetText(fmt.Sprintf("%s · %s in, %s out",
-			e.Peer, human(e.Rx), human(e.Tx)))
+		u.detail.SetText(fmt.Sprintf("%s · %s in, %s out", e.Peer, human(e.Rx), human(e.Tx)))
 	case Disconnecting:
+		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Disconnecting…")
 		u.detail.SetText("")
 	case Ended:
+		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Closed")
 		u.detail.SetText("")
 	}
 
 	u.pass.Hidden = e.State != Ready
+
+	// Emphasis follows what the user is likely to want next. Connecting is the
+	// act worth highlighting; disconnecting is not something to invite, so the
+	// button goes quiet once there is a tunnel to lose.
 	switch e.State {
 	case Ready:
 		u.action.SetText("Connect")
+		u.action.Importance = widget.HighImportance
 		u.action.Enable()
 	case Connected:
 		u.action.SetText("Disconnect")
+		u.action.Importance = widget.MediumImportance
 		u.action.Enable()
 	default:
+		u.action.Importance = widget.MediumImportance
 		u.action.Disable()
 	}
+	u.action.Refresh()
 
 	if e.Notice != "" && e.Notice != prev.Notice {
-		u.notice.SetText(e.Notice)
+		u.showNotice(e.Notice, e.Err != nil)
 		u.app.SendNotification(fyne.NewNotification("encedo-wg", e.Notice))
-	} else if e.State == Connecting || e.State == Ready && prev.State == NoModule {
-		u.notice.SetText("")
+	} else if e.Notice == "" && prev.Notice != "" {
+		u.noticeBox.Hide()
 	}
 
 	u.renderCountdown(e)
@@ -185,18 +226,37 @@ func (u *ui) render(e Event) {
 		e.State, dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 }
 
+// showNotice gives the one line worth reading a ground of its own. Failover and
+// expiry both arrive as prose in the middle of other prose otherwise, which is
+// how a person misses the only sentence that changed.
+func (u *ui) showNotice(text string, bad bool) {
+	name := theme.ColorNameWarning
+	if bad {
+		name = theme.ColorNameError
+	}
+	c := theme.Color(name)
+	r, g, b, _ := c.RGBA()
+	u.noticeBG.FillColor = color.NRGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 40}
+	u.noticeBG.StrokeColor = c
+	u.noticeBG.StrokeWidth = 1
+	u.noticeBG.Refresh()
+	u.noticeText.SetText(text)
+	u.noticeBox.Show()
+}
+
+func (u *ui) setDot(name fyne.ThemeColorName) {
+	u.dot.FillColor = theme.Color(name)
+	u.dot.Refresh()
+}
+
 func (u *ui) renderCountdown(e Event) {
 	if e.State != Connected || e.ExpiresAt.IsZero() {
 		u.countLbl.SetText("")
 		return
 	}
-	left := time.Until(e.ExpiresAt).Round(time.Second)
-	if left < 0 {
-		left = 0
-	}
 	// Named as an ending rather than a duration: the session does not renew
 	// itself, and a countdown that does not say so invites the assumption.
-	u.countLbl.SetText(fmt.Sprintf("Session ends in %s", left))
+	u.countLbl.SetText("Session ends in " + fmtLeft(time.Until(e.ExpiresAt)))
 }
 
 // installCloseIntercept makes the architecture visible at the one moment it
@@ -215,15 +275,15 @@ func (u *ui) installCloseIntercept() {
 		}
 		d := widget.NewLabel(msg)
 		d.Wrapping = fyne.TextWrapWord
-		popup := widget.NewButton("Disconnect and close", func() {
+		leave := widget.NewButton("Disconnect and close", func() {
 			_ = u.sess.Close()
 			u.win.Close()
 		})
-		popup.Importance = widget.DangerImportance
-		u.win.SetContent(container.NewVBox(
-			d, popup,
+		leave.Importance = widget.DangerImportance
+		u.win.SetContent(container.NewPadded(container.NewVBox(
+			d, leave,
 			widget.NewButton("Stay connected", func() { u.build() }),
-		))
+		)))
 	})
 }
 
@@ -241,6 +301,22 @@ func (u *ui) installTray() {
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
 	))
 	u.hasTr = true
+}
+
+// fmtLeft renders a remaining time the way somebody reads a clock, not the way
+// Go prints a duration: "7h 32m", not "7h32m0s".
+func fmtLeft(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	switch {
+	case d >= time.Hour:
+		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
+	case d >= time.Minute:
+		return fmt.Sprintf("%dm %02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	}
 }
 
 func human(n uint64) string {
