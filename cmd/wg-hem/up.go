@@ -168,7 +168,7 @@ func (t *tunnel) run(peer *config.Peer) error {
 		HEMURL: t.hemURL, Started: time.Now(),
 		TokenExpiry: hem.TokenExpiry(t.useTok),
 	}
-	if err := st.save(); err != nil {
+	if err := st.Save(); err != nil {
 		t.teardown()
 		return failf(exitDevice, "recording the interface state: %w", err)
 	}
@@ -248,7 +248,7 @@ func (t *tunnel) hold(st *state, ending <-chan struct{}) error {
 			return err
 		}
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
-		if err := st.save(); err != nil {
+		if err := st.Save(); err != nil {
 			t.notify(fmt.Sprintf("WARNING: the state file no longer names the active peer: %v", err))
 		}
 	}
