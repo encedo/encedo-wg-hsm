@@ -66,6 +66,16 @@ A peer that never answers is reported and another is offered.
 		rt.SetDebug(true)
 	}
 
+	// Before the passphrase, not after. Everything this checks is knowable
+	// without touching the device, and discovering it later means the person has
+	// authenticated, waited, and then been told "operation not permitted" by
+	// netlink — at which point the obvious move is sudo, which works and teaches
+	// the wrong lesson. Nothing here wants root; one capability and a writable
+	// directory are the whole of it.
+	if err := rt.Preflight(); err != nil {
+		return failf(exitUsage, "%w", err)
+	}
+
 	ctx := context.Background()
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {

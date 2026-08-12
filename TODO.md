@@ -90,6 +90,26 @@ sharing `internal/` with the CLI. `wg-hem` itself stays as it is: static,
 cross-compiled, portable. Letting a toolkit drag cgo into the command-line client
 would trade the thing that works everywhere for the thing that needs a window.
 
+*Linux does not need the helper, and measuring that changed the estimate.* Every
+privileged thing this client does on Linux — creating the interface, its
+addresses, its routes, its MTU — wants one capability, `cap_net_admin`, and not
+root. `/dev/net/tun` is world-writable already. What is left is `/var/run/wireguard`,
+which is root-owned, and a tmpfiles rule settles that. So on Linux the answer is
+`setcap` plus a directory, which the README has documented for the config-file
+client since before any of this: no helper process, no elevation, nothing new to
+write.
+
+`Preflight` in `internal/runtime` now reports both conditions before the
+passphrase is asked for, with the command to fix each. That matters more than it
+sounds: the failure it replaces is netlink returning "operation not permitted"
+from three layers down, after authentication, at which point the obvious move is
+sudo — which works, and teaches that this client needs root, which it does not.
+
+macOS and Windows are where the helper is actually required, because neither has
+an equivalent of `setcap`: there is no way to grant one binary one permission.
+That is two platforms rather than three, and the second of them is the one whose
+demo assumption is already in doubt.
+
 *Toolkit.* The choice looks like it is settled by §10.4.4 and it is not. That
 section objects to *logic* duplication — reimplementing the TLV codec and the MAC
 canonicalisation in JavaScript, in a format bound for certification. A native UI
@@ -219,7 +239,7 @@ countdown and a panel is about a week. What dominates is everything around it.
 |---|---|
 | A drivable session API extracted from `cmdUp` | 3–5 d |
 | The interface itself | 5–8 d |
-| Privileged helper, three platforms | **10–20 d** |
+| Privileged helper — macOS and Windows only, see below | **8–16 d** |
 | Module presence (poll the device; hotplug APIs are not worth it) | 1–2 d |
 | Tray, including desktops that have none | 3–5 d |
 | Packaging, signing, notarisation, CI | 5–10 d |
