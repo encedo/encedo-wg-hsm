@@ -139,6 +139,7 @@ func (t *tunnel) run(peer *config.Peer) error {
 		PID: os.Getpid(), Interface: t.ifname, IfKID: t.tree.IfKID,
 		PeerKID: peer.KID, PeerLabel: peer.Label, Endpoint: peer.Endpoint.String(),
 		HEMURL: t.hemURL, Started: time.Now(),
+		TokenExpiry: hem.TokenExpiry(t.useTok),
 	}
 	if err := st.save(); err != nil {
 		t.teardown()

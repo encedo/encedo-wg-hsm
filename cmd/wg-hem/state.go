@@ -30,6 +30,13 @@ type state struct {
 	Endpoint  string    `json:"endpoint"`
 	HEMURL    string    `json:"hem_url"`
 	Started   time.Time `json:"started"`
+
+	// TokenExpiry is when the session ends, read from the token rather than
+	// computed from the lifetime asked for. The device issues what it chooses:
+	// a run on 2026-08-11 requested eight hours and ended after seven and a
+	// half, so anything derived from the request would have been half an hour
+	// optimistic about when somebody loses their tunnel.
+	TokenExpiry time.Time `json:"token_expiry,omitempty"`
 }
 
 func statePath(ifname string) string {
