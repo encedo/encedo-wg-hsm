@@ -60,6 +60,7 @@ type ui struct {
 	statusRow *fyne.Container
 	rule      *widget.Separator
 	topRule   *widget.Separator
+	advRule   *widget.Separator
 	dot       *canvas.Circle
 	status    *widget.Label
 	detail    *widget.Label
@@ -195,6 +196,7 @@ func (u *ui) build() {
 	// where reading stops and acting starts.
 	u.rule = widget.NewSeparator()
 	u.topRule = widget.NewSeparator()
+	u.advRule = widget.NewSeparator()
 	u.head, u.foot = container.NewVBox(), container.NewVBox()
 
 	// Border rather than a plain column: the controls keep the bottom and the
@@ -235,7 +237,11 @@ func (u *ui) compose(e Event) {
 	if e.State == Ready {
 		foot = append(foot, u.pass)
 	}
-	foot = append(foot, u.actionBox, u.advBox)
+	// The action and the advanced toggle are not the same kind of thing: one is
+	// what this window is for, the other is a way in to what it is hiding.
+	// A rule between them says so, and gives the button its own ground rather
+	// than leaving it stacked against a checkbox.
+	foot = append(foot, u.actionBox, u.advRule, u.advBox)
 	if u.advBox.Checked {
 		foot = append(foot, u.adv)
 	}
