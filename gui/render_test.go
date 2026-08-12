@@ -43,6 +43,21 @@ func shotTheme(t *testing.T) encedoTheme {
 	return th
 }
 
+// shotDir is where images go, or "" to skip. Creating the directory belongs
+// here rather than in one of the three tests that write into it — it was in one,
+// and the other two failed on a path nobody had made yet.
+func shotDir(t *testing.T) string {
+	t.Helper()
+	dir := os.Getenv("WG_GUI_SHOTS")
+	if dir == "" {
+		return ""
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("shot directory: %v", err)
+	}
+	return dir
+}
+
 func writeShot(t *testing.T, dir, name string, scale float32, img image.Image) {
 	t.Helper()
 	path := filepath.Join(dir, fmt.Sprintf("%s@%gx.png", name, scale))
@@ -57,12 +72,9 @@ func writeShot(t *testing.T, dir, name string, scale float32, img image.Image) {
 }
 
 func TestRenderStates(t *testing.T) {
-	dir := os.Getenv("WG_GUI_SHOTS")
+	dir := shotDir(t)
 	if dir == "" {
 		t.Skip("set WG_GUI_SHOTS to a directory to render the interface")
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatalf("shot directory: %v", err)
 	}
 
 	now := time.Now()
@@ -148,7 +160,7 @@ func TestRenderStates(t *testing.T) {
 // a tray actually ask for. A mark that only works at 64 px is a mark nobody sees
 // working, since every place it appears is smaller than that.
 func TestRenderIcon(t *testing.T) {
-	dir := os.Getenv("WG_GUI_SHOTS")
+	dir := shotDir(t)
 	if dir == "" {
 		t.Skip("set WG_GUI_SHOTS to a directory to render the icon")
 	}
@@ -174,7 +186,7 @@ func TestRenderIcon(t *testing.T) {
 // screens each of which is fine on its own can still be a sequence that makes
 // no sense, and that is not visible one screen at a time.
 func TestRenderScenario(t *testing.T) {
-	dir := os.Getenv("WG_GUI_SHOTS")
+	dir := shotDir(t)
 	if dir == "" {
 		t.Skip("set WG_GUI_SHOTS to a directory to render the scenario")
 	}
