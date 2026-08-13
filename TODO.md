@@ -54,33 +54,49 @@ unanswered question into written permission, and it is worth having before a
 company signs a distribution with its own certificate: renaming afterwards costs
 incomparably more than asking now.
 
-## Open against the graphical client, 2026-08-13
+## Settled against the graphical client, 2026-08-13
 
-Found by testing the packaged Linux build. Each is a thing that worked at some
-point in the day, or was never checked, rather than something never written.
+Everything this section listed as open was closed the same evening, in a session
+after a reboot. Kept rather than deleted, because two of them were diagnosed
+wrongly first and the wrong diagnosis is the useful part.
 
-**The dash icon is a placeholder again.** It was fixed once, with a desktop entry
-naming the WM_CLASS the window announces, and verified. The package installs its
-own entry and its own icon and the user-level copy was removed in between, so
-something about that hand-over is wrong. Do not guess: the entry, the icon path
-and the cache all have to be looked at, and the WM_CLASS the running window
-reports checked against what the installed entry names.
+**The dash icon.** Closed, and it was never the package. The entry, the icon and
+the WM_CLASS were all correct; what was wrong was
+`~/.local/share/icons/hicolor/icon-theme.cache`, left behind when the user-level
+copy of the icon was deleted. GTK searches the user's icon directory before
+`/usr/share`, trusted the stale cache and resolved the name to a file that no
+longer existed — a black square in the dash and in the dock, from a lookup that
+succeeded. Removing that directory and logging in again fixed it. The tell was
+that both places showed the *same* broken icon: a WM_CLASS that did not match
+would have given the running window a different placeholder from the entry.
 
-**Disconnect does not return the window to Ready, and the reason is known.** The
-session clears its connection when the *connection* ends, which is what happens
-if the component goes away. Disconnect does not do that: it sends stop, the
-component takes the tunnel down and keeps the connection open. So the presence
-watch — which stands aside while a connection exists — never speaks again, and
-the passphrase never comes back. Clearing on the component's "ended" event, or
-on stop, is the fix; the first is better, since it also covers a tunnel that
-ended on its own.
+**Disconnect not returning the window to Ready.** Fixed by closing the connection
+when the component reports the tunnel ended. Worth knowing for whatever touches
+this next: clearing the connection alone is not enough. The presence watch only
+speaks when presence *changes*, and it holds `present = true` for the whole
+tunnel, so nothing would have announced Ready — that event comes from the read
+loop's defer, which needs the connection actually closed to run.
 
-**Whether the notice box should exist at all.** It was designed against the
-scripted stand-in, where a coloured panel was the only way to show that something
-had happened. With a real component the state line, the dot and the fields carry
-most of it, and what is left — failover moved, the device went away — may be
-better as a sentence in the body than as an alert. Worth deciding rather than
-inheriting: it is one of the few things in the window that nobody has asked for.
+**The notice box.** Decided: gone. The sentence moved into the detail line, in
+warning or error colour. Two things settled it beyond taste. It was carrying
+"Connecting to https://my.ence.do..." in front of a tunnel that had been up for a
+minute, because a notice was cleared by nothing and af4d48d had separated
+progress from news in the component while missing the window's own connect phase.
+And the panel forced one ellipsised line — a wrapping label inside a background
+box has its height computed before its width — so the failover message was cut
+off mid-word. A notice now lasts as long as the state it arrived in.
+
+**Minimise does not go to the tray, and cannot be made to.** Asked for, and
+refused by the toolkit rather than by preference. Closing offers "keep it in the
+tray" and hides the window, which takes it out of the dock; the window manager's
+minimise button leaves it there. Fyne 2.8 has no hook for it: `fyne.Window` has
+`SetCloseIntercept` and no equivalent, `desktop.Window` adds only fullscreen,
+always-on-top and position, and `Lifecycle.SetOnExitedForeground` fires on losing
+focus — wiring Hide to that would put the window away on every alt-tab. Reading
+the state from outside works on X11 through `_NET_WM_STATE_HIDDEN` and has no
+Wayland equivalent, which is the desktop this runs on. It needs GLFW's iconify
+callback exposed upstream, so it waits for that or for a fork of the toolkit, and
+neither is worth one icon's behaviour.
 
 ## v2.1 — proposed: the version somebody's assistant can run
 
