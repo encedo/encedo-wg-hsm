@@ -218,13 +218,19 @@ func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
 		default:
 		}
 
-		next, err := t.opts.SelectNext(t.opts.Tree, t.peer)
+		failed := t.peer
+		next, err := t.opts.SelectNext(t.opts.Tree, failed)
 		if err != nil {
 			return err
 		}
 		if err := t.usePeer(next); err != nil {
 			return err
 		}
+		// Said here rather than by whoever chose. A prompt announces itself by
+		// existing — the person reading it already knows what happened — but a
+		// walk that moves silently leaves somebody looking at a tunnel that is
+		// working through a peer they did not pick.
+		t.notify("Moved to %q — %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
 		if err := st.Save(); err != nil {
 			t.notify("WARNING: the state file no longer names the active peer: %v", err)

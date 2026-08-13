@@ -292,7 +292,9 @@ WG has no native failover (cryptokey routing: active peers cannot share AllowedI
 
 **v1 (implement now): interactive.** No successful handshake > 15 s after initiation ⇒ report "peer X (endpoint) is not responding" and re-prompt for peer selection (marking which one failed). Action on selection: UAPI replace peer (pubkey+endpoint+PSK, same AllowedIPs), new `ss` precompute.
 
-**v2 (later, behind `--auto-failover`): automatic.** PEER_REF order = priority, auto-switch to the next peer, optional return to #1 after a health check with hysteresis.
+**v2, part one — implemented, behind `--auto-failover` and unconditional for the graphical client's privileged component.** PEER_REF order = priority; the walk moves to the next stored peer and says so. It gives up once every peer has had a turn rather than cycling: cycling would never report that nothing works, and each attempt unwraps a pre-shared key, which is a call into the device.
+
+**v2, part two — still to write.** The health check with hysteresis, for a peer that answered and later went quiet, and the optional return to #1. Today only the *first* handshake after a peer is configured is watched.
 
 Note: concurrent peers with disjoint AllowedIPs (split routing) are legal and supported — the conflict applies only to identical ranges.
 

@@ -26,6 +26,7 @@ func cmdUp(args []string) error {
 	peerIndex := fs.Int("peer", 0, "connect to peer N as numbered by `wg-hem verify` (1-based)")
 	peerKey := fs.String("peer-pubkey", "", "connect to the peer whose base64 public key starts with this prefix")
 	debug := fs.Bool("debug", false, "trace every handshake ECDH on stderr (no key material: values are shown head…tail)")
+	autoFailover := fs.Bool("auto-failover", false, "on a peer that never answers, try the next stored one instead of asking (§6.4)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem up — bring the tunnel up from the configuration in the device
 
@@ -77,10 +78,18 @@ A peer that never answers is reported and another is offered.
 		return err
 	}
 
+	// Asking is the default here because there is somebody to ask. The same
+	// walk the privileged component has no alternative to is available on
+	// request, for a terminal nobody is watching.
+	selectNext := repromptPeer
+	if *autoFailover {
+		selectNext = tunnel.WalkPeers()
+	}
+
 	t := tunnel.New(ctx, tunnel.Opts{
 		Client: client, Tree: tree,
 		UseTok: useTok, HEMURL: dev.url(), Ifname: *ifname,
-		SelectNext: repromptPeer,
+		SelectNext: selectNext,
 		Notify:     func(line string) { fmt.Fprintln(os.Stderr, line) },
 	})
 	if err := t.Run(peer); err != nil {

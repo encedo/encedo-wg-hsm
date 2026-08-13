@@ -18,18 +18,24 @@ expiry exactly as designed.
 → interactive wizard (prompts follow the admin data table)". Everything else in
 §10.1 is implemented. This is the last piece of that section.
 
-**Failover v2 — health check with hysteresis (§6.4).** Today only the *first*
-handshake after a peer is configured is watched: `failover.go` gives a peer 15
-seconds, and a peer that answers and later goes quiet is never noticed. v2 needs
-a periodic liveness check against the UAPI handshake timestamp, with enough
-hysteresis that a single missed rekey does not flap a working tunnel.
+**Failover v2 — health check with hysteresis (§6.4).** Half of this is done.
 
-The GUI architecture **promotes this from "later" to a prerequisite**: its
-privileged component has nobody to re-prompt, so it walks the stored order
-itself and reports what it did — v1's interactive re-prompt was the PoC showing
-through, not a requirement (see `docs/ARCHITECTURE-GUI.md`, *The channel*). The
-CLI keeps v1's prompt; the automatic walk is the shared part worth building
-once.
+*The automatic walk exists* — `tunnel.WalkPeers`, behind `--auto-failover` on
+the command line and the only option for the privileged component, which has
+nobody to re-prompt. It follows the stored order, never offers a peer twice, and
+gives up once every one has had a turn rather than cycling: a cycle would never
+report that nothing works, and each attempt unwraps a pre-shared key, which is a
+call into the device.
+
+*The health check does not.* Only the **first** handshake after a peer is
+configured is watched — fifteen seconds, three retransmits — so a peer that
+answers and later goes quiet is still never noticed. That needs a periodic check
+against the UAPI handshake timestamp with enough hysteresis that one missed rekey
+does not flap a working tunnel, and it is the harder half: telling a quiet tunnel
+from a dead one is the whole problem.
+
+Neither half has been exercised against more than one peer, because the
+repository holds one. See the integration test below.
 
 **Integration test for failover (§9.7).** One interface, three peers, kill the
 active endpoint, measure the switch. Today's testing used a single peer, so

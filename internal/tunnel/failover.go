@@ -7,6 +7,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // FailoverTimeout is how long a freshly configured peer has to complete a
@@ -57,6 +58,45 @@ func awaitHandshake(ifname string, ending <-chan struct{}) (handshook bool) {
 				}
 			}
 		}
+	}
+}
+
+// WalkPeers answers failover without asking anybody, by walking the stored order
+// (§6.4 v2). It is what a component with nobody in front of it passes as
+// SelectNext.
+//
+// The stored order *is* the priority — §3.1 says so of PEER_REF, and it is
+// covered by the configuration MAC — so there is nothing to decide here beyond
+// keeping track of what has already been tried. The interactive prompt exists
+// because a terminal had a human in front of it, not because failover needs one.
+//
+// It gives up after every peer has had its turn rather than cycling. Cycling
+// would never report that nothing works, and each attempt is not free: pointing
+// the interface at a peer unwraps that peer's pre-shared key, which is a call
+// into the device. A tunnel that quietly asked the appliance something every
+// fifteen seconds for the rest of the afternoon would be a worse failure than
+// the one it was papering over.
+//
+// Stateful, therefore a closure: one walk belongs to one tunnel, and "have we
+// tried this one" cannot be answered from the arguments alone.
+func WalkPeers() func(tree *config.Tree, failed *config.Peer) (*config.Peer, error) {
+	tried := map[string]bool{}
+	return func(tree *config.Tree, failed *config.Peer) (*config.Peer, error) {
+		if failed != nil {
+			tried[failed.KID] = true
+		}
+		for i := range tree.Peers {
+			if !tried[tree.Peers[i].KID] {
+				return &tree.Peers[i], nil
+			}
+		}
+
+		names := make([]string, 0, len(tree.Peers))
+		for _, p := range tree.Peers {
+			names = append(names, p.Label)
+		}
+		return nil, session.Fail(session.KindNetwork,
+			"no peer answered: %s, each given %s", strings.Join(names, ", "), FailoverTimeout)
 	}
 }
 
