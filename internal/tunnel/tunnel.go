@@ -308,6 +308,23 @@ func (t *Tunnel) openDevice() error {
 	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", t.ifname))
 	t.dev = device.NewDevice(tdev, conn.NewDefaultBind(), logger)
 
+	// Explicitly, rather than as a side effect of something else.
+	//
+	// On Linux the tunnel device reports an up event when the interface is
+	// brought up, and wireguard-go's own event reader turns that into this call
+	// — so bringing the link up with netlink did it for us, and this client
+	// never had to. Windows has no such event: Wintun emits none, which is why
+	// upstream's own Windows entry point calls Up itself.
+	//
+	// Without it the device is created, configured and silent. Tested on
+	// 2026-08-13: the adapter appeared, the static ECDH answered, addresses and
+	// routes went in, and nothing ever handshook, because a device that is not
+	// up does not send. Relying on a platform to bring itself up was the bug;
+	// asking is a line.
+	if err := t.dev.Up(); err != nil {
+		return session.Fail(session.KindDevice, "bringing the tunnel device up: %v", err)
+	}
+
 	_ = os.MkdirAll(runDir, 0755)
 	_ = os.WriteFile(t.pubPath(), []byte(base64.StdEncoding.EncodeToString(ifPub.PubKey)+"\n"), 0644)
 	return nil

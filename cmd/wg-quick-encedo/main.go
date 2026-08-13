@@ -179,6 +179,13 @@ func cmdUp(ifname, cfgPath string) {
 	logger := device.NewLogger(device.LogLevelError, fmt.Sprintf("(%s) ", ifname))
 	wgdev := device.NewDevice(tdev, conn.NewDefaultBind(), logger)
 
+	// Explicitly: on Linux the device is brought up by the event the interface
+	// emits when netlink raises it, and on Windows nothing emits anything. See
+	// the note in internal/tunnel — the same omission, found there first.
+	if err := wgdev.Up(); err != nil {
+		fatal("bringing the tunnel device up: %v", err)
+	}
+
 	// 9. Configure via IpcSet
 	if err := wgdev.IpcSet(buildUAPIConfig(cfg)); err != nil {
 		fatal("IpcSet: %v", err)
