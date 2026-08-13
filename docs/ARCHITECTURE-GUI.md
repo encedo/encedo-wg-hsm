@@ -300,15 +300,22 @@ going to be rewritten.
 `internal/helper` was written for the other split — an unprivileged brain and
 privileged hands. Its nine operations (`create-tun`, `up`, `add-routes`,
 `set-mtu`, `set-dns`, `pin`, `unpin`, …) are the vocabulary of a component that
-is told what to do step by step.
+is told what to do step by step. **It was deleted on 2026-08-13**, when
+`internal/ipc` replaced it.
 
 Here the component decides for itself, and the channel carries the four verbs
-and the event stream of *The channel*. What survives is `Validate()` on the privileged
-side and the rule that a request carries no secrets — enforced by a test, and
-worth restating precisely as *no key material and no long-lived credential; a
-scoped token with an expiry is what crosses*. What does not survive is the
-operation list and `SendFD`/`RecvFD`, since no descriptor leaves the process that
-creates it any more.
+and the event stream of *The channel*. What survived is `Validate()` on the
+privileged side and the rule about what may cross, restated precisely as *no key
+material and no long-lived credential; a scoped token with an expiry is what
+crosses* — with a second test alongside it asserting that no field can ever ask a
+privileged process to skip certificate verification.
+
+What did not survive is the operation list and `SendFD`/`RecvFD`. No descriptor
+leaves the process that creates it any more, and that turned out to be worth more
+than the deleted code cost: descriptor passing is a unix socket's trick with no
+Windows counterpart, and without it the framing is plain `io.Reader` and
+`io.Writer` — the same code over a unix socket and a named pipe, neither knowing
+which it is under.
 
 ## Still open
 
