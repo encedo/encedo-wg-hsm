@@ -14,6 +14,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 func cmdPeer(args []string) error {
@@ -80,7 +81,7 @@ func peerAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	for _, existing := range tree.Peers {
 		if string(existing.PubKey[:]) == string(p.PubKey) {
@@ -104,7 +105,7 @@ func peerAdd(args []string) error {
 		return failf(exitUsage, "adding a peer does not fit: %w", err)
 	}
 
-	useTok, err := auth.token(ctx, "keymgmt:use:"+tree.IfKID)
+	useTok, err := auth.Token(ctx, "keymgmt:use:"+tree.IfKID)
 	if err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func peerRemove(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	idx := -1
 	for i, p := range tree.Peers {
@@ -200,7 +201,7 @@ func peerRemove(args []string) error {
 	fmt.Fprintf(os.Stderr, "Peer %q dropped from the configuration.\n", gone.Label)
 
 	if *deleteKey {
-		delTok, err := auth.token(ctx, "keymgmt:del")
+		delTok, err := auth.Token(ctx, "keymgmt:del")
 		if err != nil {
 			return err
 		}
@@ -246,7 +247,7 @@ func peerUpdate(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	idx := -1
 	for i, existing := range tree.Peers {
@@ -259,7 +260,7 @@ func peerUpdate(args []string) error {
 		return failf(exitUsage, "no peer with that public key is in the configuration; use `wg-hem peer add`")
 	}
 
-	useTok, err := auth.token(ctx, "keymgmt:use:"+tree.IfKID)
+	useTok, err := auth.Token(ctx, "keymgmt:use:"+tree.IfKID)
 	if err != nil {
 		return err
 	}
@@ -282,7 +283,7 @@ func peerUpdate(args []string) error {
 		return failf(exitUsage, "peer %s: %w", p.Label, err)
 	}
 
-	updTok, err := auth.token(ctx, "keymgmt:upd")
+	updTok, err := auth.Token(ctx, "keymgmt:upd")
 	if err != nil {
 		return err
 	}
@@ -310,7 +311,7 @@ func peerUpdate(args []string) error {
 // The unchanged fields survive unchanged: because the encoding is distinguished,
 // decoding a record and encoding it again reproduces the same bytes, so this
 // rewrite touches only what the caller actually changed.
-func reseal(ctx context.Context, client *hem.Client, auth *authenticator, tree *config.Tree) error {
+func reseal(ctx context.Context, client *hem.Client, auth *session.Auth, tree *config.Tree) error {
 	rec := tree.Iface
 	rec.PeerRefs = nil
 	var records []mac.PeerRecord
@@ -325,7 +326,7 @@ func reseal(ctx context.Context, client *hem.Client, auth *authenticator, tree *
 	if err != nil {
 		return failf(exitUsage, "interface record: %w", err)
 	}
-	useTok, err := auth.token(ctx, "keymgmt:use:"+tree.IfKID)
+	useTok, err := auth.Token(ctx, "keymgmt:use:"+tree.IfKID)
 	if err != nil {
 		return err
 	}
@@ -339,7 +340,7 @@ func reseal(ctx context.Context, client *hem.Client, auth *authenticator, tree *
 		return failf(exitUsage, "interface record: %w", err)
 	}
 
-	updTok, err := auth.token(ctx, "keymgmt:upd")
+	updTok, err := auth.Token(ctx, "keymgmt:upd")
 	if err != nil {
 		return err
 	}

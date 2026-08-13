@@ -81,7 +81,7 @@ A peer that never answers is reported and another is offered.
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	peer, err := selectPeer(tree, *peerIndex, *peerKey)
 	if err != nil {
@@ -90,7 +90,7 @@ A peer that never answers is reported and another is offered.
 
 	// One scope covers the rest of the run: the ECDH at every handshake, the
 	// unwrap of each pre-shared key, and reading the interface's own public key.
-	useTok, err := auth.token(ctx, "keymgmt:use:"+tree.IfKID)
+	useTok, err := auth.Token(ctx, "keymgmt:use:"+tree.IfKID)
 	if err != nil {
 		return err
 	}

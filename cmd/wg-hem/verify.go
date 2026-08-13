@@ -41,7 +41,7 @@ Flags:
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	fmt.Fprintln(os.Stderr, "Configuration verified: the stored records are the ones that were provisioned.")
 	dumpTree(tree)

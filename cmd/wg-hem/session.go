@@ -13,6 +13,7 @@ import (
 	hem "github.com/encedo/hem-sdk-go"
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // deviceFlags are the flags every command that talks to a HEM accepts.
@@ -46,30 +47,38 @@ func (d *deviceFlags) url() string {
 	return defaultHEM
 }
 
+// device is what these flags describe, in the terms internal/session works in.
+// The two things that used to make a session terminal-only — reading a passphrase
+// and printing progress — are supplied here, which is the whole reason the
+// session itself can now be driven by something that has neither.
+func (d *deviceFlags) device() session.Device {
+	return session.Device{
+		URL:        d.url(),
+		Broker:     *d.broker,
+		Mobile:     *d.mobile,
+		Insecure:   *d.insecure,
+		ExpSecs:    *d.expHours * 3600,
+		Passphrase: readPassphrase,
+		Notify:     func(msg string) { fmt.Fprintln(os.Stderr, msg) },
+	}
+}
+
 // connect performs the checkin every session begins with and returns a client
 // alongside an authenticator that will ask for the passphrase at most once.
-func (d *deviceFlags) connect(ctx context.Context) (*hem.Client, *authenticator, error) {
-	url := d.url()
-	client := hem.NewClient(url, hem.Config{Broker: *d.broker, InsecureSkipVerify: *d.insecure})
-
-	fmt.Fprintf(os.Stderr, "Connecting to %s...\n", url)
-	if err := client.Checkin(ctx); err != nil {
-		return nil, nil, classify(err, exitNetwork, "checkin")
+func (d *deviceFlags) connect(ctx context.Context) (*hem.Client, *session.Auth, error) {
+	client, auth, err := d.device().Connect(ctx)
+	if err != nil {
+		return nil, nil, exitFrom(err)
 	}
-	return client, &authenticator{client: client, mobile: *d.mobile, expSecs: *d.expHours * 3600}, nil
+	return client, auth, nil
 }
 
 // load connects and returns the authenticated configuration. Every command that
 // changes a configuration goes through here first: re-signing a tree that does
 // not currently verify would launder someone else's edit into an authentic one.
-func (d *deviceFlags) load(ctx context.Context) (*hem.Client, *authenticator, *config.Tree, error) {
-	client, auth, err := d.connect(ctx)
+func (d *deviceFlags) load(ctx context.Context) (*hem.Client, *session.Auth, *config.Tree, error) {
+	client, auth, tree, err := d.device().Load(ctx, d.chooseIdentity)
 	if err != nil {
-		return nil, nil, nil, err
-	}
-	tree, err := config.Load(ctx, client, auth.token, d.chooseIdentity)
-	if err != nil {
-		auth.wipe()
 		return nil, nil, nil, classifyLoad(err)
 	}
 	return client, auth, tree, nil

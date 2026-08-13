@@ -9,6 +9,7 @@ import (
 	hem "github.com/encedo/hem-sdk-go"
 
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // placePeer puts a peer's record into the device and returns its KID.
@@ -23,12 +24,12 @@ import (
 // configuration wants, and refuse otherwise rather than overwrite. Overwriting
 // would silently invalidate the MAC of whatever other identity references it —
 // a failure that would surface on someone else's machine, at their next startup.
-func placePeer(ctx context.Context, client *hem.Client, auth *authenticator,
+func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 	p peerSpec, want [descr.Size]byte, adopt bool) (kid string, adopted bool, err error) {
 
 	kid = descr.KID(p.PubKey)
 
-	getTok, err := auth.token(ctx, "keymgmt:get")
+	getTok, err := auth.Token(ctx, "keymgmt:get")
 	if err != nil {
 		return "", false, err
 	}
@@ -94,10 +95,10 @@ func placePeer(ctx context.Context, client *hem.Client, auth *authenticator,
 	return kid, true, nil
 }
 
-func importPeer(ctx context.Context, client *hem.Client, auth *authenticator,
+func importPeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 	p peerSpec, want [descr.Size]byte) (string, bool, error) {
 
-	impTok, err := auth.token(ctx, "keymgmt:imp")
+	impTok, err := auth.Token(ctx, "keymgmt:imp")
 	if err != nil {
 		return "", false, err
 	}
@@ -115,14 +116,14 @@ func importPeer(ctx context.Context, client *hem.Client, auth *authenticator,
 
 // readPeerRecord fetches a key's stored record, or nil when it holds none that
 // belongs to this client.
-func readPeerRecord(ctx context.Context, client *hem.Client, auth *authenticator, kid string) (*[descr.Size]byte, error) {
+func readPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) (*[descr.Size]byte, error) {
 	pattern := []byte(descr.MagicPeer)
 	token := ""
 	for offset := 0; ; {
 		total, page, err := client.SearchKeys(ctx, token, pattern, offset, 50)
 		if err != nil {
 			if he, ok := err.(*hem.HemError); ok && token == "" && (he.Status == 401 || he.Status == 403) {
-				if token, err = auth.token(ctx, "keymgmt:search"); err != nil {
+				if token, err = auth.Token(ctx, "keymgmt:search"); err != nil {
 					return nil, err
 				}
 				continue

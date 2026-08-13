@@ -10,6 +10,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // cmdStatus reports what a running interface is doing (§10.2): which peer is
@@ -59,10 +60,10 @@ device, which needs a token and therefore the passphrase.
 		if *dev.hem == "" {
 			*dev.hem = st.HEMURL
 		}
-		var auth *authenticator
+		var auth *session.Auth
 		_, auth, tree, loadErr = dev.load(context.Background())
 		if auth != nil {
-			defer auth.wipe()
+			defer auth.Wipe()
 		}
 	}
 

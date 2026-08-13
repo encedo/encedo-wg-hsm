@@ -9,6 +9,7 @@ import (
 	hem "github.com/encedo/hem-sdk-go"
 
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // cmdWipe removes every WG:* record from the device (§10.3).
@@ -43,7 +44,7 @@ Flags:
 	if err != nil {
 		return err
 	}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	// Deliberately not config.Load: a configuration that fails its MAC is
 	// exactly one someone might need to clear, so wiping must not depend on it
@@ -83,7 +84,7 @@ Flags:
 		}
 	}
 
-	delTok, err := auth.token(ctx, "keymgmt:del")
+	delTok, err := auth.Token(ctx, "keymgmt:del")
 	if err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ Flags:
 
 // listRecords finds every key whose descr starts with a magic, paging through
 // the repository. It mirrors the loader's anonymous-first approach.
-func listRecords(ctx context.Context, client *hem.Client, auth *authenticator, magic string) ([]hem.KeyEntry, error) {
+func listRecords(ctx context.Context, client *hem.Client, auth *session.Auth, magic string) ([]hem.KeyEntry, error) {
 	pattern := []byte(magic)
 	token := ""
 	var all []hem.KeyEntry
@@ -111,7 +112,7 @@ func listRecords(ctx context.Context, client *hem.Client, auth *authenticator, m
 		total, page, err := client.SearchKeys(ctx, token, pattern, offset, 50)
 		if err != nil {
 			if he, ok := err.(*hem.HemError); ok && token == "" && (he.Status == 401 || he.Status == 403) {
-				if token, err = auth.token(ctx, "keymgmt:search"); err != nil {
+				if token, err = auth.Token(ctx, "keymgmt:search"); err != nil {
 					return nil, err
 				}
 				continue

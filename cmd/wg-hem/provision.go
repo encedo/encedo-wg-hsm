@@ -17,6 +17,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // pskLen is the length of a WireGuard pre-shared key.
@@ -147,15 +148,18 @@ Flags:
 	// -- talk to the device ---------------------------------------------------
 
 	ctx := context.Background()
-	client := hem.NewClient(url, hem.Config{Broker: *broker, InsecureSkipVerify: *insecure})
-
-	fmt.Fprintf(os.Stderr, "Connecting to %s...\n", url)
-	if err := client.Checkin(ctx); err != nil {
-		return classify(err, exitNetwork, "checkin")
+	// Provisioning takes its own flags rather than the shared set, so it builds
+	// the same description of the device by hand.
+	client, auth, err := session.Device{
+		URL: url, Broker: *broker, Mobile: *mobile, Insecure: *insecure,
+		ExpSecs:    *expHours * 3600,
+		Passphrase: readPassphrase,
+		Notify:     func(msg string) { fmt.Fprintln(os.Stderr, msg) },
+	}.Connect(ctx)
+	if err != nil {
+		return exitFrom(err)
 	}
-
-	auth := &authenticator{client: client, mobile: *mobile, expSecs: *expHours * 3600}
-	defer auth.wipe()
+	defer auth.Wipe()
 
 	ifKID := *kid
 	createdIdentity := false
@@ -202,7 +206,7 @@ Flags:
 	}()
 
 	if ifKID == "" {
-		tok, err := auth.token(ctx, "keymgmt:gen")
+		tok, err := auth.Token(ctx, "keymgmt:gen")
 		if err != nil {
 			return err
 		}
@@ -216,7 +220,7 @@ Flags:
 		fmt.Fprintf(os.Stderr, "Reusing identity key %s\n", ifKID)
 	}
 
-	useTok, err := auth.token(ctx, "keymgmt:use:"+ifKID)
+	useTok, err := auth.Token(ctx, "keymgmt:use:"+ifKID)
 	if err != nil {
 		return err
 	}
@@ -300,7 +304,7 @@ Flags:
 		return failf(exitUsage, "interface record: %w", err)
 	}
 
-	updTok, err := auth.token(ctx, "keymgmt:upd")
+	updTok, err := auth.Token(ctx, "keymgmt:upd")
 	if err != nil {
 		return err
 	}
@@ -334,8 +338,8 @@ Flags:
 // deleteKey removes a key this run created and then had to abandon. It asks for
 // its own token: provisioning holds scopes for generating, reading and updating,
 // and a device that grants those does not thereby grant deletion.
-func deleteKey(ctx context.Context, client *hem.Client, auth *authenticator, kid string) error {
-	tok, err := auth.token(ctx, "keymgmt:del")
+func deleteKey(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) error {
+	tok, err := auth.Token(ctx, "keymgmt:del")
 	if err != nil {
 		return err
 	}
