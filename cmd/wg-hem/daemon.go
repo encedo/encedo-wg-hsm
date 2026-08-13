@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	hem "github.com/encedo/hem-sdk-go"
 
@@ -137,7 +138,7 @@ func openTunnel(ctx context.Context, req ipc.Request) (daemon.Tunnel, error) {
 		return nil, err
 	}
 
-	dt := &daemonTunnel{tree: tree, peer: peer}
+	dt := &daemonTunnel{tree: tree, peer: peer, expiry: hem.TokenExpiry(req.Token)}
 	dt.t = tunnel.New(ctx, tunnel.Opts{
 		Client: client, Tree: tree,
 		UseTok: req.Token, HEMURL: req.HEMURL,
@@ -187,6 +188,12 @@ type daemonTunnel struct {
 	tree *config.Tree
 	peer *config.Peer
 
+	// expiry is when the session ends, read from the token rather than from the
+	// lifetime asked for: a run on 2026-08-11 requested eight hours and ended
+	// after seven and a half, so anything derived from the request would have
+	// been half an hour optimistic about when somebody loses their tunnel.
+	expiry time.Time
+
 	// mu guards sink, which Run fills in and the tunnel's own goroutines read.
 	mu   sync.Mutex
 	sink func(string)
@@ -204,18 +211,19 @@ func (d *daemonTunnel) say(line string) {
 }
 
 func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
-	base := func() ipc.Event {
-		return ipc.Event{
-			Interface: d.t.Interface(),
-			Peer:      d.peer.Label,
-			PeerKID:   d.peer.KID,
-			Endpoint:  d.peer.Endpoint.String(),
-		}
-	}
-
-	e := base()
+	e := d.snapshot()
 	e.State = "connecting"
 	emit(e)
+
+	// The window draws counters, a last handshake and a countdown, and none of
+	// them are things the tunnel announces — it says five sentences over a
+	// session and is silent in between. So they are read from the interface on a
+	// timer, which is the same place `wg-hem status` reads them and the same
+	// place `wg show` would.
+	//
+	// A second, because that is what a countdown ticking in front of somebody
+	// needs; the question is answered over a local socket and costs nothing.
+	go d.report(ctx, emit)
 
 	// Every sentence the tunnel produces becomes a notice on the current state.
 	// Turning them into states here would be guessing at meaning from prose;
@@ -223,7 +231,7 @@ func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
 	// handshake, which is a fact rather than a sentence.
 	d.mu.Lock()
 	d.sink = func(line string) {
-		ev := base()
+		ev := d.snapshot()
 		ev.State = "connected"
 		ev.Notice = line
 		emit(ev)
@@ -232,7 +240,7 @@ func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
 
 	err := d.t.Run(d.peer)
 
-	done := base()
+	done := d.snapshot()
 	done.State = "ended"
 	if err != nil {
 		done.Notice = err.Error()
@@ -282,4 +290,74 @@ func listenOn(path string) (net.Listener, error) {
 		return nil, failf(exitDevice, "setting permissions on %s: %w", path, err)
 	}
 	return ln, nil
+}
+
+// reportEvery is how often the interface is asked what it has carried. A
+// countdown in front of somebody wants a second; the question is answered over a
+// local socket by the interface itself, so it costs nothing worth counting.
+const reportEvery = time.Second
+
+// snapshot is everything the window draws, as of now.
+//
+// The peer and the endpoint come from the configuration, which does not change
+// under a running tunnel unless failover moves it. The counters and the last
+// handshake come from the interface, and the expiry from the token — read from
+// the token itself and never computed from the length anybody asked for, since a
+// device issues what it chooses.
+func (d *daemonTunnel) snapshot() ipc.Event {
+	// The peer the tunnel is on now, not the one it started with: failover
+	// changes it, and reporting the old one would hide the single thing that
+	// happened.
+	peer := d.peer
+	if current := d.t.Peer(); current != nil {
+		peer = current
+	}
+	e := ipc.Event{
+		Interface: d.t.Interface(),
+		Peer:      peer.Label,
+		PeerKID:   peer.KID,
+		Endpoint:  peer.Endpoint.String(),
+		ExpiresAt: d.expiry,
+	}
+
+	// A tunnel whose UAPI listener could not be opened carries traffic and
+	// cannot be asked about it — Windows without LocalSystem. Nothing to add,
+	// and nothing worth complaining about once per second.
+	live, err := rt.Status(e.Interface)
+	if err != nil {
+		return e
+	}
+	for _, p := range live.Peers {
+		e.Rx += p.RxBytes
+		e.Tx += p.TxBytes
+		if p.LastHandshake.After(e.LastHandshake) {
+			e.LastHandshake = p.LastHandshake
+		}
+	}
+	return e
+}
+
+// report sends a snapshot on a timer for as long as the tunnel is up.
+func (d *daemonTunnel) report(ctx context.Context, emit func(ipc.Event)) {
+	tick := time.NewTicker(reportEvery)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+
+		e := d.snapshot()
+		// Before the first handshake there is nothing to report but the fact of
+		// still trying, and saying "connected" then would be a lie the window
+		// would draw as a green dot.
+		if e.LastHandshake.IsZero() {
+			e.State = "connecting"
+		} else {
+			e.State = "connected"
+		}
+		emit(e)
+	}
 }

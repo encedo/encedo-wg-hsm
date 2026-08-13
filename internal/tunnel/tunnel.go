@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -95,6 +96,9 @@ type Tunnel struct {
 	// answered entirely from the handshake timestamp.
 	blind bool
 
+	// mu guards peer, which failover replaces from the goroutine holding the
+	// tunnel while anything reporting on it reads from another.
+	mu   sync.Mutex
 	peer *config.Peer
 	psk  []byte
 
@@ -120,6 +124,16 @@ func New(ctx context.Context, o Opts) *Tunnel {
 // Interface is the name the tunnel ended up with, which is not always the one
 // that was asked for.
 func (t *Tunnel) Interface() string { return t.ifname }
+
+// Peer is the peer the tunnel is currently pointed at, which failover changes
+// under whoever is watching. Reported rather than assumed: a window showing the
+// peer it was started with, after a walk moved to another, would be stating the
+// one thing failover exists to change.
+func (t *Tunnel) Peer() *config.Peer {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.peer
+}
 
 // Refresh replaces the token every subsequent handshake acts with, so a session
 // can be renewed without the tunnel going down and up around it.
@@ -379,7 +393,9 @@ func (t *Tunnel) usePeer(peer *config.Peer) error {
 	}
 
 	session.Zero(t.psk)
+	t.mu.Lock()
 	t.peer, t.psk = peer, psk
+	t.mu.Unlock()
 	t.hemInside, t.hemHost = plan.HEMInside, plan.HEMHost
 	return nil
 }
