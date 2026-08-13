@@ -29,9 +29,10 @@ against real hardware, and the first one has taken a week.
    read the tree, offer a choice        │   create the interface, addresses,
    obtain keymgmt:use:<KID>  ───────────┘   routes, MTU, DNS
         │                                   run wireguard-go
-        │  URL + token ───────────────────► ECDH at every handshake
+        │  URL + token + peer ────────────► ECDH at every handshake
         │                                   unwrap the pre-shared key
-        │  ◄─────────────── status          rekey
+        │  ◄─────────────── events          rekey; on a dead peer, walk the
+        │                                   stored order itself (§6.4 v2)
         │                                        │
         └──────── connection open ───────────────┘
                   closes → tear down
@@ -65,8 +66,25 @@ once a credential lives in a privileged process:
 Which is why **revocation belongs in the first version**, not later: revoked when
 the tunnel stops, the token's effective life is the session rather than its
 expiry, and the argument above stops depending on how long an expiry happens to
-be. The SDK has no such call today — checkin, passphrase and extAuth, nothing
-else — so this is an addition there before it is one here.
+be. This is a **firmware question before it is an SDK one**: the SDK has no such
+call, and neither does the endpoint table (§7) — there may be nothing to wrap. It
+is on the firmware list in `TODO.md` and unresolved. The tension to hold in view
+until it is: the interface wants eight-hour sessions so the tunnel stops dying
+mid-afternoon, and expiry is currently the *only* bound on a stolen token — those
+two pull in opposite directions, and no wording here resolves them. If revocation
+does not come, the fallback is short use-tokens re-minted by the window, which
+costs keeping the passphrase-derived material in the window's memory for the
+session — a trade this project once rejected for convenience and would then be
+buying for containment.
+
+**How many tokens** is settled by a firmware change already asked for: search
+that returns public keys (`TODO.md`, the firmware list) lets the component read
+the whole tree without `keymgmt:get`, collapsing the handover to exactly one
+credential — `keymgmt:use:<if_kid>`. Until that ships, the handover is that token
+plus a small read bundle (search, get), and the analysis above must be read as
+covering the bundle: the read scopes reveal nothing the design does not already
+treat as public (§8 — descr and public keys), so the impersonation analysis is
+unchanged, but stating "one token" before the firmware ships would be false.
 
 **TLS is verified, always.** There is no `--insecure` in this design and there
 must not be: a request that tells a root process to skip certificate
@@ -99,6 +117,46 @@ Two rules follow:
   performed a device call on request, whoever reached the channel would obtain
   exactly what the token was meant to withhold.
 
+## The channel
+
+Four verbs and a stream — written down because "three verbs" was the first
+draft's undercount, and a protocol that gets discovered during implementation is
+how the previous one died.
+
+- **start** — the URL, the token, the peer the person chose, and which version
+  the window is (see *One version*). The component answers with its own version
+  or refuses.
+- **stop.**
+- **refresh** — a fresh token, mid-session. Renewal is a human act and the human
+  is at the window: the interface promises one-click renewal, and without this
+  verb expiry simply ends the tunnel.
+- **events** — a stream, not a poll: state, the peer in use, counters, expiry,
+  and the notices a terminal used to print. The window draws what it is told;
+  the component is the source of truth.
+
+**Failover crosses the boundary as news, not as a question.** §6.4 v1 made it a
+dialogue because a terminal had a human in front of it; that was the PoC showing
+through, not a requirement. The component has nobody to ask and does not need
+anybody: the stored order *is* the priority (§3.1, PEER_REF), so it walks it and
+reports what it did — which is §6.4 v2, promoted from "later" to what this
+architecture requires. Manual choice survives in the advanced mode as
+stop-and-start-with-this-peer, never as a mid-session prompt.
+
+## One version
+
+The window and the component are separate artifacts — one needs cgo and a build
+per platform, the other stays static — but they are **one repository and one
+release**: both carry the commit they were built from, `start` exchanges it, and
+the component refuses a window it does not match rather than guessing what an
+older one meant. `status` reports both, so a human can see the skew a refusal is
+about.
+
+The product speaks one dialect: **128-byte records**. The 64-byte build exists
+for older firmware and dies with it; it does not ship in the product, so the
+window-versus-component case where the two cannot read one tree — the record
+length is inside the MAC, and the failure would read as sabotage — is excluded by
+construction rather than handled.
+
 ## Liveness: no window, no tunnel
 
 The window is still the session. The component could now run without one — it does
@@ -124,9 +182,16 @@ middle of bringing a tunnel up. A polkit rule naming the service's user answers
 it, which is the first of the three options `TODO.md` recorded, chosen by the
 architecture rather than on its own merits.
 
-IPC is a unix socket under `/run`, with the socket's mode and `SO_PEERCRED` doing
-the access control. The package carries the unit, the tmpfiles rule, the polkit
-rule and the desktop entry.
+IPC is a unix socket in the service's **own runtime directory**
+(`RuntimeDirectory=`, so `/run/encedo-wg`), with the socket's mode and
+`SO_PEERCRED` doing the access control — and the service's state lives there
+too. It does not touch `/var/run/wireguard`: that directory is the CLI's, owned
+however the README's instructions left it, and two entry points writing one
+root-owned directory under different owners is a fight the rule at the top of
+this document exists to prevent. The one open detail: whether the UAPI socket
+also moves (invisible to `wg(8)`) or stays in the shared directory for tooling's
+sake — to be decided when the unit is written, not discovered. The package
+carries the unit, the tmpfiles rule, the polkit rule and the desktop entry.
 
 `setcap` on a thirty-megabyte cgo binary disappears with it: the window becomes an
 ordinary user program.
@@ -177,15 +242,30 @@ Three differences to hold on to:
 - **The token travels as a provider message, never in the provider
   configuration.** That configuration is stored by the system, and credentials do
   not go in it.
-- **Liveness needs a heartbeat**, as above. This is the only place the "no
-  window, no tunnel" rule costs a mechanism of its own.
-- **The extension cannot start a tunnel without a token, and the token only
-  comes from the application.** Somebody enabling the VPN from System Settings
-  gets nothing, without a defence being written for it.
+- **Liveness needs a heartbeat**, as above — and the first thing that will break
+  the heartbeat is **App Nap**. A windowless application waiting in the tray is
+  exactly what macOS suspends, and a suspended window misses beats for a tunnel
+  that is fine — the same availability bug that disqualified putting the window
+  on the handshake path, reintroduced through the liveness mechanism. Declaring
+  the activity (`NSProcessInfo`'s `beginActivity`) and a timeout generous enough
+  to survive a missed beat are part of the design, not tuning left for later.
+- **The toggle in System Settings will be pulled, and it must fail loudly.** The
+  system shows every VPN configuration with a switch, and switching it starts the
+  extension — which has no token, because the token only comes from the
+  application. Failing is correct; failing *silently* would read as a broken
+  product, so the extension cancels with a displayable error naming the
+  application to open. A dead switch on the user's screen is a UX debt this
+  architecture takes on knowingly.
 
-The work stops being Go and starts being Xcode: two entitlement sets, an app
-bundle, a Swift shell, an external build target for the Go archive. That is a
-change of tools, not of estimate.
+**This is a port, not a repackage.** The DH-delegation patch and the descr and
+MAC code cross intact — they are the point of the whole design — but the OS half
+of `internal/runtime` does not cross at all: the system hands the extension a
+`packetFlow` instead of a file descriptor, routes and DNS are *declared* in
+`NEPacketTunnelNetworkSettings` rather than installed with commands, and the
+endpoint pinning of `routing.go` becomes `excludedRoutes`. The work is Xcode,
+Swift, two entitlement sets, an app bundle and an external build target for the
+Go archive — a change of tools *and* of code, and the platform half was always
+going to be rewritten.
 
 ## What this replaces
 
@@ -194,8 +274,8 @@ privileged hands. Its nine operations (`create-tun`, `up`, `add-routes`,
 `set-mtu`, `set-dns`, `pin`, `unpin`, …) are the vocabulary of a component that
 is told what to do step by step.
 
-Here the component decides for itself, and the channel carries three verbs: start
-with this token, stop, report. What survives is `Validate()` on the privileged
+Here the component decides for itself, and the channel carries the four verbs
+and the event stream of *The channel*. What survives is `Validate()` on the privileged
 side and the rule that a request carries no secrets — enforced by a test, and
 worth restating precisely as *no key material and no long-lived credential; a
 scoped token with an expiry is what crosses*. What does not survive is the
@@ -204,10 +284,13 @@ creates it any more.
 
 ## Still open
 
-- Token revocation — absent from the SDK, and it is what makes the token's
-  lifetime a secondary question rather than the primary one.
+- Token revocation — a firmware question, not an SDK one (§7 has no such
+  endpoint), and until it exists expiry is the only bound on a stolen token,
+  which the eight-hour session the interface wants stretches to eight hours.
 - Who may drive the Windows service.
 - Whether the `-systemextension` entitlement carries deployment restrictions
   (TN3134).
+- Where the Linux service's UAPI socket lands: its own directory (invisible to
+  `wg(8)`) or the shared one (shared ownership again).
 - The WireGuard trademark, before the name reaches an installer or a
   certificate rather than after.

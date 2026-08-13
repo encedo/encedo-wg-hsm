@@ -24,6 +24,13 @@ seconds, and a peer that answers and later goes quiet is never noticed. v2 needs
 a periodic liveness check against the UAPI handshake timestamp, with enough
 hysteresis that a single missed rekey does not flap a working tunnel.
 
+The GUI architecture **promotes this from "later" to a prerequisite**: its
+privileged component has nobody to re-prompt, so it walks the stored order
+itself and reports what it did — v1's interactive re-prompt was the PoC showing
+through, not a requirement (see `docs/ARCHITECTURE-GUI.md`, *The channel*). The
+CLI keeps v1's prompt; the automatic walk is the shared part worth building
+once.
+
 **Integration test for failover (§9.7).** One interface, three peers, kill the
 active endpoint, measure the switch. Today's testing used a single peer, so
 failover was only exercised on the path where there is nowhere to switch *to*
@@ -267,16 +274,26 @@ cannot be named, and no firmware change will alter that. `up`, `status` and
 approval holds only while anonymous search is permitted; without it the search
 takes a token of its own and the everyday path costs two again.
 
-*Three things worth saying to whoever specifies the firmware.* A use-scope that is
+*Four things worth saying to whoever specifies the firmware.* A use-scope that is
 not bound to one KID — a list, or a wildcard — would make `up` a single approval
 in every case rather than only when anonymous search is on; provisioning a new key
 stays at two regardless, because a key that does not exist cannot be named.
 Whatever replaces `keymgmt:get` must keep reading every peer in one grant, as
 search-returning-public-keys does: per-key use-scopes would grow the bundle with
 the number of peers, and a token whose size depends on how many peers a
-configuration has is a token that eventually will not fit. And `allow_keysearch`
-now carries user-visible weight rather than mere convenience — while it is on, the
-everyday path is one tap; with it off, two.
+configuration has is a token that eventually will not fit — and the same change
+collapses the GUI component's credential to exactly one token, which is what its
+threat analysis would like to be true. `allow_keysearch` now carries user-visible
+weight rather than mere convenience — while it is on, the everyday path is one
+tap; with it off, two.
+
+The fourth is **token revocation**, raised by the GUI architecture: a scoped
+token will live in a privileged process for the length of a session, and today
+its expiry is the only thing that bounds a stolen one. Revoked when the tunnel
+stops, its effective life becomes the session; without that, the eight-hour
+session the interface wants and the containment story pull in opposite
+directions. Neither the SDK nor the endpoint table (§7) has such a call, so this
+is the device's question to answer before it is anybody's code.
 
 *What it costs, roughly.* The interface is the cheap part and reads as the whole
 job, which is how this kind of work gets underestimated. Three states, a button, a
