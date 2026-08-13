@@ -247,6 +247,20 @@ that is the service. **`wg show` and `wg-hem status` therefore need root against
 a tunnel the window started**, and see one the person started themselves without
 anything.
 
+On Ubuntu even root is not enough, which was found on 2026-08-13 after a reboot
+and is not about this client at all. `wireguard-tools` ships an AppArmor profile
+for `/usr/bin/wg` whose only file rule is `@{etc_rw}/wireguard/{,**}` — the
+configuration directory — with nothing under `/run`. A profile attaches to the
+executable and not to the user, so `sudo wg show` is confined identically:
+`openat("/run/wireguard/")` returns `EACCES` with the directory `0770
+root:wireguard` and the caller uid 0. The consequence is broader than this
+project — `wg show` cannot see *any* userspace WireGuard interface on a stock
+Ubuntu, since `/run/wireguard` is where all of them put their sockets. The
+supported way to change that is a local override in `/etc/apparmor.d/local/wg`,
+which the profile already includes; this repository does not ship one, because
+weakening a distribution's security profile is not a thing a VPN client should
+do to a machine on its own initiative.
+
 Opening it to the group was considered and refused. That socket does not report
 an interface, it *configures* one: group access would let anybody in the group
 replace the endpoint and the routes that the configuration MAC exists to

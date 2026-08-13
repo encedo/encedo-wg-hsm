@@ -26,6 +26,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/encedo/encedo-wg-hsm/internal/ipc"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // defaultHEM is where a personal appliance answers, the same constant the
@@ -440,7 +441,7 @@ func (u *ui) onAction() {
 		// not said.
 		go func() {
 			if err := u.sess.Connect(context.Background(), pass); err != nil {
-				fyne.Do(func() { u.setNotice(err.Error(), true) })
+				fyne.Do(func() { u.setNotice(humanError(err), true) })
 			}
 		}()
 	case Connected:
@@ -797,6 +798,32 @@ func dash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// humanError is what the window says instead of what the error says.
+//
+// The command line prints the error as it came, and should: somebody at a
+// terminal is debugging, and "authorizing keymgmt:get: auth failed: invalid
+// credentials" names the scope, the call and the device's own words. In a window
+// it is four pieces of jargon in front of somebody who mistyped a passphrase,
+// and none of the four changes what they do next.
+//
+// So the kind is translated and the text is dropped, for the two kinds where the
+// person can act and the wording is the SDK's rather than ours. A refused
+// credential and an unreachable device are the whole of what a connect attempt
+// does wrong from a window; everything else — a configuration that does not
+// authenticate, a module holding no identity — this repository already words
+// itself, and passing those through keeps the sentence somebody wrote for the
+// occasion.
+func humanError(err error) string {
+	switch session.KindOf(err) {
+	case session.KindAuth:
+		return "That passphrase was not accepted — check it and try again."
+	case session.KindNetwork:
+		return "The module did not answer. Check that it is plugged in."
+	default:
+		return err.Error()
+	}
 }
 
 // addrs draws the interface's addresses in one row. Every configuration written

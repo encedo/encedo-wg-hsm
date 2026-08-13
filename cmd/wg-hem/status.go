@@ -74,11 +74,23 @@ still authenticates is what `+"`wg-hem verify`"+` answers.
 		//
 		// Everything above this line came from the state file and is still true,
 		// so this is a gap in the report rather than a failed command.
+		//
+		// This used to name `sudo wg show` as the way round it, which was wrong
+		// on the distribution most likely to be running this. Ubuntu ships an
+		// AppArmor profile for /usr/bin/wg granting `@{etc_rw}/wireguard/{,**}`
+		// and nothing under /run, and a profile attaches to the executable
+		// rather than to the user — so wg cannot open the socket directory as
+		// root either, and `wg show` fails there against any userspace tunnel,
+		// not only one of ours. Measured on 2026-08-13: openat("/run/wireguard/")
+		// returns EACCES under sudo, with the directory 0770 root:wireguard.
 		fmt.Printf("live.unreadable permission\n")
 		fmt.Fprintf(os.Stderr,
-			"NOTE: %s belongs to the service that started it. Its counters and last\n"+
-				"      handshake are readable with `sudo wg show %s`; the window shows them\n"+
-				"      without either, over its own channel.\n", st.Interface, st.Interface)
+			"NOTE: %s belongs to the service that started it, and its socket is private\n"+
+				"      — that socket configures an interface rather than reporting one. The\n"+
+				"      window shows the counters and the last handshake over its own channel.\n"+
+				"      `wg show` wants root here, and where a distribution confines wg with\n"+
+				"      AppArmor (Ubuntu does) not even root is enough: the profile grants\n"+
+				"      /etc/wireguard and nothing under /run.\n", st.Interface)
 		return nil
 	}
 	if err != nil {

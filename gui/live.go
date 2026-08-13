@@ -257,7 +257,7 @@ func (s *liveSession) emit(e Event) {
 // failed reports an error as a state the window can draw, and returns it for the
 // caller that asked.
 func (s *liveSession) failed(err error) error {
-	s.emit(Event{State: Ready, HEM: s.hemURL, Notice: err.Error(), Err: err})
+	s.emit(Event{State: Ready, HEM: s.hemURL, Notice: humanError(err), Err: err})
 	return err
 }
 
