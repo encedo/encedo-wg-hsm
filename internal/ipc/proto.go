@@ -94,7 +94,24 @@ type Request struct {
 	HEMURL   string `json:"hem_url,omitempty"`
 	Identity string `json:"identity,omitempty"` // interface key id
 	Peer     string `json:"peer,omitempty"`     // peer key id
-	Token    string `json:"token,omitempty"`
+
+	// Token is the session's own credential, scoped keymgmt:use:<Identity>. It
+	// is what the component acts with at every handshake, for as long as the
+	// tunnel is up, and it is the one whose theft the threat model is about.
+	Token string `json:"token,omitempty"`
+
+	// Read carries the read scopes the component needs once, by scope name,
+	// while it loads the configuration and checks its MAC.
+	//
+	// It exists because multi-scope tokens are firmware that has not shipped.
+	// Today `keymgmt:use:<kid>` does not cover `keymgmt:get`, and a device
+	// without anonymous search wants `keymgmt:search` as well — so the honest
+	// handover is one session credential plus a small read bundle, rather than
+	// the single token the architecture would prefer. They are separate fields
+	// because their lifetimes differ: these are spent during startup and matter
+	// far less if lost, and when the firmware lands this field goes away without
+	// disturbing the one above it.
+	Read map[string]string `json:"read,omitempty"`
 }
 
 // Type discriminates what came back: an answer to a request, or something that
