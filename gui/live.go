@@ -173,7 +173,20 @@ func (s *liveSession) consume(conn net.Conn) {
 			s.emit(Event{State: Ready, HEM: s.hemURL,
 				Notice: m.Reply.Err, Err: errors.New(m.Reply.Err)})
 		case m.Type == ipc.TypeEvent && m.Event != nil:
-			s.emit(fromIPC(*m.Event, s.hemURL))
+			ev := fromIPC(*m.Event, s.hemURL)
+			s.emit(ev)
+
+			// The component takes the tunnel down on stop and keeps the
+			// connection, so nothing else would ever end it: the session stayed
+			// one that held a connection, the presence watch stood aside as it
+			// does while a tunnel is up, and the passphrase never came back.
+			//
+			// Ending it on the component saying the tunnel ended, rather than in
+			// Disconnect, is what also covers a tunnel that ended on its own —
+			// an expired token, or a peer nobody could reach.
+			if ev.State == Ended {
+				conn.Close()
+			}
 		}
 	}
 }

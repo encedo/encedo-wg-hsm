@@ -118,9 +118,13 @@ type ui struct {
 	fShake   *widget.Label
 	fExpires *widget.Label
 
-	noticeText *widget.Label
-	noticeBG   *canvas.Rectangle
-	noticeBox  *fyne.Container
+	// A notice is the one sentence worth reading, and it is drawn in the detail
+	// line rather than in a panel of its own. baseDetail is what that line says
+	// when nothing has happened, kept so the notice can stand in its place and
+	// the sentence can come back when the notice goes.
+	baseDetail string
+	notice     string
+	noticeBad  bool
 	warned     bool
 
 	pass      *widget.Entry
@@ -264,17 +268,6 @@ func (u *ui) build() {
 		widget.NewLabel("session ends"), u.fExpires,
 	)
 
-	// One line, ellipsised. A wrapping label inside a background box cannot be
-	// sized reliably — its height is computed before its width is known, so long
-	// text is clipped rather than wrapped. A single line removes the gamble and
-	// is the better alert anyway; the full text goes to the system notification.
-	u.noticeText = widget.NewLabel("")
-	u.noticeText.Wrapping = fyne.TextWrapOff
-	u.noticeText.Truncation = fyne.TextTruncateEllipsis
-	u.noticeBG = canvas.NewRectangle(color.Transparent)
-	u.noticeBG.CornerRadius = 4
-	u.noticeBox = container.NewStack(u.noticeBG, container.NewPadded(u.noticeText))
-
 	u.pass = widget.NewPasswordEntry()
 	u.pass.SetPlaceHolder("HEM passphrase")
 	u.pass.OnSubmitted = func(string) { u.onAction() }
@@ -341,9 +334,6 @@ func (u *ui) compose(e Event) {
 	if e.State == NoModule {
 		head = append(head, u.hemRow)
 	}
-	if u.noticeText.Text != "" {
-		head = append(head, u.noticeBox)
-	}
 
 	foot := []fyne.CanvasObject{u.rule}
 	if e.State == Ready {
@@ -381,7 +371,6 @@ func (u *ui) compose(e Event) {
 // came to be drawn over each other once already.
 const (
 	compactHeight = 320 * uiScale
-	noticeHeight  = 40 * uiScale // a notice is one more row, and it arrives unannounced
 	// Room for the panel with the stand-in's buttons, which is the tallest it
 	// gets. Against a real appliance it is shorter and the space goes unused —
 	// preferable to a window that changes height depending on what is behind it.
@@ -440,10 +429,7 @@ func (u *ui) onAction() {
 		// not said.
 		go func() {
 			if err := u.sess.Connect(context.Background(), pass); err != nil {
-				fyne.Do(func() {
-					u.showNotice(err.Error(), true)
-					u.compose(u.latest)
-				})
+				fyne.Do(func() { u.setNotice(err.Error(), true) })
 			}
 		}()
 	case Connected:
@@ -506,30 +492,30 @@ func (u *ui) render(e Event) {
 	case NoModule:
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Plug in your key")
-		u.detail.SetText("The tunnel needs the module that holds its identity.")
+		u.baseDetail = "The tunnel needs the module that holds its identity."
 	case Ready:
 		u.setDot(theme.ColorNameForeground)
 		u.status.SetText("Ready")
-		u.detail.SetText("Module present.")
+		u.baseDetail = "Module present."
 	case Connecting:
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Connecting…")
-		u.detail.SetText("Waiting for the first handshake.")
+		u.baseDetail = "Waiting for the first handshake."
 	case Connected:
 		u.setDot(theme.ColorNameSuccess)
 		u.status.SetText("Connected")
-		u.detail.SetText("")
+		u.baseDetail = ""
 		u.fPeer.SetText(dash(e.Peer))
 		u.fMoved.SetText(human(e.Rx) + " in / " + human(e.Tx) + " out")
 		u.fShake.SetText(ago(e.LastHandshake))
 	case Disconnecting:
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Disconnecting…")
-		u.detail.SetText("")
+		u.baseDetail = ""
 	case Ended:
 		u.setDot(theme.ColorNameDisabled)
 		u.status.SetText("Closed")
-		u.detail.SetText("")
+		u.baseDetail = ""
 	}
 
 	// Emphasis follows what somebody is likely to want next. Connecting is the
@@ -554,12 +540,20 @@ func (u *ui) render(e Event) {
 	}
 	u.action.Refresh()
 
-	// A notice stays on screen until something replaces it. It used to be
-	// cleared by the next event carrying none, which since the component started
-	// reporting once a second meant every notice flashed and vanished.
-	if e.Notice != "" && e.Notice != prev.Notice {
-		u.showNotice(e.Notice, e.Err != nil)
+	// A notice outlives the events around it but not the state it belongs to.
+	// Clearing it on the next event carrying none made every notice flash and
+	// vanish, since the component reports once a second; never clearing it left
+	// "Connecting to …" sitting in front of a tunnel that had been up for an
+	// hour. The state it arrived in is the thing it is about, so that is what it
+	// lasts for: failover and expiry both hold while the tunnel does, and the
+	// narration of connecting goes when connecting does.
+	if e.State != prev.State {
+		u.notice, u.noticeBad = "", false
 	}
+	if e.Notice != "" && e.Notice != prev.Notice {
+		u.notice, u.noticeBad = e.Notice, e.Err != nil
+	}
+	u.applyDetail()
 
 	// Notifications only where the state changed, and only for the two changes
 	// worth interrupting somebody over. The tunnel says five sentences over a
@@ -582,21 +576,36 @@ func (u *ui) render(e Event) {
 	u.compose(e)
 }
 
-// showNotice gives the one line worth reading a ground of its own. Failover and
-// expiry both arrive as prose among other prose otherwise, which is how a person
-// misses the only sentence that changed.
-func (u *ui) showNotice(text string, bad bool) {
-	name := theme.ColorNameWarning
-	if bad {
-		name = theme.ColorNameError
+// setNotice puts a sentence in front of somebody from outside render, which the
+// expiry warning is: it comes off a timer rather than off an event.
+func (u *ui) setNotice(text string, bad bool) {
+	u.notice, u.noticeBad = text, bad
+	u.applyDetail()
+	u.compose(u.latest)
+}
+
+// applyDetail draws the detail line, which is the notice when there is one and
+// the state's own sentence otherwise.
+//
+// A panel with a coloured ground used to carry this. It was designed against the
+// scripted stand-in, where a box was the only way to show that anything had
+// happened; with a real component the word, the dot and the fields already carry
+// the state, and what was left was one sentence being shouted. Colour says the
+// same thing more quietly, and the line wraps — the panel could not, because a
+// wrapping label inside a background box has its height computed before its
+// width is known, so the failover message was cut off mid-word.
+func (u *ui) applyDetail() {
+	text, importance := u.baseDetail, widget.MediumImportance
+	if u.notice != "" {
+		text = u.notice
+		importance = widget.WarningImportance
+		if u.noticeBad {
+			importance = widget.DangerImportance
+		}
 	}
-	c := theme.Color(name)
-	r, g, b, _ := c.RGBA()
-	u.noticeBG.FillColor = color.NRGBA{R: uint8(r >> 8), G: uint8(g >> 8), B: uint8(b >> 8), A: 40}
-	u.noticeBG.StrokeColor = c
-	u.noticeBG.StrokeWidth = 1
-	u.noticeBG.Refresh()
-	u.noticeText.SetText(text)
+	u.detail.Importance = importance
+	u.detail.SetText(text)
+	u.detail.Refresh()
 }
 
 func (u *ui) setDot(name fyne.ThemeColorName) {
@@ -619,7 +628,7 @@ func (u *ui) renderCountdown(e Event) {
 		u.warned = true
 		// The countdown above already says how long; this says the part it
 		// cannot, which is that nothing will renew it.
-		u.showNotice("Reconnect before it ends — the session does not renew itself", false)
+		u.setNotice("Reconnect before it ends — the session does not renew itself", false)
 		u.app.SendNotification(fyne.NewNotification("encedo-wg",
 			"The tunnel will disconnect in "+fmtLeft(left)+"."))
 	}
