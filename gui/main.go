@@ -24,6 +24,8 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/encedo/encedo-wg-hsm/internal/ipc"
 )
 
 // defaultHEM is where a personal appliance answers, the same constant the
@@ -145,7 +147,13 @@ func main() {
 	live := flag.String("live", "", "drive a real appliance: the `socket` the privileged component listens on\n(try /run/encedo-wg/wg-hem.sock)")
 	flag.Parse()
 	if *showVersion {
+		// Two numbers, because they answer different questions. The first is
+		// this interface's own, which moves at its own pace. The second is what
+		// the privileged component compares against before it will take
+		// instructions — so when the two refuse each other, this is the line to
+		// hold up beside `wg-hem version`.
 		fmt.Println("encedo-wg-gui", guiVersion)
+		fmt.Println("build", ipc.Current())
 		return
 	}
 	// Before the toolkit starts, because that is when it reads the variable.
