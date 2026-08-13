@@ -74,6 +74,8 @@ func main() {
 		err = cmdPeer(os.Args[2:])
 	case "wipe":
 		err = cmdWipe(os.Args[2:])
+	case "daemon":
+		err = cmdDaemon(os.Args[2:])
 	case "version", "--version":
 		// The record size goes with it: two builds of the same release talk to
 		// different firmware and cannot read each other's trees, so the number
@@ -111,6 +113,7 @@ Usage:`, version.Version)
   wg-hem verify [flags]       check the stored configuration and print it
   wg-hem peer add|remove|update    change the peer list, re-authenticating the tree
   wg-hem wipe [flags]         delete the WG:* records from the HEM
+  wg-hem daemon [flags]       run tunnels for a graphical client, over a socket
 
 Run "wg-hem <command> -h" for a command's flags.
 

@@ -121,6 +121,16 @@ func New(ctx context.Context, o Opts) *Tunnel {
 // that was asked for.
 func (t *Tunnel) Interface() string { return t.ifname }
 
+// Refresh replaces the token every subsequent handshake acts with, so a session
+// can be renewed without the tunnel going down and up around it.
+func (t *Tunnel) Refresh(token string) error {
+	if t.hsm == nil {
+		return session.Fail(session.KindDevice, "the tunnel is not up yet")
+	}
+	t.hsm.SetToken(token)
+	return nil
+}
+
 func (t *Tunnel) notify(format string, args ...any) {
 	if t.opts.Notify != nil {
 		t.opts.Notify(fmt.Sprintf(format, args...))
@@ -201,6 +211,12 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		case <-stop:
 		case <-uapiErr:
 		case <-t.dev.Wait():
+		// Cancelling the context is how a caller with no terminal ends a tunnel.
+		// A daemon's own SIGTERM means the daemon is going down, which is a
+		// different event from this tunnel being asked to stop, and conflating
+		// the two would make a window's Disconnect indistinguishable from the
+		// service restarting.
+		case <-t.ctx.Done():
 		case <-t.hsm.Dead():
 			endMsg = "The HEM is gone or the token has expired — bringing the interface down."
 		}

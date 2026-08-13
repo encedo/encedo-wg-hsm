@@ -69,11 +69,34 @@ type HSM struct {
 	// value passes through this process.
 	//
 	// Guarded: failover adds to it from the foreground while the device's own
-	// goroutines may be reading it for a handshake already in flight.
+	// goroutines may be reading it for a handshake already in flight. The token
+	// is under the same lock, for the same reason — a session that is renewed
+	// mid-flight is written from whoever is holding the conversation with the
+	// person, while a handshake in progress is reading it.
 	mu      sync.RWMutex
 	extKIDs map[device.NoisePublicKey]string
 
 	dead chan struct{}
+}
+
+// SetToken replaces the credential every subsequent handshake acts with.
+//
+// Renewal is a human act — the token expires and only somebody at a window or a
+// terminal can prove who they are again — so it arrives from outside, while
+// handshakes are in flight. A rekey that has already begun keeps the token it
+// started with, which is right: it is either still valid, in which case nothing
+// is wrong, or it has expired, in which case the retry after it picks up the
+// new one.
+func (h *HSM) SetToken(token string) {
+	h.mu.Lock()
+	h.token = token
+	h.mu.Unlock()
+}
+
+func (h *HSM) currentToken() string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.token
 }
 
 func NewHSM(client *hem.Client, token, kid string, pubKey device.NoisePublicKey) *HSM {
@@ -146,7 +169,7 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), ecdhTimeout)
 		started := time.Now()
-		result, err := h.client.ECDH(ctx, h.token, h.kid, opts)
+		result, err := h.client.ECDH(ctx, h.currentToken(), h.kid, opts)
 		took := time.Since(started)
 		cancel()
 		if err == nil {
