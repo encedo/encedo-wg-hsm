@@ -239,11 +239,21 @@ by looking exactly there, so a tunnel this service runs would become invisible t
 the standard tool, which is likely to be installed and is the first thing anybody
 reaches for.
 
-It already works, and that is the strongest part of the argument: the service
-calls the same `UAPIListen` the command does, so `wg show` reads a
-window-started tunnel today with nothing added. `wg-hem status` shows the same
-live figures plus what only this client knows — the identity, the peer's label,
-when the session ends, and a fresh MAC check.
+It works, with one limit found by testing it on 2026-08-13 and worth stating
+because the obvious reading is wrong. The service calls the same `UAPIListen`
+the command does, so the socket is in the directory `wg show` looks in — but
+that socket is `0700`, owned by whoever created it, and for a service-run tunnel
+that is the service. **`wg show` and `wg-hem status` therefore need root against
+a tunnel the window started**, and see one the person started themselves without
+anything.
+
+Opening it to the group was considered and refused. That socket does not report
+an interface, it *configures* one: group access would let anybody in the group
+replace the endpoint and the routes that the configuration MAC exists to
+protect, which is a larger grant than driving the service through its own
+channel, where the only verbs are start with my token, stop and refresh. So
+`wg-hem status` prints what the state file holds and says plainly that the live
+half wants root, rather than failing.
 
 One interaction to keep in view: `wg-hem down` stops a tunnel by signalling the
 process that owns it, and a person cannot signal a system service. Against a

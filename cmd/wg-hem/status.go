@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
+	iofs "io/fs"
 	"os"
 	"time"
 
@@ -63,6 +65,22 @@ still authenticates is what `+"`wg-hem verify`"+` answers.
 	fmt.Printf("peer.endpoint %s\n", st.Endpoint)
 
 	live, err := rt.Status(st.Interface)
+	if errors.Is(err, iofs.ErrPermission) {
+		// A tunnel the service started leaves a socket the service owns, and
+		// that socket is how an interface is *configured* — group access to it
+		// would let anybody in the group replace the endpoint and the routes
+		// that the configuration MAC exists to protect. So it stays private, and
+		// reading the live half of a service-run tunnel wants root.
+		//
+		// Everything above this line came from the state file and is still true,
+		// so this is a gap in the report rather than a failed command.
+		fmt.Printf("live.unreadable permission\n")
+		fmt.Fprintf(os.Stderr,
+			"NOTE: %s belongs to the service that started it. Its counters and last\n"+
+				"      handshake are readable with `sudo wg show %s`; the window shows them\n"+
+				"      without either, over its own channel.\n", st.Interface, st.Interface)
+		return nil
+	}
 	if err != nil {
 		// The state file says a tunnel should be here and the socket says
 		// otherwise. That is worth reporting as a failure, not as a blank.

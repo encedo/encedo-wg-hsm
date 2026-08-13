@@ -52,11 +52,15 @@ type Opts struct {
 	// the one that comes back is the one everything afterwards uses.
 	Ifname string
 
-	// Notify carries what the tunnel has to say. Five sentences over the life of
-	// a session, and every one of them is something a window would show
-	// differently — a status line, a toast, a coloured dot — so the tunnel states
-	// the fact and lets whoever is watching decide how it appears.
-	Notify func(string)
+	// Notify carries what the tunnel has to say, and how much it matters.
+	//
+	// The two kinds are not the same thing and treating them alike is what put
+	// "Handshake completed" in a coloured alert box beside a green dot already
+	// saying it. Progress is the tunnel narrating what a watcher can see for
+	// itself; news is something that happened which nothing else on screen would
+	// reveal. A terminal prints both and a window shows one, which is exactly why
+	// the tunnel says which is which rather than choosing for either of them.
+	Notify func(Note, string)
 
 	// SelectNext is asked for another peer when the current one never answers.
 	//
@@ -145,9 +149,21 @@ func (t *Tunnel) Refresh(token string) error {
 	return nil
 }
 
-func (t *Tunnel) notify(format string, args ...any) {
+// Note says whether a sentence is worth interrupting somebody over.
+type Note int
+
+const (
+	// Progress narrates what the state already shows: coming up, handshaking,
+	// going down.
+	Progress Note = iota
+	// News is what nothing else would tell them — a peer that stopped
+	// answering, a device that went away, something left behind.
+	News
+)
+
+func (t *Tunnel) notify(kind Note, format string, args ...any) {
 	if t.opts.Notify != nil {
-		t.opts.Notify(fmt.Sprintf(format, args...))
+		t.opts.Notify(kind, fmt.Sprintf(format, args...))
 	}
 }
 
@@ -196,7 +212,7 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 	uapiErr := make(chan error, 1)
 	if uapi, err := rt.UAPIListen(t.ifname); err != nil {
 		t.blind = true
-		t.notify("WARNING: the tunnel is up but nothing can observe it: %v\n"+
+		t.notify(News, "WARNING: the tunnel is up but nothing can observe it: %v\n"+
 			"         `wg show` and `wg-hem status` will not find this interface, and a peer\n"+
 			"         that never answers cannot be noticed, so failover is off for this run.", err)
 	} else {
@@ -237,17 +253,17 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		close(ending)
 	}()
 
-	t.notify("Interface %s is up.", t.ifname)
+	t.notify(Progress, "Interface %s is up.", t.ifname)
 
 	if err := t.hold(st, ending); err != nil {
 		t.teardown()
 		return err
 	}
 	if endMsg != "" {
-		t.notify("%s", endMsg)
+		t.notify(News, "%s", endMsg)
 	}
 	t.teardown()
-	t.notify("Interface %s is down.", t.ifname)
+	t.notify(Progress, "Interface %s is down.", t.ifname)
 	return nil
 }
 
@@ -265,7 +281,7 @@ func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
 	}
 	for {
 		if awaitHandshake(t.ifname, ending) {
-			t.notify("Handshake with %q completed.", t.peer.Label)
+			t.notify(Progress, "Handshake with %q completed.", t.peer.Label)
 			<-ending
 			return nil
 		}
@@ -287,10 +303,10 @@ func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
 		// existing — the person reading it already knows what happened — but a
 		// walk that moves silently leaves somebody looking at a tunnel that is
 		// working through a peer they did not pick.
-		t.notify("Moved to %q — %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
+		t.notify(News, "Moved to %q — %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
 		if err := st.Save(); err != nil {
-			t.notify("WARNING: the state file no longer names the active peer: %v", err)
+			t.notify(News, "WARNING: the state file no longer names the active peer: %v", err)
 		}
 	}
 }
@@ -379,7 +395,7 @@ func (t *Tunnel) usePeer(peer *config.Peer) error {
 	uapi := uapiConfig(t.opts.Tree, peer, psk)
 	if t.peer != nil {
 		if msg := allowedIPsDiffer(t.peer, peer); msg != "" {
-			t.notify("%s", msg)
+			t.notify(News, "%s", msg)
 		}
 		uapi = uapiReplacePeer(peer, psk)
 		// Routes are added, never withdrawn: traffic is using the ones already
@@ -452,5 +468,5 @@ func (t *Tunnel) teardown() {
 	}
 	session.Zero(t.psk)
 	_ = os.Remove(t.pubPath())
-	session.Remove(t.ifname, func(msg string) { t.notify("WARNING: %s", msg) })
+	session.Remove(t.ifname, func(msg string) { t.notify(News, "WARNING: %s", msg) })
 }

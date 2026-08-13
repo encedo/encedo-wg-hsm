@@ -90,7 +90,7 @@ A peer that never answers is reported and another is offered.
 		Client: client, Tree: tree,
 		UseTok: useTok, HEMURL: dev.url(), Ifname: *ifname,
 		SelectNext: selectNext,
-		Notify:     func(line string) { fmt.Fprintln(os.Stderr, line) },
+		Notify:     func(_ tunnel.Note, line string) { fmt.Fprintln(os.Stderr, line) },
 	})
 	if err := t.Run(peer); err != nil {
 		return exitFrom(err)

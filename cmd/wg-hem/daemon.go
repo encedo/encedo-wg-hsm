@@ -202,9 +202,21 @@ type daemonTunnel struct {
 	sink func(string)
 }
 
-// say passes a sentence on, if there is anywhere to pass it yet. The tunnel is
-// built before it is run, and nothing it might say in between has anywhere to go.
-func (d *daemonTunnel) say(line string) {
+// say passes a sentence on, if it is one the window should see and there is
+// anywhere to pass it yet.
+//
+// Progress is dropped here rather than in the window: "Interface wg0 is up" and
+// "Handshake completed" are the tunnel narrating what the state already says,
+// and the window draws state as a word and a coloured dot. Sending them anyway
+// is what put a handshake in an alert box beside a green dot that meant the same
+// thing.
+//
+// The tunnel is also built before it is run, and nothing it might say in between
+// has anywhere to go yet.
+func (d *daemonTunnel) say(kind tunnel.Note, line string) {
+	if kind != tunnel.News {
+		return
+	}
 	d.mu.Lock()
 	sink := d.sink
 	d.mu.Unlock()
