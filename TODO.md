@@ -56,8 +56,17 @@ a human — so a process surviving the window would be the daemon this project
 deliberately does not build, holding a credential nobody is watching. Minimising
 to a tray icon keeps the session; closing ends it, and the first close should say
 so — though not every desktop has a tray, which is taken up under *toolkit*
-below. Privileged work (TUN, routes, DNS) belongs in a helper that knows nothing
-about keys; the session and the token stay in the GUI.
+below.
+
+**Where the privileged work goes was settled on 2026-08-13 and is written up
+separately: `docs/ARCHITECTURE-GUI.md`.** Two paragraphs below this one described
+the arrangement it replaces — an unprivileged window driving privileged hands —
+and they are left in place because the reasoning that led away from them is worth
+keeping. The short version: the privileged component reads and authenticates the
+configuration itself and makes its own device calls, the window authenticates and
+hands over a scoped token and nothing else, and the command-line client does not
+change. "The GUI is the session" survives, but as a rule the component enforces
+rather than a consequence of it being unable to continue alone.
 
 *Module presence is the primary state, not a connect button.* Plugged in, ready,
 connected. This is the one VPN client whose identity is an object the user can
@@ -114,16 +123,39 @@ completely, because root is never asked.
 Teardown no longer reverts what it never set, so a tunnel without DNS of its own
 — the ordinary case, and the one that was raising a dialogue on Ctrl+C to undo
 nothing — is clean. A tunnel that *does* carry DNS will still be asked, twice,
-and that is not fixed. Three ways out, in the order they are worth considering:
-ship a polkit rule with the package; give the helper this one job on Linux too,
-where it is otherwise not needed; or write `/etc/resolv.conf` directly, which is
-what wg-quick does and which loses split DNS. Nothing is decided; nobody has hit
-it yet, because the stored configurations in use carry no DNS.
+and that is not fixed **for the command-line client**, which is the one that runs
+as whoever typed it.
 
-macOS and Windows are where the helper is actually required, because neither has
-an equivalent of `setcap`: there is no way to grant one binary one permission.
-That is two platforms rather than three, and the second of them is the one whose
-demo assumption is already in doubt.
+For the graphical client it is settled, and settled by the architecture rather
+than on its own merits: the privileged component is a systemd service under its
+own system user, so a polkit rule naming that user answers the question once, at
+install time. See `docs/ARCHITECTURE-GUI.md`. Of the three options weighed — a
+polkit rule, a helper given this one job, or writing `/etc/resolv.conf` and
+losing split DNS — the first is what a service makes natural.
+
+Nobody has hit it from the command line yet, because the stored configurations in
+use carry no DNS.
+
+macOS and Windows are where a privileged component is unavoidable, because
+neither has an equivalent of `setcap`: there is no way to grant one binary one
+permission. That remains true, but what the component *is* changed on 2026-08-13
+and the change made both of them cheaper.
+
+On Windows it is `wg-hem` registered as a service, which creates the adapter and
+keeps its handle — so `DuplicateHandle`, the one mechanism with no counterpart in
+what we had already written, is not needed after all. On macOS it is not our
+process at all but a NetworkExtension system extension, and the entitlement for a
+packet tunnel provider turns out to be **self-serve**: Apple's developer support
+states there is no approval process, and it has been a checkbox since November
+2016. Only Hotspot Helper and the app push provider remain managed. What binds is
+TN3120 — such a provider is for VPN and nothing else, which is what this is.
+
+The consequence for what exists: `internal/helper` describes the arrangement this
+replaces. Its nine operations are the vocabulary of privileged hands being told
+each step; the settled design gives the component its own judgement and leaves
+the channel three verbs. `Validate()` and the no-secrets rule survive; the
+operation list and `SendFD`/`RecvFD` do not, since no descriptor leaves the
+process that creates it. See `docs/ARCHITECTURE-GUI.md`.
 
 *Toolkit.* The choice looks like it is settled by §10.4.4 and it is not. That
 section objects to *logic* duplication — reimplementing the TLV codec and the MAC
@@ -264,6 +296,25 @@ Call it 32–60 developer-days, so two to three months for one person working on
 properly. The privileged helper is both the largest number and the least certain:
 three platforms, three mechanisms, and each with its own installation and
 permission story.
+
+*How 2026-08-13 moves those numbers.* The interface line is spent — a window,
+eight states, a tray and a scenario exist on the `gui` branch. The helper line
+does not survive as one number, and not because it was wrong: the component
+described in `docs/ARCHITECTURE-GUI.md` is a different thing on each platform,
+and two of the three got cheaper. Linux gains a service it did not need but loses
+`setcap` on a cgo binary and gains DNS without a dialogue. Windows loses
+descriptor passing entirely. macOS keeps its size but changes currency: the work
+is Xcode, Swift and an external build target rather than Go, which is a tooling
+question before it is a scheduling one. Nothing here is re-estimated, because
+re-estimating on the strength of a design discussion is how the first number went
+wrong.
+
+Two items sit outside all of it and outside our control, so they are worth
+starting before anything they gate: the WireGuard trademark, which should be
+settled before the name reaches an installer or a certificate rather than after,
+and token revocation, which the SDK does not have and which is what makes a
+credential in a privileged process a bounded rather than an open question. The
+Apple entitlement was expected to be the third and is not — it is self-serve.
 
 Staged, it looks better than the total suggests. Assume elevated privileges and
 the twenty-day line disappears, which is what makes a demonstration cheap relative
