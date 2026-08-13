@@ -111,11 +111,12 @@ func matchIdentity(ids []config.Identity, want string) (string, error) {
 
 // promptForIdentity asks, and — unlike the peer prompt — offers no default.
 //
-// The peer prompt defaults to the first because the stored order is the failover
-// priority (§3.1), so "the first" means something. Identities have no order: the
-// list is whatever the repository answered, sorted for stability alone. A default
-// would connect as whichever identity happened to sort first, which is a decision
-// nobody made.
+// The list is ordered oldest first, which is a real order and not merely a
+// stable one. It is still not a preference: PEER_REF order is the failover
+// priority the provisioner wrote down, so defaulting to the first peer honours
+// somebody's decision, while defaulting to the oldest identity would invent one.
+// Pressing return would connect as whichever key happens to be longest-standing,
+// which is a fact about history rather than about intent.
 func promptForIdentity(ids []config.Identity) (string, error) {
 	fmt.Fprintln(os.Stderr, "This device holds several interface keys:")
 	for i, id := range ids {

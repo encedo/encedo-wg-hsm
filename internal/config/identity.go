@@ -39,6 +39,10 @@ type Identity struct {
 	// what could be read; LoadIdentity is where the failure is reported, and
 	// there it is an error rather than a gap.
 	Addrs []netip.Prefix
+
+	// Created is when the device says the key was made, and is what the list is
+	// ordered by — see describe.
+	Created int64
 }
 
 // ChooseFunc is asked which identity to use, and only when there is a real
@@ -85,12 +89,22 @@ func LoadIdentity(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID strin
 }
 
 // describe turns what search returned into what a person can choose between,
-// in a stable order: two runs against an unchanged device offer the same list in
-// the same positions, whatever order the repository answered in.
+// oldest identity first.
+//
+// Creation order is used because the device reports it and because it means
+// something: the identity somebody has had longest is the one they will
+// recognise, and a list ordered by when things happened reads like a history
+// rather than like a hash. Sorting by label would have been stable and arbitrary
+// — two runs against an unchanged device would agree, and the agreement would say
+// nothing.
+//
+// The identifier breaks ties, because provisioning a batch by script can stamp
+// two keys with the same second, and a list that reorders itself between runs is
+// a list whose numbers cannot be answered with.
 func describe(entries []hem.KeyEntry) []Identity {
 	ids := make([]Identity, 0, len(entries))
 	for _, e := range entries {
-		id := Identity{KID: e.KID, Label: e.Label}
+		id := Identity{KID: e.KID, Label: e.Label, Created: e.Created}
 		if raw, err := descr.Normalize(e.Descr); err == nil {
 			if iface, err := descr.DecodeInterface(raw[:]); err == nil {
 				id.Addrs = iface.Addrs
@@ -99,8 +113,8 @@ func describe(entries []hem.KeyEntry) []Identity {
 		ids = append(ids, id)
 	}
 	sort.Slice(ids, func(i, j int) bool {
-		if ids[i].Label != ids[j].Label {
-			return ids[i].Label < ids[j].Label
+		if ids[i].Created != ids[j].Created {
+			return ids[i].Created < ids[j].Created
 		}
 		return ids[i].KID < ids[j].KID
 	})

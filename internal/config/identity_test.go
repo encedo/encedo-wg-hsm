@@ -110,17 +110,14 @@ func TestPickRefusesAnIdentityThatIsNotThere(t *testing.T) {
 	}
 }
 
-func TestDescribeReadsTheAddressesAndSortsStably(t *testing.T) {
+func TestDescribeOrdersByAgeOldestFirst(t *testing.T) {
 	entries := []hem.KeyEntry{
-		{KID: "ff", Label: "work", Descr: ifRecord(t, "10.99.0.7/32")},
-		{KID: "01", Label: "home", Descr: ifRecord(t, "10.1.1.5/24")},
-		{KID: "02", Label: "home", Descr: ifRecord(t, "10.2.2.5/24")},
+		{KID: "ff", Label: "work", Created: 3000, Descr: ifRecord(t, "10.99.0.7/32")},
+		{KID: "01", Label: "home", Created: 1000, Descr: ifRecord(t, "10.1.1.5/24")},
+		{KID: "02", Label: "spare", Created: 2000, Descr: ifRecord(t, "10.2.2.5/24")},
 	}
 	ids := describe(entries)
 
-	// Label first, then KID: two runs against an unchanged device must offer the
-	// same list in the same positions, or the numbers a person answers with mean
-	// different things on different days.
 	want := []string{"01", "02", "ff"}
 	for i, kid := range want {
 		if ids[i].KID != kid {
@@ -129,6 +126,20 @@ func TestDescribeReadsTheAddressesAndSortsStably(t *testing.T) {
 	}
 	if got := ids[0].Addrs; len(got) != 1 || got[0].String() != "10.1.1.5/24" {
 		t.Errorf("addresses of the first identity = %v, want [10.1.1.5/24]", got)
+	}
+}
+
+// Provisioning a batch by script can stamp two keys with the same second. A list
+// that reorders itself between runs is a list whose numbers cannot be answered
+// with, so the identifier settles it.
+func TestDescribeBreaksTiesOnTheIdentifier(t *testing.T) {
+	entries := []hem.KeyEntry{
+		{KID: "bb", Created: 1000, Descr: ifRecord(t, "10.1.1.5/24")},
+		{KID: "aa", Created: 1000, Descr: ifRecord(t, "10.2.2.5/24")},
+	}
+	ids := describe(entries)
+	if ids[0].KID != "aa" || ids[1].KID != "bb" {
+		t.Errorf("order = %v, want [aa bb]", kidsOfIdentities(ids))
 	}
 }
 
