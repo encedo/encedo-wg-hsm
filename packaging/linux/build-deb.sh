@@ -131,6 +131,13 @@ EOF
 chmod 755 "$PKG/DEBIAN/prerm"
 
 mkdir -p "$ROOT/dist-deb"
+
+# Older packages for the same architecture and dialect go, because they are this
+# script's own output and leaving them is a trap: `dpkg -i dist-deb/*.deb` then
+# matches several, unpacks all of them and configures whichever it reaches last,
+# which is not the one that was just built. Seen doing exactly that.
+rm -f "$ROOT/dist-deb"/encedo-wg_*_"${ARCH}${VARIANT}".deb
+
 OUT="$ROOT/dist-deb/encedo-wg_${DEBVER}_${ARCH}${VARIANT}.deb"
 dpkg-deb --build --root-owner-group "$PKG" "$OUT" >/dev/null
 echo "$OUT"
