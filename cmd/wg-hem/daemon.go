@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"os/user"
@@ -264,6 +265,20 @@ func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
 	return err
 }
 
+// addrStrings puts the addresses on the wire as text. netip.Prefix marshals to
+// JSON on its own, but as a bare string either way — going through the wire type
+// as strings keeps the protocol readable to anything that is not this program.
+func addrStrings(addrs []netip.Prefix) []string {
+	if len(addrs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		out = append(out, a.String())
+	}
+	return out
+}
+
 func (d *daemonTunnel) Refresh(token string) error { return d.t.Refresh(token) }
 
 // classifyLoadKind keeps a MAC failure a MAC failure across the boundary: a
@@ -346,6 +361,7 @@ func (d *daemonTunnel) snapshot() ipc.Event {
 	}
 	e := ipc.Event{
 		Interface: d.t.Interface(),
+		Addrs:     addrStrings(d.t.Addrs()),
 		Peer:      peer.Label,
 		PeerKID:   peer.KID,
 		Endpoint:  peer.Endpoint.String(),

@@ -113,6 +113,7 @@ type ui struct {
 	// — endpoints, byte counts, key identifiers — and the typeface the product
 	// page uses for the same reason.
 	fields   *fyne.Container
+	fAddr    *widget.Label
 	fPeer    *widget.Label
 	fMoved   *widget.Label
 	fShake   *widget.Label
@@ -260,8 +261,13 @@ func (u *ui) build() {
 		l.TextStyle = fyne.TextStyle{Monospace: true}
 		return l
 	}
-	u.fPeer, u.fMoved, u.fShake, u.fExpires = mono(), mono(), mono(), mono()
+	u.fAddr, u.fPeer, u.fMoved, u.fShake, u.fExpires = mono(), mono(), mono(), mono(), mono()
+	// Address before peer: this row is who you are on the tunnel, the next is
+	// who is at the other end, and the ones after are what has passed between
+	// them. It is also the row somebody reads out to a colleague, which is the
+	// reason it is here at all rather than behind Advanced.
 	u.fields = container.New(layout.NewFormLayout(),
+		widget.NewLabel("address"), u.fAddr,
 		widget.NewLabel("peer"), u.fPeer,
 		widget.NewLabel("transferred"), u.fMoved,
 		widget.NewLabel("last handshake"), u.fShake,
@@ -370,26 +376,31 @@ func (u *ui) compose(e Event) {
 // nobody is looking — changing the density and not the window is how the rows
 // came to be drawn over each other once already.
 const (
-	compactHeight = 320 * uiScale
-	// Room for the panel with the stand-in's buttons, which is the tallest it
-	// gets. Against a real appliance it is shorter and the space goes unused —
-	// preferable to a window that changes height depending on what is behind it.
-	advancedHeight = 590 * uiScale
-	windowWidth    = 420 * uiScale
+	// Measured, not chosen: the tallest the window gets with the panel closed is
+	// connected with a notice — five rows, a status line and a footer — which
+	// comes to 376. TestCompactHeightFits is what keeps this honest, because
+	// this number has been wrong twice, both times by somebody adding a row.
+	compactHeight = 384 * uiScale
+	windowWidth   = 420 * uiScale
 )
 
-// resizeForContent gives the window the height the current content needs. Two
-// sizes rather than a measurement: the difference is a panel that is either open
-// or closed, and a window that changes size by a few pixels as text changes
-// would be worse than one that changes by a lot when a panel does.
+// resizeForContent gives the window the height the current content needs.
+//
+// Closed, that is one height whatever is on screen — the window must not move
+// while somebody is reading it, and a notice arrives unannounced, which is the
+// worst possible moment. The compact height has room for one either way.
+//
+// Open, it is that height plus whatever the panel actually measures. It used to
+// be a second constant, 590, taken from the panel at its tallest: the four
+// buttons that only exist in front of the scripted stand-in. Against a real
+// appliance the panel is a few lines of text and the rest was an empty gap
+// above the button — which is what the constant bought, and it was not worth it.
+// Measuring is safe here for the reason a constant was chosen elsewhere: this
+// changes only when somebody ticks the box, never underneath them.
 func (u *ui) resizeForContent() {
-	// One height, whatever is on screen. It used to grow by a row when a notice
-	// arrived, so the window changed size while somebody was reading it — and a
-	// notice arrives unannounced, which is the worst moment for a window to move.
-	// The compact height now has room for one either way.
 	h := float32(compactHeight)
 	if u.advBox != nil && u.advBox.Checked {
-		h = advancedHeight
+		h += u.adv.MinSize().Height + theme.Padding()
 	}
 	u.win.Resize(fyne.NewSize(windowWidth, h))
 }
@@ -505,6 +516,7 @@ func (u *ui) render(e Event) {
 		u.setDot(theme.ColorNameSuccess)
 		u.status.SetText("Connected")
 		u.baseDetail = ""
+		u.fAddr.SetText(addrs(e.Addrs))
 		u.fPeer.SetText(dash(e.Peer))
 		u.fMoved.SetText(human(e.Rx) + " in / " + human(e.Tx) + " out")
 		u.fShake.SetText(ago(e.LastHandshake))
@@ -785,6 +797,21 @@ func dash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// addrs draws the interface's addresses in one row. Every configuration written
+// so far has one, so the row is built for that and does not lie when there are
+// more: the second and later are counted rather than listed, because a row that
+// grows with the configuration is a row that eventually overruns the window.
+func addrs(list []string) string {
+	switch len(list) {
+	case 0:
+		return "—"
+	case 1:
+		return list[0]
+	default:
+		return fmt.Sprintf("%s  +%d more", list[0], len(list)-1)
+	}
 }
 
 // onFake runs something only the scripted stand-in can do.

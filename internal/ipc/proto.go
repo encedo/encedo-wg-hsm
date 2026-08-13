@@ -160,6 +160,12 @@ type Event struct {
 	State     string `json:"state"`
 	Interface string `json:"interface,omitempty"`
 
+	// Addrs is what the interface was given, in CIDR form. The window shows it
+	// because it is the one thing about a tunnel a person is asked for by
+	// somebody else — "what is your address on the VPN" — and reading it out of
+	// `ip addr` means knowing the interface name first.
+	Addrs []string `json:"addrs,omitempty"`
+
 	Peer     string `json:"peer,omitempty"` // label
 	PeerKID  string `json:"peer_kid,omitempty"`
 	Endpoint string `json:"endpoint,omitempty"`

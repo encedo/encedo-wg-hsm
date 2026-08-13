@@ -87,13 +87,13 @@ func TestRenderStates(t *testing.T) {
 		{"2-ready", Event{State: Ready}, false},
 		{"3-connecting", Event{State: Connecting}, false},
 		{"4-connected", Event{
-			State: Connected, Peer: "head office",
+			State: Connected, Peer: "head office", Addrs: []string{"10.99.0.7/32"},
 			ExpiresAt:     now.Add(7*time.Hour + 32*time.Minute),
 			LastHandshake: now.Add(-41 * time.Second),
 			Rx:            4_812_310, Tx: 1_204_770,
 		}, false},
 		{"5-failover", Event{
-			State: Connected, Peer: "backup site",
+			State: Connected, Peer: "backup site", Addrs: []string{"10.99.0.7/32"},
 			ExpiresAt:     now.Add(6*time.Hour + 5*time.Minute),
 			LastHandshake: now,
 			Rx:            5_1290, Tx: 33_400,
@@ -104,13 +104,14 @@ func TestRenderStates(t *testing.T) {
 			Notice: "the session has expired — connect again to continue",
 		}, false},
 		{"8-expiring", Event{
-			State: Connected, Peer: "head office",
+			State: Connected, Peer: "head office", Addrs: []string{"10.99.0.7/32"},
 			ExpiresAt:     now.Add(3 * time.Minute),
 			LastHandshake: now.Add(-12 * time.Second),
 			Rx:            9_112_004, Tx: 2_004_881,
 		}, false},
 		{"7-advanced", Event{
 			State: Connected, Peer: "head office", HEM: "https://epa.acme.example",
+			Addrs:         []string{"10.99.0.7/32"},
 			ExpiresAt:     now.Add(58 * time.Minute),
 			LastHandshake: now.Add(-9 * time.Second),
 			Rx:            902_144, Tx: 331_008,

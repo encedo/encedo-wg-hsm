@@ -193,7 +193,7 @@ func (s *liveSession) consume(conn net.Conn) {
 
 func fromIPC(e ipc.Event, hemURL string) Event {
 	out := Event{
-		HEM: hemURL, Peer: e.Peer,
+		HEM: hemURL, Peer: e.Peer, Addrs: e.Addrs,
 		Rx: e.Rx, Tx: e.Tx,
 		LastHandshake: e.LastHandshake, ExpiresAt: e.ExpiresAt,
 		Notice: e.Notice,

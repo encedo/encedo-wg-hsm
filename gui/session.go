@@ -42,6 +42,12 @@ type Event struct {
 	State State
 	Peer  string
 
+	// Addrs is what the tunnel's interface was given, in CIDR form. Usually one;
+	// the window shows the first and says how many more there are, because the
+	// question this answers — "what is my address on the VPN" — has one answer
+	// in every configuration anybody has written so far.
+	Addrs []string
+
 	// HEM is where the module is being looked for. It belongs in the state
 	// rather than in a settings dialogue: a personal appliance answers at a
 	// fixed address on its own link and nobody ever changes it, while an

@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/netip"
 	"os"
 	"os/signal"
 	"sync"
@@ -128,6 +129,12 @@ func New(ctx context.Context, o Opts) *Tunnel {
 // Interface is the name the tunnel ended up with, which is not always the one
 // that was asked for.
 func (t *Tunnel) Interface() string { return t.ifname }
+
+// Addrs is what the interface was given, from the configuration rather than
+// from the interface: these are the addresses the tunnel asked the OS for, and
+// rt.Up refuses rather than settling for fewer, so the two cannot disagree.
+// Failover does not touch them — they belong to the identity, not to the peer.
+func (t *Tunnel) Addrs() []netip.Prefix { return t.opts.Tree.Iface.Addrs }
 
 // Peer is the peer the tunnel is currently pointed at, which failover changes
 // under whoever is watching. Reported rather than assumed: a window showing the

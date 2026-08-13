@@ -232,10 +232,17 @@ func (f *fakeSession) run() {
 func (f *fakeSession) snapshot() Event {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return Event{
+	e := Event{
 		State: f.state, Peer: f.peer, HEM: f.hem, ExpiresAt: f.expiry,
 		LastHandshake: f.last, Rx: f.rx, Tx: f.tx,
 	}
+	// Only while there is a tunnel, because that is when there is an interface
+	// to have an address. A stand-in that fills a field the real thing leaves
+	// empty is a stand-in that hides a bug rather than standing in for one.
+	if f.state == Connected {
+		e.Addrs = []string{"10.99.0.7/32"}
+	}
+	return e
 }
 
 func (f *fakeSession) emit() { f.send(f.snapshot()) }
