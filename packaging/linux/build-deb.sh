@@ -29,11 +29,32 @@ done
 
 # The two halves refuse to drive each other unless their stamps match, so a
 # package containing a mismatched pair is a package that cannot work. Better to
-# find that here than after somebody installs it.
+# find that here than after somebody installs it — and both halves are checked,
+# because a stale window is exactly the mismatch this is guarding against.
+stale() {
+	cat >&2 <<MSG
+$1 was built at $2, and this tree is $VERSION.
+
+Packaging them together would produce a window and a component that refuse to
+drive each other. Rebuild both from here:
+
+  WG_HEM_DESCR=64 bash build.sh
+  STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=\$(sh scripts/version.sh)"
+  (cd gui && go build -tags descr64 -ldflags "\$STAMP" -o ../$GUI .)
+MSG
+	exit 1
+}
+
 cli_build="$("$ROOT/$CLI" version)"
 case "$cli_build" in
 	*"$VERSION"*) ;;
-	*) echo "the client says '$cli_build' but this tree is $VERSION; rebuild" >&2; exit 1 ;;
+	*) stale "$CLI" "$cli_build" ;;
+esac
+
+gui_build="$("$ROOT/$GUI" -version | tail -1)"
+case "$gui_build" in
+	*"$VERSION"*) ;;
+	*) stale "$GUI" "$gui_build" ;;
 esac
 
 PKG="$(mktemp -d)"
