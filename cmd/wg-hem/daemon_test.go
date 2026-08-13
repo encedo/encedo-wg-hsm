@@ -10,7 +10,7 @@ import (
 
 func TestTheSocketIsReachableOnlyByItsGroup(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "wg-hem.sock")
-	ln, err := listenOn(path)
+	ln, err := listenOn(path, "")
 	if err != nil {
 		t.Fatalf("listenOn: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestAStaleSocketIsTakenOver(t *testing.T) {
 		t.Fatalf("the leftover socket file is not there, so this tests nothing: %v", err)
 	}
 
-	ln, err := listenOn(path)
+	ln, err := listenOn(path, "")
 	if err != nil {
 		t.Fatalf("a leftover socket stopped the daemon starting: %v", err)
 	}
@@ -59,13 +59,13 @@ func TestAStaleSocketIsTakenOver(t *testing.T) {
 // would silently take the first one's callers.
 func TestALiveSocketIsNotStolen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "wg-hem.sock")
-	first, err := listenOn(path)
+	first, err := listenOn(path, "")
 	if err != nil {
 		t.Fatalf("listenOn: %v", err)
 	}
 	defer first.Close()
 
-	_, err = listenOn(path)
+	_, err = listenOn(path, "")
 	if err == nil {
 		t.Fatal("a second daemon took over a socket that was still being served")
 	}

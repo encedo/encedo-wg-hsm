@@ -102,13 +102,18 @@ systemctl daemon-reload >/dev/null 2>&1 || true
 
 cat <<'MSG'
 
-encedo-wg is installed. Start the service and it will wait for the window:
+encedo-wg is installed, and one thing is left that this cannot do for you.
 
+The service runs as its own user and reaches you through the "wireguard"
+group. Until your account is in it, the window cannot reach the service and
+`wg show` cannot list interfaces — both report a permission error rather than
+anything about groups.
+
+  sudo adduser "$USER" wireguard      # then log out and back in
   sudo systemctl enable --now encedo-wg
 
-To use the command-line client as yourself as well:
+To run the command-line client as yourself as well:
 
-  sudo adduser "$USER" wireguard      # then log in again
   sudo setcap cap_net_admin=eip /usr/bin/wg-hem
 
 MSG

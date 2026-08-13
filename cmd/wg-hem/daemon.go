@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -33,6 +35,7 @@ import (
 func cmdDaemon(args []string) error {
 	fs := flag.NewFlagSet("daemon", flag.ContinueOnError)
 	sock := fs.String("socket", defaultSocket(), "unix socket to listen on")
+	group := fs.String("socket-group", "", "group allowed to reach the socket (default: whoever the directory allows)")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem daemon — run tunnels on behalf of a graphical client
 
@@ -61,7 +64,7 @@ closes, the tunnel comes down.
 		return failf(exitUsage, "%w", err)
 	}
 
-	ln, err := listenOn(*sock)
+	ln, err := listenOn(*sock, *group)
 	if err != nil {
 		return err
 	}
@@ -271,7 +274,7 @@ func classifyLoadKind(err error) error {
 // The mode is the primary access control: who may connect at all is decided by
 // the filesystem, and SO_PEERCRED then says which of them it is, so a tunnel can
 // belong to the person who started it.
-func listenOn(path string) (net.Listener, error) {
+func listenOn(path, group string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, failf(exitDevice, "the socket directory: %w", err)
 	}
@@ -288,6 +291,23 @@ func listenOn(path string) (net.Listener, error) {
 	if err := os.Chmod(path, 0o660); err != nil {
 		ln.Close()
 		return nil, failf(exitDevice, "setting permissions on %s: %w", path, err)
+	}
+
+	// The service runs as its own user and the people using it do not. Without a
+	// group they share, a socket the service owns is a socket nobody can reach —
+	// which is what happened: the window said the component was not answering,
+	// and the component was answering to nobody.
+	if group != "" {
+		g, err := user.LookupGroup(group)
+		if err != nil {
+			ln.Close()
+			return nil, failf(exitUsage, "no group %q to give the socket to: %w", group, err)
+		}
+		gid, _ := strconv.Atoi(g.Gid)
+		if err := os.Chown(path, -1, gid); err != nil {
+			ln.Close()
+			return nil, failf(exitDevice, "giving %s to group %s: %w", path, group, err)
+		}
 	}
 	return ln, nil
 }

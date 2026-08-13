@@ -8,7 +8,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/wg-hem daemon --socket ${RUNTIME_DIRECTORY}/wg-hem.sock
+ExecStart=/usr/bin/wg-hem daemon --socket ${RUNTIME_DIRECTORY}/wg-hem.sock --socket-group wireguard
 
 # Not root. Everything privileged this does on Linux — creating the interface,
 # its addresses, its routes, its MTU — wants one capability, which was measured
@@ -21,7 +21,10 @@ CapabilityBoundingSet=CAP_NET_ADMIN
 # The socket a window connects to. systemd creates this per start and removes it
 # on stop, so a socket left over from a crash cannot outlive the service.
 RuntimeDirectory=encedo-wg
-RuntimeDirectoryMode=0750
+# Traversable, because the people who use this are not the user it runs as. The
+# socket inside is 0660 and belongs to a group they are in — that is the control,
+# and a directory nobody can enter makes it unreachable rather than safe.
+RuntimeDirectoryMode=0755
 
 # The UAPI socket and the state file go in the directory `wg show` looks in, so
 # the standard tool can see a tunnel this service is running. Shared with the

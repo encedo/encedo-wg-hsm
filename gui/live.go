@@ -147,10 +147,21 @@ func publicKeys(tree *config.Tree) map[string]string {
 // consume turns what the component says into what the window draws, until the
 // connection ends — which is also when the tunnel does.
 func (s *liveSession) consume(conn net.Conn) {
+	// Whatever ends this connection ends the tunnel with it, so the session goes
+	// back to being one that can be started again — and the presence watcher,
+	// which stands aside while a tunnel is up, starts answering once more.
+	defer func() {
+		s.mu.Lock()
+		if s.conn == conn {
+			s.conn = nil
+		}
+		s.mu.Unlock()
+		s.emit(Event{State: Ready, HEM: s.hemURL})
+	}()
+
 	for {
 		raw, err := ipc.ReadMsg(conn)
 		if err != nil {
-			s.emit(Event{State: Ended, HEM: s.hemURL})
 			return
 		}
 		m, err := ipc.DecodeMsg(raw)

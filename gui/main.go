@@ -156,11 +156,10 @@ func main() {
 		fmt.Println("build", ipc.Current())
 		return
 	}
-	// Before the toolkit starts, because that is when it reads the variable.
-	if scale, corrected := alignScaleWithDesktop(); corrected {
-		fmt.Fprintf(os.Stderr, "Scaling by %s: this display does not report a physical size, "+
-			"so the toolkit cannot work out what the desktop is doing.\n", scale)
-	}
+	// Before the toolkit starts, because that is when it reads the variable. It
+	// says nothing about it: this is a correction for a display that will not
+	// describe itself, and a person opening a VPN client has no use for that.
+	alignScaleWithDesktop()
 
 	th, err := themeFor(*themeName)
 	if err != nil {
@@ -287,16 +286,19 @@ func (u *ui) build() {
 	// point of having a fake at all.
 	u.advText = widget.NewLabel("")
 	u.advText.TextStyle = fyne.TextStyle{Monospace: true}
-	u.adv = container.NewVBox(
-		widget.NewSeparator(),
-		u.advText,
-		container.NewGridWithColumns(3,
+	// The buttons drive states that are awkward to reach on real hardware — a
+	// module pulled out, a peer going quiet, a token running out — which is the
+	// point of having a stand-in. Against a real appliance there is nothing for
+	// them to do, and a control that does nothing is worse than no control.
+	u.adv = container.NewVBox(widget.NewSeparator(), u.advText)
+	if _, scripted := u.sess.(*fakeSession); scripted {
+		u.adv.Add(container.NewGridWithColumns(3,
 			outlined(widget.NewButton("Module in", func() { u.onFake(func(f *fakeSession) { f.setModulePresent(true) }) })),
 			outlined(widget.NewButton("Module out", func() { u.onFake(func(f *fakeSession) { f.setModulePresent(false) }) })),
 			outlined(widget.NewButton("Peer fails", func() { u.onFake(func(f *fakeSession) { f.triggerFailover() }) })),
-		),
-		outlined(widget.NewButton("Expire the session now", func() { u.onFake(func(f *fakeSession) { f.expireNow() }) })),
-	)
+		))
+		u.adv.Add(outlined(widget.NewButton("Expire the session now", func() { u.onFake(func(f *fakeSession) { f.expireNow() }) })))
+	}
 	u.advBox = widget.NewCheck("Advanced", func(bool) { u.compose(u.latest) })
 
 	// A rule between what the tunnel is and what you can do about it. Without
@@ -378,9 +380,12 @@ func (u *ui) compose(e Event) {
 // nobody is looking — changing the density and not the window is how the rows
 // came to be drawn over each other once already.
 const (
-	compactHeight  = 320 * uiScale
-	noticeHeight   = 40 * uiScale  // a notice is one more row, and it arrives unannounced
-	advancedHeight = 590 * uiScale // one row per line in the panel; adding a line costs one
+	compactHeight = 320 * uiScale
+	noticeHeight  = 40 * uiScale // a notice is one more row, and it arrives unannounced
+	// Room for the panel with the stand-in's buttons, which is the tallest it
+	// gets. Against a real appliance it is shorter and the space goes unused —
+	// preferable to a window that changes height depending on what is behind it.
+	advancedHeight = 590 * uiScale
 	windowWidth    = 420 * uiScale
 )
 
@@ -389,10 +394,11 @@ const (
 // or closed, and a window that changes size by a few pixels as text changes
 // would be worse than one that changes by a lot when a panel does.
 func (u *ui) resizeForContent() {
+	// One height, whatever is on screen. It used to grow by a row when a notice
+	// arrived, so the window changed size while somebody was reading it — and a
+	// notice arrives unannounced, which is the worst moment for a window to move.
+	// The compact height now has room for one either way.
 	h := float32(compactHeight)
-	if u.noticeText != nil && u.noticeText.Text != "" {
-		h += noticeHeight
-	}
 	if u.advBox != nil && u.advBox.Checked {
 		h = advancedHeight
 	}
@@ -422,10 +428,24 @@ func (u *ui) onAction() {
 	case Ready:
 		pass := []byte(u.pass.Text)
 		u.pass.SetText("")
-		if err := u.sess.Connect(context.Background(), pass); err != nil {
-			u.showNotice(err.Error(), true)
-			u.compose(u.latest)
-		}
+
+		// Off this goroutine, because connecting takes seconds and this one is
+		// drawing. Deriving the key from the passphrase alone is 600,000 rounds
+		// of PBKDF2, and running it here froze the window hard enough that the
+		// desktop offered to kill the application.
+		//
+		// The state does not change here either: the session emits Connecting
+		// when it starts, and everything after that arrives the same way — so
+		// there is no path where the window believes something the session has
+		// not said.
+		go func() {
+			if err := u.sess.Connect(context.Background(), pass); err != nil {
+				fyne.Do(func() {
+					u.showNotice(err.Error(), true)
+					u.compose(u.latest)
+				})
+			}
+		}()
 	case Connected:
 		_ = u.sess.Disconnect()
 	}
@@ -534,37 +554,32 @@ func (u *ui) render(e Event) {
 	}
 	u.action.Refresh()
 
+	// A notice stays on screen until something replaces it. It used to be
+	// cleared by the next event carrying none, which since the component started
+	// reporting once a second meant every notice flashed and vanished.
 	if e.Notice != "" && e.Notice != prev.Notice {
 		u.showNotice(e.Notice, e.Err != nil)
-		u.app.SendNotification(fyne.NewNotification("encedo-wg", e.Notice))
-	} else if e.Notice == "" && prev.Notice != "" {
-		u.noticeText.SetText("")
+	}
+
+	// Notifications only where the state changed, and only for the two changes
+	// worth interrupting somebody over. The tunnel says five sentences over a
+	// session — up, handshake, moved, expired, down — and a popup for each is
+	// four too many for something whose whole job is to be unremarkable.
+	if e.State != prev.State {
+		switch e.State {
+		case Connected:
+			u.app.SendNotification(fyne.NewNotification("encedo-wg", "Connected."))
+		case Ended:
+			u.app.SendNotification(fyne.NewNotification("encedo-wg", "Disconnected."))
+		}
 	}
 
 	u.renderCountdown(e)
 	u.advText.SetText(fmt.Sprintf(
-		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v\ndisplay        %s",
-		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr, u.displayInfo()))
+		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
+		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
-}
-
-// displayInfo reports the scale the toolkit was given and the size that produces
-// on this screen.
-//
-// It is here because "the window is too small" is not something two people can
-// compare. Every measurement in the program is in device-independent units, so
-// the same window is physically larger or smaller purely by what the desktop
-// says a unit is worth — and a virtual machine can report 1 on a panel where the
-// host reports 2, which looks exactly like a layout that was built too small.
-// One number tells those two apart; no amount of looking does.
-func (u *ui) displayInfo() string {
-	if u.win == nil || u.win.Canvas() == nil {
-		return "—"
-	}
-	s := u.win.Canvas().Scale()
-	sz := u.win.Canvas().Size()
-	return fmt.Sprintf("%.2fx → %.0f×%.0f px", s, sz.Width*s, sz.Height*s)
 }
 
 // showNotice gives the one line worth reading a ground of its own. Failover and
