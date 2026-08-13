@@ -148,6 +148,12 @@ func main() {
 		fmt.Println("encedo-wg-gui", guiVersion)
 		return
 	}
+	// Before the toolkit starts, because that is when it reads the variable.
+	if scale, corrected := alignScaleWithDesktop(); corrected {
+		fmt.Fprintf(os.Stderr, "Scaling by %s: this display does not report a physical size, "+
+			"so the toolkit cannot work out what the desktop is doing.\n", scale)
+	}
+
 	th, err := themeFor(*themeName)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

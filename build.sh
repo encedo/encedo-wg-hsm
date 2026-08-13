@@ -75,11 +75,7 @@ fi
 # The release number lives in internal/version; a checkout stamps the commit
 # onto it, so a binary from a working tree says which one it came from and a
 # tagged build says only the release.
-VERSION="$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/version/version.go)"
-if git rev-parse --git-dir >/dev/null 2>&1; then
-    desc="$(git describe --always --dirty 2>/dev/null || true)"
-    [ -n "${desc}" ] && VERSION="${VERSION}+${desc}"
-fi
+VERSION="$(sh scripts/version.sh)"
 echo "    version: ${VERSION}"
 
 PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"

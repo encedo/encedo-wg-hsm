@@ -86,29 +86,41 @@ jobs:
           set -eu
           mkdir -p ../dist-gui
 
+          # The same stamp build.sh puts on the command-line client, from the
+          # same script. The window and the privileged component refuse to drive
+          # each other unless these match — deliberately, since a mismatched pair
+          # fails later and worse — so a window built without it can never talk
+          # to a component that has one.
+          VERSION="$(cd .. && sh scripts/version.sh)"
+          STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION"
+          echo "version: $VERSION"
+
           # Both record dialects, as build.sh does for the command-line client.
           # The window reads the configuration itself, so a 128-byte build against
           # 64-byte firmware fails at MAC verification — which looks exactly like
           # somebody having tampered with the configuration. Shipping only one
           # size is how that happens to a person rather than to a test.
-          build() { # $1 = suffix, $2... = go build args
-            local suffix="$1"; shift
+          # $1 is the dialect suffix, $2 anything extra for the linker, the rest
+          # goes to go build. One -ldflags, composed here, because passing two
+          # silently keeps only the last.
+          build() {
+            local suffix="$1" extra="$2"; shift 2
             case "$suffix" in
               "")        local tags="" ;;
               -descr64)  local tags="descr64" ;;
             esac
-            CGO_ENABLED=1 go build ${tags:+-tags "$tags"} "$@"
+            CGO_ENABLED=1 go build ${tags:+-tags "$tags"} -ldflags "$STAMP $extra" "$@"
           }
 
           for variant in "" "-descr64"; do
             case "${{ runner.os }}" in
               Linux)
-                GOARCH=amd64 build "$variant" \
+                GOARCH=amd64 build "$variant" "" \
                   -o "../dist-gui/encedo-wg-gui-linux-amd64$variant" .
                 ;;
               macOS)
                 for arch in arm64 amd64; do
-                  GOARCH="$arch" build "$variant" \
+                  GOARCH="$arch" build "$variant" "" \
                     -o "../dist-gui/encedo-wg-gui-darwin-$arch$variant" .
                 done
                 ;;
@@ -116,8 +128,7 @@ jobs:
                 # -H=windowsgui suppresses the console window that would otherwise
                 # open behind the interface. Without it every launch shows a black
                 # rectangle nobody asked for.
-                GOARCH=amd64 build "$variant" \
-                  -ldflags "-H=windowsgui" \
+                GOARCH=amd64 build "$variant" "-H=windowsgui" \
                   -o "../dist-gui/encedo-wg-gui-windows-amd64$variant.exe" .
                 ;;
             esac
