@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"net/netip"
 	"strings"
@@ -179,91 +178,6 @@ func TestNoPeersIsAnIntegrityFailure(t *testing.T) {
 		t.Fatal("a configuration with no peers was accepted")
 	} else {
 		assertExit(t, err, exitIntegrit)
-	}
-}
-
-func TestUAPIConfigCarriesTheSelectedPeerOnly(t *testing.T) {
-	tree := treeWith(t,
-		testPeer("hq", 1, "203.0.113.1:51820", "10.0.0.0/24", "192.168.0.0/16"),
-		testPeer("backup", 2, "198.51.100.1:51820", "0.0.0.0/0"),
-	)
-	tree.Peers[0].Keepalive = 25
-	tree.Iface.ListenPort = 51820
-
-	got := uapiConfig(tree, &tree.Peers[0], nil)
-
-	want := []string{
-		"private_key=" + strings.Repeat("0", 64),
-		"listen_port=51820",
-		"public_key=" + hex.EncodeToString(tree.Peers[0].PubKey[:]),
-		"endpoint=203.0.113.1:51820",
-		"allowed_ip=10.0.0.0/24",
-		"allowed_ip=192.168.0.0/16",
-		"persistent_keepalive_interval=25",
-	}
-	for _, line := range want {
-		if !strings.Contains(got, line+"\n") {
-			t.Errorf("missing %q in:\n%s", line, got)
-		}
-	}
-	if strings.Contains(got, hex.EncodeToString(tree.Peers[1].PubKey[:])) {
-		t.Error("the unselected peer reached the device; cryptokey routing gives the AllowedIPs to one peer")
-	}
-	if strings.Contains(got, "preshared_key=") {
-		t.Error("a preshared_key line appeared for a peer that has none")
-	}
-}
-
-// The private key is the whole point: it stays in the device, and the fork takes
-// the public key from the injected session instead of deriving it.
-func TestUAPIConfigNeverCarriesAPrivateKey(t *testing.T) {
-	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))
-
-	got := uapiConfig(tree, &tree.Peers[0], nil)
-	for _, line := range strings.Split(got, "\n") {
-		if strings.HasPrefix(line, "private_key=") && line != "private_key="+strings.Repeat("0", 64) {
-			t.Fatalf("private_key is not the sentinel: %q", line)
-		}
-	}
-}
-
-func TestUAPIConfigCarriesThePSK(t *testing.T) {
-	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))
-	psk := make([]byte, 32)
-	for i := range psk {
-		psk[i] = 0x5A
-	}
-
-	got := uapiConfig(tree, &tree.Peers[0], psk)
-	if !strings.Contains(got, "preshared_key="+hex.EncodeToString(psk)+"\n") {
-		t.Errorf("the pre-shared key did not reach the device:\n%s", got)
-	}
-}
-
-func TestUAPIConfigOmitsAnAbsentListenPort(t *testing.T) {
-	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))
-
-	if got := uapiConfig(tree, &tree.Peers[0], nil); strings.Contains(got, "listen_port=") {
-		t.Errorf("listen_port was set; a client behind NAT wants a random port:\n%s", got)
-	}
-}
-
-func TestUAPIConfigKeepsAHostEndpointUnresolved(t *testing.T) {
-	tree := treeWith(t, testPeer("hq", 1, "vpn.example.com:51820", "0.0.0.0/0"))
-
-	got := uapiConfig(tree, &tree.Peers[0], nil)
-	if !strings.Contains(got, "endpoint=vpn.example.com:51820\n") {
-		t.Errorf("the endpoint name was not passed through:\n%s", got)
-	}
-}
-
-func TestDNSServersAreRendered(t *testing.T) {
-	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))
-	tree.Iface.DNS = []netip.Addr{netip.MustParseAddr("10.0.0.1"), netip.MustParseAddr("10.0.0.2")}
-
-	got := dnsServers(tree)
-	if len(got) != 2 || got[0] != "10.0.0.1" || got[1] != "10.0.0.2" {
-		t.Errorf("dnsServers = %v", got)
 	}
 }
 

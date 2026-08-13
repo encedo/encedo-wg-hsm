@@ -14,14 +14,14 @@ import (
 // allowed to write to.
 func withRunDir(t *testing.T) {
 	t.Helper()
-	prevRun, prevDir := runDir, session.Dir
-	t.Cleanup(func() { runDir, session.Dir = prevRun, prevDir })
+	prevDir := session.Dir
+	t.Cleanup(func() { session.Dir = prevDir })
 	dir := t.TempDir()
 	// Both, because the two are the same directory seen from either side of the
 	// move: the command writes public keys through runDir and the state through
 	// the package. Setting one and not the other passes the tests it happens to
 	// touch and leaves the rest writing to /var/run.
-	runDir, session.Dir = dir, dir
+	session.Dir = dir
 }
 
 func writeState(t *testing.T, ifname string, pid int) *state {

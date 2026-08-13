@@ -147,9 +147,15 @@ func (a *Auth) Wipe() {
 	}
 }
 
-// zero clears a buffer that held something worth clearing.
-func zero(b []byte) {
+// Zero clears a buffer that held something worth clearing.
+//
+// Exported because the same obligation runs through every layer that touches a
+// pre-shared key or a passphrase, and CLAUDE.md documents the order they are
+// cleared in. One definition means one thing to audit.
+func Zero(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
 }
+
+func zero(b []byte) { Zero(b) }
