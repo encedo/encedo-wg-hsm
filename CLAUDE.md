@@ -311,9 +311,21 @@ then `The HEM is gone or the token has expired` and a clean teardown. `down` was
 exercised the same evening — it stops an `up` running in another terminal — and
 so was running without root, on `cap_net_admin` alone, on both arm64 and amd64.
 
+**Windows reached the handshake on 2026-08-13 and stopped at the UAPI pipe.**
+Run without elevation, Wintun refuses to create the adapter — expected, and
+documented. Run as an elevated administrator, the adapter is created and the
+first ECDH answers in 232 ms, so the whole device path works there; then
+`ipc.UAPIListen` fails with "this security ID may not be assigned as the owner of
+this object". Upstream creates that pipe with `O:SY`, and assigning SYSTEM as an
+owner is not something an administrator may do — the account it was written for
+is LocalSystem, which is what the official client's per-tunnel services use and
+what this client's Windows service will. The tunnel now runs blind in that case
+rather than refusing: traffic moves, and `wg show`, `wg-hem status` and failover
+are what go, since all three are answered from that pipe.
+
 **Still not tested:** full-tunnel routing, failover across more than one
-candidate (there is one peer in the repository), and both non-Linux platforms.
-See `TODO.md`.
+candidate (there is one peer in the repository), macOS, and Windows past the
+point above. See `TODO.md`.
 
 ## Implemented
 

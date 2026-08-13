@@ -233,3 +233,43 @@ func TestDNSServersAreRendered(t *testing.T) {
 		t.Errorf("dnsServers = %v", got)
 	}
 }
+
+// A tunnel that cannot see its own interface must not act on what it cannot
+// see. Windows is where this happens: upstream's UAPI pipe wants SYSTEM as its
+// owner, which an elevated administrator may not assign, so the tunnel comes up
+// and nothing can observe it.
+//
+// Waiting the failover timeout and then declaring the peer dead would be worse
+// than not looking at all — it would take a working tunnel down on the strength
+// of a question that was never asked.
+func TestABlindTunnelDoesNotFailOver(t *testing.T) {
+	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))
+
+	asked := false
+	tun := &Tunnel{
+		blind: true,
+		peer:  &tree.Peers[0],
+		opts: Opts{Tree: tree, SelectNext: func(*config.Tree, *config.Peer) (*config.Peer, error) {
+			asked = true
+			return nil, nil
+		}},
+	}
+
+	ending := make(chan struct{})
+	close(ending)
+
+	done := make(chan error, 1)
+	go func() { done <- tun.hold(nil, ending) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("hold returned %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a blind tunnel waited on a handshake it can never see")
+	}
+	if asked {
+		t.Error("a blind tunnel failed over; it has no evidence the peer is dead")
+	}
+}

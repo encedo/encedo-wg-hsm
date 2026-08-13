@@ -243,6 +243,17 @@ removes the most expensive part of the previous plan: no `DuplicateHandle`, no
 Windows equivalent of descriptor passing to invent. No driver ships either —
 Wintun is signed by WireGuard LLC — so nothing here needs attestation signing.
 
+*LocalSystem is not a preference here, it is a requirement, and testing on
+2026-08-13 established it.* The command-line client run as an elevated
+administrator got as far as creating the adapter and completing its first ECDH
+against the device, then failed opening the UAPI pipe: upstream creates it with
+`O:SY`, and assigning SYSTEM as an object's owner is not something an
+administrator may do. The account upstream wrote that for is the one the official
+client's per-tunnel services run as, and the one this service will. Until the
+service exists the client runs blind on Windows rather than not at all — the
+tunnel carries traffic, and what is lost is `wg show`, `wg-hem status` and
+failover, all three of which are answered from that pipe.
+
 Development and testing need no certificate. Windows does not require services to
 be signed, unlike drivers; signing is for distribution, where it buys SmartScreen
 reputation rather than function.

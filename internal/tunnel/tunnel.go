@@ -89,6 +89,12 @@ type Tunnel struct {
 	// Running as root hid this — root is never asked.
 	dnsSet bool
 
+	// blind records that the UAPI listener could not be opened, so nothing —
+	// including this process — can ask the interface what it is doing. The
+	// tunnel still carries traffic; failover is what goes, because it is
+	// answered entirely from the handshake timestamp.
+	blind bool
+
 	peer *config.Peer
 	psk  []byte
 
@@ -151,23 +157,37 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		return session.Fail(session.KindDevice, "recording the interface state: %v", err)
 	}
 
-	uapi, err := rt.UAPIListen(t.ifname)
-	if err != nil {
-		t.teardown()
-		return session.Fail(session.KindDevice, "opening the UAPI socket: %v", err)
-	}
-	defer uapi.Close()
+	// The UAPI listener is how anything outside this process sees the tunnel:
+	// `wg show`, `wg-hem status`, and the handshake watch that failover depends
+	// on. It is not how packets move — the device was configured in memory by
+	// IpcSet — so failing to open it is a loss of sight, not of function, and
+	// refusing to carry traffic because nobody can watch is the worse trade.
+	//
+	// Windows is where this happens. Upstream's pipe is created with SYSTEM as
+	// its owner, which an elevated administrator may not assign; the account it
+	// wants is LocalSystem, which is the service the graphical client's
+	// component will run as. Until then the tunnel runs blind rather than not at
+	// all. On Linux the preflight check has already established that the
+	// directory is writable, before the passphrase was even asked for.
 	uapiErr := make(chan error, 1)
-	go func() {
-		for {
-			c, err := uapi.Accept()
-			if err != nil {
-				uapiErr <- err
-				return
+	if uapi, err := rt.UAPIListen(t.ifname); err != nil {
+		t.blind = true
+		t.notify("WARNING: the tunnel is up but nothing can observe it: %v\n"+
+			"         `wg show` and `wg-hem status` will not find this interface, and a peer\n"+
+			"         that never answers cannot be noticed, so failover is off for this run.", err)
+	} else {
+		defer uapi.Close()
+		go func() {
+			for {
+				c, err := uapi.Accept()
+				if err != nil {
+					uapiErr <- err
+					return
+				}
+				go t.dev.IpcHandle(c)
 			}
-			go t.dev.IpcHandle(c)
-		}
-	}()
+		}()
+	}
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
@@ -206,6 +226,13 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 // that answers and later stops is v2's problem, with the health check and the
 // hysteresis that telling a quiet tunnel from a dead one actually needs.
 func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
+	if t.blind {
+		// Nothing to watch with. Waiting fifteen seconds and then declaring the
+		// peer dead would be worse than not looking: it would take a working
+		// tunnel down on the strength of a question that was never asked.
+		<-ending
+		return nil
+	}
 	for {
 		if awaitHandshake(t.ifname, ending) {
 			t.notify("Handshake with %q completed.", t.peer.Label)
