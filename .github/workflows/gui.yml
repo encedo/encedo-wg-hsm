@@ -85,26 +85,43 @@ jobs:
         run: |
           set -eu
           mkdir -p ../dist-gui
-          case "${{ runner.os }}" in
-            Linux)
-              CGO_ENABLED=1 GOARCH=amd64 go build \
-                -o ../dist-gui/encedo-wg-gui-linux-amd64 .
-              ;;
-            macOS)
-              for arch in arm64 amd64; do
-                CGO_ENABLED=1 GOARCH="$arch" go build \
-                  -o "../dist-gui/encedo-wg-gui-darwin-$arch" .
-              done
-              ;;
-            Windows)
-              # -H=windowsgui suppresses the console window that would otherwise
-              # open behind the interface. Without it every launch shows a black
-              # rectangle nobody asked for.
-              CGO_ENABLED=1 GOARCH=amd64 go build \
-                -ldflags "-H=windowsgui" \
-                -o ../dist-gui/encedo-wg-gui-windows-amd64.exe .
-              ;;
-          esac
+
+          # Both record dialects, as build.sh does for the command-line client.
+          # The window reads the configuration itself, so a 128-byte build against
+          # 64-byte firmware fails at MAC verification — which looks exactly like
+          # somebody having tampered with the configuration. Shipping only one
+          # size is how that happens to a person rather than to a test.
+          build() { # $1 = suffix, $2... = go build args
+            local suffix="$1"; shift
+            case "$suffix" in
+              "")        local tags="" ;;
+              -descr64)  local tags="descr64" ;;
+            esac
+            CGO_ENABLED=1 go build ${tags:+-tags "$tags"} "$@"
+          }
+
+          for variant in "" "-descr64"; do
+            case "${{ runner.os }}" in
+              Linux)
+                GOARCH=amd64 build "$variant" \
+                  -o "../dist-gui/encedo-wg-gui-linux-amd64$variant" .
+                ;;
+              macOS)
+                for arch in arm64 amd64; do
+                  GOARCH="$arch" build "$variant" \
+                    -o "../dist-gui/encedo-wg-gui-darwin-$arch$variant" .
+                done
+                ;;
+              Windows)
+                # -H=windowsgui suppresses the console window that would otherwise
+                # open behind the interface. Without it every launch shows a black
+                # rectangle nobody asked for.
+                GOARCH=amd64 build "$variant" \
+                  -ldflags "-H=windowsgui" \
+                  -o "../dist-gui/encedo-wg-gui-windows-amd64$variant.exe" .
+                ;;
+            esac
+          done
           ls -l ../dist-gui
 
       - name: Upload

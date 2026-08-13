@@ -182,7 +182,18 @@ func Verify(ctx context.Context, c *hem.Client, token, kid string,
 		return err
 	}
 	if err := c.HmacVerify(ctx, token, kid, msg, rec.MAC[:], hem.CryptoOpts{Alg: Alg, ExtKID: kid}); err != nil {
-		return fmt.Errorf("mac: %w: %w", ErrNotAuthentic, err)
+		// The record length is inside the canonical message (§3), so a build that
+		// reads the wrong size computes a different message over the same bytes
+		// and the device refuses it — which is indistinguishable, from here, from
+		// somebody having edited the configuration.
+		//
+		// It is worth naming because the two call for opposite reactions: one is
+		// an attack and the other is a build flag. This build says which size it
+		// reads, so whoever sees it can check that first.
+		return fmt.Errorf("mac: %w: %w\n"+
+			"This build reads %d-byte records. If the appliance stores the other size, "+
+			"that alone produces this — rebuild with the matching descr size before "+
+			"treating it as tampering.", ErrNotAuthentic, err, descr.Size)
 	}
 	return nil
 }
