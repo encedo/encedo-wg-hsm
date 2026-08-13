@@ -1,0 +1,58 @@
+[Unit]
+Description=Encedo WireGuard tunnels for a graphical client
+Documentation=https://github.com/encedo/encedo-wg-hsm
+# Nothing is brought up at boot: this waits for a window, and a window is
+# somebody sitting down. It exists so that a person who opens the application
+# does not have to be an administrator, not so that a tunnel exists without one.
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/wg-hem daemon --socket ${RUNTIME_DIRECTORY}/wg-hem.sock
+
+# Not root. Everything privileged this does on Linux — creating the interface,
+# its addresses, its routes, its MTU — wants one capability, which was measured
+# rather than assumed. Root is only the coarse way to get it.
+User=encedo-wg
+Group=encedo-wg
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+
+# The socket a window connects to. systemd creates this per start and removes it
+# on stop, so a socket left over from a crash cannot outlive the service.
+RuntimeDirectory=encedo-wg
+RuntimeDirectoryMode=0750
+
+# The UAPI socket and the state file go in the directory `wg show` looks in, so
+# the standard tool can see a tunnel this service is running. Shared with the
+# command-line client by group, which is what that directory is for.
+SupplementaryGroups=wireguard
+
+# It reads a token from a socket and talks to an appliance over TLS. It has no
+# business writing anywhere else, becoming anything else, or seeing anybody's
+# files.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# /dev/net/tun is world-writable and the interface needs it; the run directory is
+# the one place outside its own that it writes.
+DeviceAllow=/dev/net/tun rw
+ReadWritePaths=/var/run/wireguard
+
+# A window that goes away takes its tunnel with it, which the service enforces
+# itself. Restarting is for the service failing, not for a session ending.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

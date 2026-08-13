@@ -1,0 +1,27 @@
+/* Let the service point the resolver at a tunnel it created, without asking.
+ *
+ * This is the one thing on Linux that a capability cannot cover. resolvectl is
+ * a privileged interface of its own, and a process holding CAP_NET_ADMIN and
+ * nothing else is one polkit asks a human about — an authentication dialogue in
+ * the middle of bringing a tunnel up, or worse, in the middle of taking one
+ * down, where there is nobody to answer.
+ *
+ * Named to one system user rather than to a group of people: this is not a
+ * permission anybody has, it is one the service has. A person running `wg-hem
+ * up` from a terminal is still asked, which is right — they are there.
+ *
+ * The two actions are the whole of it: setting a link's DNS servers and its
+ * search domains. Reverting needs neither, because reverting a link this
+ * service configured is covered by the same grant.
+ */
+polkit.addRule(function (action, subject) {
+	if (subject.user !== "encedo-wg") {
+		return undefined;
+	}
+	if (action.id === "org.freedesktop.resolve1.set-dns-servers" ||
+	    action.id === "org.freedesktop.resolve1.set-domains" ||
+	    action.id === "org.freedesktop.resolve1.revert") {
+		return polkit.Result.YES;
+	}
+	return undefined;
+});

@@ -222,16 +222,35 @@ middle of bringing a tunnel up. A polkit rule naming the service's user answers
 it, which is the first of the three options `TODO.md` recorded, chosen by the
 architecture rather than on its own merits.
 
-IPC is a unix socket in the service's **own runtime directory**
-(`RuntimeDirectory=`, so `/run/encedo-wg`), with the socket's mode and
-`SO_PEERCRED` doing the access control — and the service's state lives there
-too. It does not touch `/var/run/wireguard`: that directory is the CLI's, owned
-however the README's instructions left it, and two entry points writing one
-root-owned directory under different owners is a fight the rule at the top of
-this document exists to prevent. The one open detail: whether the UAPI socket
-also moves (invisible to `wg(8)`) or stays in the shared directory for tooling's
-sake — to be decided when the unit is written, not discovered. The package
-carries the unit, the tmpfiles rule, the polkit rule and the desktop entry.
+**Two directories, and which thing goes where has a reason on each side.**
+
+The IPC socket lives in the service's own runtime directory
+(`RuntimeDirectory=`, so `/run/encedo-wg`), with its mode and `SO_PEERCRED`
+doing the access control. Nothing but this client has any business finding it.
+
+The **UAPI socket and the state file stay in `/var/run/wireguard`**, shared with
+the command-line client. An earlier draft of this document moved them out, on
+the grounds that two entry points writing one directory under different owners
+would be a fight. That was tidiness reasoning and it was wrong twice over. The
+directory is *designed* to be shared — a group is what it is for, and the
+tmpfiles rule the README has always carried is how a client without root writes
+there at all. And moving out would cost something real: `wg show` finds a tunnel
+by looking exactly there, so a tunnel this service runs would become invisible to
+the standard tool, which is likely to be installed and is the first thing anybody
+reaches for.
+
+It already works, and that is the strongest part of the argument: the service
+calls the same `UAPIListen` the command does, so `wg show` reads a
+window-started tunnel today with nothing added. `wg-hem status` shows the same
+live figures plus what only this client knows — the identity, the peer's label,
+when the session ends, and a fresh MAC check.
+
+One interaction to keep in view: `wg-hem down` stops a tunnel by signalling the
+process that owns it, and a person cannot signal a system service. Against a
+tunnel the window started, `down` will refuse — correctly, since the window is
+what owns it, but the message should say so rather than report a permission
+error. The package carries the unit, the tmpfiles rule, the polkit rule and the
+desktop entry.
 
 `setcap` on a thirty-megabyte cgo binary disappears with it: the window becomes an
 ordinary user program.
