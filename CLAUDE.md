@@ -304,8 +304,16 @@ the sequence, 224 ephemeral shared secrets and 224 distinct values, rekeys at
 on token expiry — three attempts, then a clean shutdown — which is the documented
 behaviour and the second thing that run confirmed.
 
-**Still not tested:** losing the device mid-tunnel, full-tunnel routing, failover
-across more than one candidate, and both non-Linux platforms. See `TODO.md`.
+**Losing the device mid-tunnel was tested on 2026-08-12** and behaved as
+documented: the PPA was unplugged from a live tunnel, the next rekey found it
+gone, three ECDH attempts five seconds apart (a 3 s timeout plus the 2 s delay),
+then `The HEM is gone or the token has expired` and a clean teardown. `down` was
+exercised the same evening — it stops an `up` running in another terminal — and
+so was running without root, on `cap_net_admin` alone, on both arm64 and amd64.
+
+**Still not tested:** full-tunnel routing, failover across more than one
+candidate (there is one peer in the repository), and both non-Linux platforms.
+See `TODO.md`.
 
 ## Implemented
 

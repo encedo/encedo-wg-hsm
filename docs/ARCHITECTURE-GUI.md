@@ -24,19 +24,39 @@ against real hardware, and the first one has taken a week.
 ```
    window (the user's session)              component (privileged)
    ───────────────────────────              ──────────────────────
-   find the appliance                   ┌── read the configuration
+   find the appliance                   ┌── read the identity it was named
    authenticate — passphrase or extAuth │   verify its MAC
-   read the tree, offer a choice        │   create the interface, addresses,
-   obtain keymgmt:use:<KID>  ───────────┘   routes, MTU, DNS
-        │                                   run wireguard-go
-        │  URL + token + peer ────────────► ECDH at every handshake
-        │                                   unwrap the pre-shared key
-        │  ◄─────────────── events          rekey; on a dead peer, walk the
-        │                                   stored order itself (§6.4 v2)
+   list identities, offer the choice    │   create the interface, addresses,
+   list its peers, offer that choice    │   routes, MTU, DNS
+   obtain keymgmt:use:<if_kid> ─────────┘   run wireguard-go
+        │                                   ECDH at every handshake
+        │  URL + token + identity + peer ─► unwrap the pre-shared key
+        │                                   rekey; on a dead peer, walk the
+        │  ◄─────────────── events          stored order itself (§6.4 v2)
         │                                        │
         └──────── connection open ───────────────┘
                   closes → tear down
 ```
+
+## Which identity, and why the order is forced
+
+A device may hold several `WG:if:` records — N private keys, each with its own
+peers and its own configuration. The rule is the one §6.2 already applies to
+peers: **one is used without asking, several are offered as a choice.** Symmetry
+with a behaviour people already have is worth more here than any argument for a
+different treatment.
+
+Today `internal/config.Load` refuses outright when it finds more than one, which
+is honest for a client that configures one interface and is not what a window
+wants. It splits: enumerate, then load the one that was named.
+
+The order that follows is not a preference. `keymgmt:use:<if_kid>` **names one
+key**, so the token cannot be minted before the choice is made — enumeration
+happens first and needs only search (which a device with `allow_keysearch` answers
+without a token at all) or a read scope. The consequence for the everyday path is
+one more approval than the scope table in `TODO.md` counts, on any device holding
+more than one identity, and that is a firmware question rather than something this
+design can arrange away.
 
 ## What crosses, and what does not
 
@@ -123,9 +143,10 @@ Four verbs and a stream — written down because "three verbs" was the first
 draft's undercount, and a protocol that gets discovered during implementation is
 how the previous one died.
 
-- **start** — the URL, the token, the peer the person chose, and which version
-  the window is (see *One version*). The component answers with its own version
-  or refuses.
+- **start** — the URL, the token, the identity and the peer the person chose, and
+  what the window is (see *One version*). The component answers with its own, or
+  refuses. Both identities are named because the token is scoped to the first and
+  means nothing without it.
 - **stop.**
 - **refresh** — a fresh token, mid-session. Renewal is a human act and the human
   is at the window: the interface promises one-click renewal, and without this
@@ -151,11 +172,18 @@ the component refuses a window it does not match rather than guessing what an
 older one meant. `status` reports both, so a human can see the skew a refusal is
 about.
 
-The product speaks one dialect: **128-byte records**. The 64-byte build exists
-for older firmware and dies with it; it does not ship in the product, so the
-window-versus-component case where the two cannot read one tree — the record
-length is inside the MAC, and the failure would read as sabotage — is excluded by
-construction rather than handled.
+**The record dialect travels with the version**, for the same reason and with a
+sharper edge. A 128-byte window against a 64-byte component does not fail to
+start — it fails at MAC verification, which is the signature of a configuration
+somebody has tampered with. That is the worst available error message for a
+mismatch of build flags, so the two exchange `descr.Size` at `start` and refuse
+each other by name.
+
+Saying the product ships 128 only would be true and useless: the firmware in
+front of the people building this is 64, `WG_HEM_DESCR=64` is how everything gets
+built today, and a rule that holds only after a firmware update is not a rule
+that protects the next fortnight. Both artifacts are built for both dialects and
+the pairing is checked at run time, until the day the 64-byte build is deleted.
 
 ## Liveness: no window, no tunnel
 

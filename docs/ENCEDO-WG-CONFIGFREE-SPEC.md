@@ -58,6 +58,8 @@ All state lives inside the Encedo HEM (PPA/EPA):
 
 On the host: a single `wg-hem` binary (wrapper + forked wireguard-go) + the physical HEM. Nothing else.
 
+That holds for the command-line client and is a rule rather than a description — it does not change. The graphical client adds a window and a privileged component beside it, both of which are the same binary or ship with it; what runs privileged, and what crosses between them, is `docs/ARCHITECTURE-GUI.md` (2026-08-13), which is the newer document wherever the two touch.
+
 ## 2. Architecture
 
 ```
@@ -74,6 +76,8 @@ On the host: a single `wg-hem` binary (wrapper + forked wireguard-go) + the phys
 ```
 
 Object mapping: **1 interface (if) key → N peers** (list of references in the if key's `descr`).
+
+A device may hold **several such identities**, each with its own peers: N private keys, N configurations, one repository. They do not interact — one MAC closes over one identity and the peers it names — so the only thing multiplicity changes is that something has to choose. The rule is the one §6.2 step 5 already applies to peers: a single record is used without asking, several are offered. `keymgmt:use:<if_kid>` names one key, so that choice necessarily precedes the token.
 The binding is one-directional: the identity record enumerates its peers, and a peer
 record points at nothing. That is what lets one MAC close over the whole set, and what
 makes a peer record shareable.
@@ -245,7 +249,7 @@ Consequences:
 ### 6.2 Client startup (`wg-hem up`)
 
 1. Authenticate to HEM. For PPA the address is known (`https://my.ence.do`, a name because the connection is TLS) — startup with literally no arguments; for EPA: URL from argument/env (still not a file) or discovery.
-2. `key/search` prefix `WG:if:` → if key + descr (search returns descr in results — confirmed in docs) → parse.
+2. `key/search` prefix `WG:if:` → if key(s) + descr (search returns descr in results — confirmed in docs) → parse. **One record is used without asking; several are offered as a choice** (§2), and the choice comes before the `use` token that names it.
 3. `key/search` prefix `WG:pr:` → all peer records with descr (paginated; the device returns 15 per page by default). Search does not return public keys, so each candidate needs `/api/keymgmt/get/<kid>` before its PEER_REF can be computed — one `keymgmt:get` token covers all of them, and the same token reads the interface public key. **2 search calls plus one pubkey read per candidate peer.**
 4. Assemble the canonical message → `hmac/verify`. **Failure = hard stop, no fallback.**
 5. **Peer selection: interactive.** The client asks the user which peer to connect to (list from descr: label/endpoint, PEER_REF order as the suggestion). With a single peer — no prompt.
@@ -272,6 +276,8 @@ Consequences:
    - HEM unreachable once the routes are in place: **refuse**, restore the previous routing
      and report. The first rekey would take the interface down anyway.
 9. Runtime: handshake monitoring + connection-error handling (§6.4).
+
+**With the graphical client the same nine steps are split across two processes.** Steps 1–5 — reaching the device, authenticating, listing identities and peers, and both choices — belong to the window, which ends by holding a `keymgmt:use:<if_kid>` token and nothing privileged. Steps 2–4 are then performed *again* by the privileged component, deliberately: it reads and verifies the tree it was named rather than trusting one it was handed, which is what lets it be a monitor rather than an executor. Steps 6–9 are the component's alone. See `docs/ARCHITECTURE-GUI.md`.
 
 ### 6.3 Handshake (wireguard-go fork)
 
