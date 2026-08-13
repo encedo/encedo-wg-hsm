@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/encedo/encedo-wg-hsm/internal/session"
@@ -41,6 +42,13 @@ func resolveState(ifname string, explicit bool) (*state, error) {
 
 func stateExit(err error) error {
 	switch {
+	case errors.Is(err, fs.ErrPermission):
+		// The run directory is shared by group — that is how a client without
+		// root writes there at all. A bare "permission denied" sends people
+		// looking at the file; the answer is almost always the group.
+		return failf(exitUsage, "%w\n"+
+			"That directory is shared by group. Add yourself to it and log in again:\n"+
+			"  sudo adduser \"$USER\" wireguard", err)
 	case errors.Is(err, session.ErrNotRunning):
 		return failf(exitUsage, "%w", err)
 	case errors.Is(err, session.ErrAmbiguous):

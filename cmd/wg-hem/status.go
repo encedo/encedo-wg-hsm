@@ -1,16 +1,13 @@
 package main
 
 import (
-	"context"
 	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
-	"github.com/encedo/encedo-wg-hsm/internal/config"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
-	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // cmdStatus reports what a running interface is doing (§10.2): which peer is
@@ -22,16 +19,15 @@ import (
 // notices, and asking here means not waiting for the next startup to find out.
 func cmdStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	dev := addDeviceFlags(fs)
 	ifname := fs.String("interface", "wg0", "name of the tunnel interface")
-	noVerify := fs.Bool("no-verify", false, "skip the configuration check, and with it the device round trip")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem status — report on a running interface
 
-  wg-hem status [--interface wg0] [--no-verify] [device flags]
+  wg-hem status [--interface wg0]
 
-Without --no-verify the stored configuration is re-authenticated against the
-device, which needs a token and therefore the passphrase.
+Reads the state file this process left and the interface itself. It does not
+reach the device and does not ask for anything: whether the stored configuration
+still authenticates is what `+"`wg-hem verify`"+` answers.
 
 `)
 		fs.PrintDefaults()
@@ -43,28 +39,6 @@ device, which needs a token and therefore the passphrase.
 	st, err := resolveState(*ifname, flagGiven(fs, "interface"))
 	if err != nil {
 		return err
-	}
-
-	// The device is spoken to first, though what it says is printed last.
-	//
-	// It is the only step here that asks for anything, and asked in the place
-	// its answer belongs — under the live figures — the passphrase prompt
-	// arrived at the foot of a screenful of output, where it reads as a program
-	// that has finished rather than one waiting for a person. The report keeps
-	// the order it had; only the question moved.
-	var (
-		tree    *config.Tree
-		loadErr error
-	)
-	if !*noVerify {
-		if *dev.hem == "" {
-			*dev.hem = st.HEMURL
-		}
-		var auth *session.Auth
-		_, auth, tree, loadErr = dev.load(context.Background())
-		if auth != nil {
-			defer auth.Wipe()
-		}
 	}
 
 	fmt.Printf("interface %s\n", st.Interface)
@@ -118,40 +92,5 @@ device, which needs a token and therefore the passphrase.
 		}
 	}
 
-	if *noVerify {
-		fmt.Printf("config.verified skipped\n")
-		return nil
-	}
-	if loadErr != nil {
-		fmt.Printf("config.verified false\n")
-		return loadErr
-	}
-
-	fmt.Printf("config.verified true\n")
-	fmt.Printf("config.peers %d\n", len(tree.Peers))
-
-	// The configuration authenticates, but it may no longer be the one this
-	// interface came up with — `peer update` re-MACs the tree without touching a
-	// running tunnel, so an authentic tree and a stale interface look alike from
-	// the MAC alone.
-	if !treeHasPeer(tree, st.PeerKID) {
-		fmt.Printf("config.active-peer-present false\n")
-		fmt.Fprintf(os.Stderr,
-			"NOTE: the peer this interface is running is no longer in the stored configuration;\n"+
-				"      restart it to pick up the current one.\n")
-	} else {
-		fmt.Printf("config.active-peer-present true\n")
-	}
 	return nil
-}
-
-// treeHasPeer reports whether the configuration still carries the peer the
-// interface is running.
-func treeHasPeer(tree *config.Tree, kid string) bool {
-	for _, p := range tree.Peers {
-		if p.KID == kid {
-			return true
-		}
-	}
-	return false
 }

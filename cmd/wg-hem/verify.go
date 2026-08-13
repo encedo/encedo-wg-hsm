@@ -12,6 +12,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // cmdVerify is the "has anyone touched the configuration" diagnostic (§10.3).
@@ -45,7 +46,49 @@ Flags:
 
 	fmt.Fprintln(os.Stderr, "Configuration verified: the stored records are the ones that were provisioned.")
 	dumpTree(tree)
+	reportRunningPeer(tree)
 	return nil
+}
+
+// reportRunningPeer says when a tunnel is running through a peer this
+// configuration no longer names.
+//
+// The configuration authenticates and the tunnel works, and they can still
+// disagree: `peer update` re-signs the tree without touching a running
+// interface, so an authentic tree and a stale interface look alike from the MAC
+// alone. It lives here rather than in `status` because answering it needs the
+// tree, and reading the tree is this command's job — `status` reports what is
+// running and asks nobody for anything.
+func reportRunningPeer(tree *config.Tree) {
+	names, err := session.Running()
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		st, err := session.Load(name)
+		if err != nil || st.IfKID != tree.IfKID {
+			continue
+		}
+		if treeHasPeer(tree, st.PeerKID) {
+			fmt.Printf("running.%s.peer-present true\n", name)
+			continue
+		}
+		fmt.Printf("running.%s.peer-present false\n", name)
+		fmt.Fprintf(os.Stderr,
+			"NOTE: %s is running peer %s, which this configuration no longer names;\n"+
+				"      restart it to pick up the current one.\n", name, st.PeerKID)
+	}
+}
+
+// treeHasPeer reports whether the configuration still carries the peer an
+// interface is running.
+func treeHasPeer(tree *config.Tree, kid string) bool {
+	for _, p := range tree.Peers {
+		if p.KID == kid {
+			return true
+		}
+	}
+	return false
 }
 
 // dumpTree writes the parsed configuration to stdout in a stable, greppable

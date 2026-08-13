@@ -370,7 +370,8 @@ wg-hem provision \
 wg-hem up [--identity KID|PREFIX]             # no flag: interactive prompt when the device holds >1 identity (§2)
           [--peer N | --peer-pubkey PREFIX]   # no flag: interactive peer prompt when >1 peer (§6.2 step 5)
 wg-hem down
-wg-hem status                                  # active peer, last handshake, transfer, hmac/verify result
+wg-hem status                                  # active peer, last handshake, transfer — reads the state file and the
+                                               # interface, reaches no device and asks for nothing
 ```
 
 ### 10.3 Maintenance
@@ -379,7 +380,9 @@ wg-hem status                                  # active peer, last handshake, tr
 wg-hem peer add|remove|update …    # same flags as --peer; every change triggers a tree re-MAC (automatic)
                                    # `peer update --psk -|generate|clear` is the PSK rotation: it rewraps
                                    # under the peer's own context (§5) and re-MACs, so no separate verb
-wg-hem verify                      # standalone hmac/verify + parsed-config dump; the "has anyone touched the config" diagnostic
+wg-hem verify                      # standalone hmac/verify + parsed-config dump; the "has anyone touched the config"
+                                   # diagnostic, and the one command that answers whether a running tunnel's peer is
+                                   # still in the stored configuration — answering that needs the tree
 wg-hem wipe                        # remove all WG:* records from HEM (with confirmation)
 ```
 
