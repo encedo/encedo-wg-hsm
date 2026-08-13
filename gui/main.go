@@ -62,12 +62,18 @@ const appID = "com.encedo.wg"
 // they are one constant apart.
 const windowTitle = "encedo-wg"
 
-// guiVersion is this interface's own number, not the client's. They are separate
-// artifacts built differently — the command-line client is static and
+// The window used to carry a number of its own, 0.9, on the grounds that the two
+// halves are built differently — the command-line client is static and
 // cross-compiled from one machine, this one needs cgo and a build per platform —
-// and they will not move in step, so pretending they share a version would be a
-// claim neither of them keeps.
-const guiVersion = "0.9"
+// and so would not move in step.
+//
+// They do move in step, and not by convention: ipc.Build.Matches compares the
+// release and the record length, and the component refuses to take instructions
+// from a window that does not agree with it. Two artifacts that must agree to
+// work at all do not have two versions. So the window reports what the check
+// reports, in the shape `wg-hem version` uses, and the number nobody compared
+// against anything is gone — it was a second answer to a question with one, and
+// the wrong one to read out when the two halves refuse each other.
 
 // warnBefore is how much of the session is left when the warning appears. Long
 // enough to finish a call and reconnect; short enough not to nag.
@@ -153,13 +159,10 @@ func main() {
 	live := flag.String("live", "", "drive a real appliance: the `socket` the privileged component listens on\n(try /run/encedo-wg/wg-hem.sock)")
 	flag.Parse()
 	if *showVersion {
-		// Two numbers, because they answer different questions. The first is
-		// this interface's own, which moves at its own pace. The second is what
-		// the privileged component compares against before it will take
-		// instructions — so when the two refuse each other, this is the line to
-		// hold up beside `wg-hem version`.
-		fmt.Println("encedo-wg-gui", guiVersion)
-		fmt.Println("build", ipc.Current())
+		// One line, the same shape `wg-hem version` prints, because the two are
+		// meant to be compared and the comparison used to need somebody to know
+		// which of two lines was the one that mattered.
+		fmt.Println("encedo-wg-gui", ipc.Current())
 		return
 	}
 	// Before the toolkit starts, because that is when it reads the variable. It
@@ -197,7 +200,7 @@ func main() {
 	app.SetMetadata(fyne.AppMetadata{
 		ID:         appID,
 		Name:       windowTitle,
-		Version:    guiVersion,
+		Version:    ipc.Current().Release,
 		Migrations: map[string]bool{"fyneDo": true},
 	})
 
@@ -582,9 +585,13 @@ func (u *ui) render(e Event) {
 	}
 
 	u.renderCountdown(e)
+	// The build, not a number of the window's own: this is the line somebody
+	// reads out when the component has refused the window, and it has to be the
+	// one the component compared against — the same text `wg-hem version` prints
+	// after the program name.
 	u.advText.SetText(fmt.Sprintf(
 		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		guiVersion, e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+		ipc.Current(), e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
 }
