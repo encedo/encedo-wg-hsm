@@ -47,10 +47,13 @@ install -Dm644 "$ROOT/packaging/linux/wireguard.conf"           "$PKG/usr/lib/tm
 install -Dm644 "$ROOT/packaging/linux/50-encedo-wg-resolve.rules" "$PKG/usr/share/polkit-1/rules.d/50-encedo-wg-resolve.rules"
 
 install -Dm644 "$ROOT/gui/icon.svg" "$PKG/usr/share/icons/hicolor/scalable/apps/encedo-wg.svg"
+
+# The installed entry points at the installed binary and at the service's socket,
+# so opening it from the applications list does the whole thing.
+mkdir -p "$PKG/usr/share/applications"
 sed 's|^Exec=.*|Exec=/usr/bin/encedo-wg-gui -live /run/encedo-wg/wg-hem.sock|' \
-	"$ROOT/gui/packaging/encedo-wg.desktop" > "$PKG/usr/share/applications/encedo-wg.desktop.tmp"
-install -Dm644 "$PKG/usr/share/applications/encedo-wg.desktop.tmp" "$PKG/usr/share/applications/encedo-wg.desktop"
-rm -f "$PKG/usr/share/applications/encedo-wg.desktop.tmp"
+	"$ROOT/gui/packaging/encedo-wg.desktop" > "$PKG/usr/share/applications/encedo-wg.desktop"
+chmod 644 "$PKG/usr/share/applications/encedo-wg.desktop"
 
 mkdir -p "$PKG/DEBIAN"
 cat > "$PKG/DEBIAN/control" <<EOF
