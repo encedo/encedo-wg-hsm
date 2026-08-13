@@ -84,7 +84,7 @@ Section: net
 Priority: optional
 Architecture: ${ARCH}
 Maintainer: Krzysztof Rutecki <krzysztof@encedo.com>
-Depends: libgl1, libx11-6
+Depends: libgl1, libx11-6, libcap2-bin, adduser
 Recommends: wireguard-tools
 Description: WireGuard client whose private key never leaves an Encedo module
  The key is generated inside the hardware module and stays there; every
@@ -115,27 +115,49 @@ adduser encedo-wg wireguard >/dev/null 2>&1 || true
 
 systemd-tmpfiles --create /usr/lib/tmpfiles.d/wireguard.conf >/dev/null 2>&1 || true
 
+# The capability the command-line client needs, granted here because dpkg does
+# not carry file capabilities through an upgrade and a person should not have to
+# know that. It lives in the file's extended attributes, so every install drops
+# it and every install has to put it back.
+#
+# The service does not depend on this — it has the capability from its unit —
+# but a file carrying any capability clears the ambient set on exec, so this
+# grant is what the service ends up using too. One source rather than two that
+# could disagree.
+setcap cap_net_admin=eip /usr/bin/wg-hem 2>/dev/null || true
+
+# Whoever installed this is who will use it. Being in the group is what lets the
+# window reach the service and lets `wg-hem status` read the run directory, and
+# it is the one thing a package cannot finish: group membership is fixed when a
+# session begins, so it takes a log out or a reboot.
+target_user="${SUDO_USER:-}"
+if [ -z "$target_user" ] && [ -n "${PKEXEC_UID:-}" ]; then
+	target_user="$(getent passwd "$PKEXEC_UID" | cut -d: -f1)"
+fi
+if [ -n "$target_user" ] && [ "$target_user" != root ]; then
+	adduser "$target_user" wireguard >/dev/null 2>&1 || true
+fi
+
 # Not enabled at boot. The service exists so that opening the window does not
 # require being an administrator, not so that a tunnel exists without anybody
 # opening anything — and a socket-activated service would still be the right
 # shape later.
 systemctl daemon-reload >/dev/null 2>&1 || true
 
-cat <<'MSG'
+systemctl enable encedo-wg >/dev/null 2>&1 || true
+systemctl restart encedo-wg >/dev/null 2>&1 || true
 
-encedo-wg is installed, and one thing is left that this cannot do for you.
+cat <<MSG
 
-The service runs as its own user and reaches you through the "wireguard"
-group. Until your account is in it, the window cannot reach the service and
-`wg show` cannot list interfaces — both report a permission error rather than
-anything about groups.
+encedo-wg is installed and the service is running.
 
-  sudo adduser "$USER" wireguard      # then log out and back in
-  sudo systemctl enable --now encedo-wg
+  capability   granted on /usr/bin/wg-hem
+  group        ${target_user:-nobody} added to "wireguard"
+  service      enabled and started
 
-To run the command-line client as yourself as well:
-
-  sudo setcap cap_net_admin=eip /usr/bin/wg-hem
+Group membership is fixed when a session begins, so log out and back in — or
+reboot — before opening the window. Until then it cannot reach the service, and
+says so as a permission error rather than as anything about groups.
 
 MSG
 EOF
