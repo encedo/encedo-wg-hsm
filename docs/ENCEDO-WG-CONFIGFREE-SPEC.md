@@ -365,7 +365,8 @@ wg-hem provision \
 ### 10.2 Runtime
 
 ```
-wg-hem up [--peer N | --peer-pubkey PREFIX]   # no flag: interactive peer prompt when >1 peer (§6.2 step 5)
+wg-hem up [--identity KID|PREFIX]             # no flag: interactive prompt when the device holds >1 identity (§2)
+          [--peer N | --peer-pubkey PREFIX]   # no flag: interactive peer prompt when >1 peer (§6.2 step 5)
 wg-hem down
 wg-hem status                                  # active peer, last handshake, transfer, hmac/verify result
 ```

@@ -11,7 +11,6 @@ package config
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	hem "github.com/encedo/hem-sdk-go"
 
@@ -75,26 +74,28 @@ type Tree struct {
 // Load finds the configuration in the device, resolves it, and verifies its MAC.
 // It returns an error rather than a partial result if anything does not add up:
 // there is no degraded mode to fall back to (§8.3).
-func Load(ctx context.Context, c *hem.Client, tok TokenFunc) (*Tree, error) {
+//
+// choose is consulted only when the device holds more than one identity, and may
+// be nil where there is nobody to ask — see ChooseFunc.
+func Load(ctx context.Context, c *hem.Client, tok TokenFunc, choose ChooseFunc) (*Tree, error) {
 	ifEntries, err := search(ctx, c, tok, descr.MagicInterface)
 	if err != nil {
 		return nil, err
 	}
-	switch len(ifEntries) {
-	case 0:
-		return nil, fmt.Errorf("no %s record in the device — run `wg-hem provision` first", descr.MagicInterface)
-	case 1:
-	default:
-		kids := make([]string, 0, len(ifEntries))
-		for _, e := range ifEntries {
-			kids = append(kids, e.KID)
-		}
-		return nil, fmt.Errorf("the device holds %d interface records (%s); this client configures one",
-			len(ifEntries), strings.Join(kids, ", "))
+	entry, err := pick(ifEntries, choose)
+	if err != nil {
+		return nil, err
 	}
+	return loadFrom(ctx, c, tok, entry)
+}
 
-	t := &Tree{IfKID: ifEntries[0].KID, IfLabel: ifEntries[0].Label}
-	t.IfRaw, err = descr.Normalize(ifEntries[0].Descr)
+// loadFrom resolves and authenticates one interface record, whichever way it was
+// arrived at. Everything from here on knows exactly which identity it is working
+// on, which is why the choosing lives entirely above it.
+func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEntry) (*Tree, error) {
+	t := &Tree{IfKID: entry.KID, IfLabel: entry.Label}
+	var err error
+	t.IfRaw, err = descr.Normalize(entry.Descr)
 	if err != nil {
 		return nil, fmt.Errorf("interface record: %w", err)
 	}
