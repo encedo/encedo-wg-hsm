@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,7 +37,7 @@ func Preflight() error {
 
 	if !hasCapNetAdmin() {
 		missing = append(missing, "cap_net_admin — the interface, its addresses and its routes all need it\n"+
-			"    grant it once with:  sudo setcap cap_net_admin=eip $(command -v wg-hem)")
+			"    grant it with:  sudo setcap cap_net_admin=eip "+self())
 	}
 	if err := writable(RunDir); err != nil {
 		missing = append(missing, fmt.Sprintf("%s is not writable (%v) — the UAPI socket and the state file live there\n"+
@@ -116,4 +117,25 @@ func currentGroup() string {
 		}
 	}
 	return strconv.Itoa(gid)
+}
+
+// self names the binary that is running, for the command that fixes it.
+//
+// Not `$(command -v wg-hem)`, which was there before and named whichever copy
+// is on PATH — usually not the one being run. Somebody testing a fresh build out
+// of dist/ would have granted the capability to an older installed copy and
+// watched the same refusal again.
+//
+// It is also why this refusal recurs: the capability lives in the file's
+// extended attributes, so every rebuild and every install drops it, and the
+// command has to name the file that exists now.
+func self() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "$(command -v wg-hem)"
+	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		return resolved
+	}
+	return exe
 }

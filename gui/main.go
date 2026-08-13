@@ -685,6 +685,13 @@ func (u *ui) installTray() {
 	if !ok {
 		return
 	}
+	// Asked before anything is offered. The toolkit accepts a tray menu on any
+	// desktop and finds out later whether one exists — see tray_linux.go — and
+	// a window that hides itself into a tray that is not there is a live tunnel
+	// nobody can reach.
+	if !trayAvailable() {
+		return
+	}
 	desk.SetSystemTrayMenu(fyne.NewMenu(windowTitle,
 		fyne.NewMenuItem("Show", u.present),
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
