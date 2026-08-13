@@ -130,7 +130,6 @@ func (f *fakeHEM) search(w http.ResponseWriter, r *http.Request) {
 func newFakeHEM(t *testing.T) (*fakeHEM, *httptest.Server) {
 	t.Helper()
 	f := &fakeHEM{
-		ifKID:    "aaaabbbbccccddddeeeeffff00001111",
 		macKey:   []byte("self-ecdh-key-that-never-leaves!"),
 		stored:   map[string][]byte{},
 		peerKeys: map[string][]byte{},
@@ -142,6 +141,11 @@ func newFakeHEM(t *testing.T) (*fakeHEM, *httptest.Server) {
 		t.Fatalf("deriving a test public key: %v", err)
 	}
 	copy(f.ifPub[:], pub)
+
+	// The identifier is derived from the key, because that is what a device
+	// does: KID = SHA-1(pubkey)[0:16], §3. A made-up one made this fake disagree
+	// with every real appliance about the one relationship the client checks.
+	f.ifKID = descr.KID(f.ifPub[:])
 
 	srv := httptest.NewServer(http.HandlerFunc(f.serve))
 	t.Cleanup(srv.Close)

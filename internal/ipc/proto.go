@@ -95,23 +95,28 @@ type Request struct {
 	Identity string `json:"identity,omitempty"` // interface key id
 	Peer     string `json:"peer,omitempty"`     // peer key id
 
-	// Token is the session's own credential, scoped keymgmt:use:<Identity>. It
-	// is what the component acts with at every handshake, for as long as the
-	// tunnel is up, and it is the one whose theft the threat model is about.
+	// Token is the session's credential, scoped keymgmt:use:<Identity>, and the
+	// only one. It is what the component acts with at every handshake, for as
+	// long as the tunnel is up, and it is the one whose theft the threat model
+	// is about.
 	Token string `json:"token,omitempty"`
 
-	// Read carries the read scopes the component needs once, by scope name,
-	// while it loads the configuration and checks its MAC.
+	// PubKeys are the public keys the component would otherwise read from the
+	// device one call at a time, by identifier, base64 as the device gives them.
 	//
-	// It exists because multi-scope tokens are firmware that has not shipped.
-	// Today `keymgmt:use:<kid>` does not cover `keymgmt:get`, and a device
-	// without anonymous search wants `keymgmt:search` as well — so the honest
-	// handover is one session credential plus a small read bundle, rather than
-	// the single token the architecture would prefer. They are separate fields
-	// because their lifetimes differ: these are spent during startup and matter
-	// far less if lost, and when the firmware lands this field goes away without
-	// disturbing the one above it.
-	Read map[string]string `json:"read,omitempty"`
+	// They are here so that `keymgmt:get` does not have to be, and the handover
+	// is one token rather than a bundle. Supplying them is safe for a reason
+	// unrelated to trusting whoever supplied them: `KID = SHA-1(pubkey)[0:16]`
+	// (§3), so a key is checked against the identifier it claims, and offering a
+	// different one is a second-preimage attack rather than a substitution.
+	//
+	// What is *not* supplied is the records. The component reads those itself,
+	// freshly, because a MAC authenticates a tree without saying which version
+	// of it is current — an old configuration replayed would verify perfectly
+	// well, and a fresh search is the only thing that notices.
+	//
+	// Public information, all of it: §8 treats records and public keys as such.
+	PubKeys map[string]string `json:"pubkeys,omitempty"`
 }
 
 // Type discriminates what came back: an answer to a request, or something that

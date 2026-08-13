@@ -76,13 +76,32 @@ func Identities(ctx context.Context, c *hem.Client, tok TokenFunc) ([]Identity, 
 // boundary, and a KID is the only part of an Identity that means anything on the
 // other side of one.
 func LoadIdentity(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID string) (*Tree, error) {
+	return loadNamed(ctx, c, tok, ifKID, fromDevice(c, tok))
+}
+
+// LoadIdentityWithKeys is LoadIdentity for a caller that already has the public
+// keys, which spares a `keymgmt:get` token and one device call per peer.
+//
+// The saving is not why it is safe. Identifiers and records are still read from
+// the device, freshly — the MAC authenticates a tree without saying which
+// version is current, so an old one replayed would verify — and every supplied
+// key is checked against the identifier it claims. `KID = SHA-1(pubkey)[0:16]`,
+// so offering the wrong key for an identifier the caller did not choose is a
+// second-preimage attack, not a substitution.
+//
+// keys is identifier to raw public key.
+func LoadIdentityWithKeys(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID string, keys map[string][]byte) (*Tree, error) {
+	return loadNamed(ctx, c, tok, ifKID, fromSupplied(keys))
+}
+
+func loadNamed(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID string, ring keyring) (*Tree, error) {
 	entries, err := search(ctx, c, tok, descr.MagicInterface)
 	if err != nil {
 		return nil, err
 	}
 	for _, e := range entries {
 		if e.KID == ifKID {
-			return loadFrom(ctx, c, tok, e)
+			return loadFrom(ctx, c, tok, e, ring)
 		}
 	}
 	return nil, fmt.Errorf("the device holds no %s record for identity %s", descr.MagicInterface, ifKID)

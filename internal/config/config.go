@@ -86,13 +86,13 @@ func Load(ctx context.Context, c *hem.Client, tok TokenFunc, choose ChooseFunc) 
 	if err != nil {
 		return nil, err
 	}
-	return loadFrom(ctx, c, tok, entry)
+	return loadFrom(ctx, c, tok, entry, fromDevice(c, tok))
 }
 
 // loadFrom resolves and authenticates one interface record, whichever way it was
 // arrived at. Everything from here on knows exactly which identity it is working
 // on, which is why the choosing lives entirely above it.
-func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEntry) (*Tree, error) {
+func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEntry, ring keyring) (*Tree, error) {
 	t := &Tree{IfKID: entry.KID, IfLabel: entry.Label}
 	var err error
 	t.IfRaw, err = descr.Normalize(entry.Descr)
@@ -107,22 +107,12 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 		return nil, fmt.Errorf("the interface record names no peers")
 	}
 
-	// One keymgmt:get token reads every public key: the interface's own and each
-	// candidate peer's. Search returns descr but not key material, so the peer
-	// references cannot be resolved without this.
-	getTok, err := tok(ctx, "keymgmt:get")
-	if err != nil {
-		return nil, err
+	// Search returns identifiers and records, never key material, so the public
+	// keys come from somewhere else — see keys.go for the two somewheres and why
+	// one of them costs nothing.
+	if t.IfPubKey, err = resolve(ctx, ring, t.IfKID); err != nil {
+		return nil, fmt.Errorf("the interface public key: %w", err)
 	}
-	ifKey, err := c.GetPubKey(ctx, getTok, t.IfKID)
-	if err != nil {
-		return nil, fmt.Errorf("reading the interface public key: %w", err)
-	}
-	if len(ifKey.PubKey) != mac.PubKeyLen {
-		return nil, fmt.Errorf("interface public key is %d bytes, expected %d",
-			len(ifKey.PubKey), mac.PubKeyLen)
-	}
-	copy(t.IfPubKey[:], ifKey.PubKey)
 
 	peerEntries, err := search(ctx, c, tok, descr.MagicPeer)
 	if err != nil {
@@ -152,25 +142,12 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 		if !ok {
 			return nil, fmt.Errorf("the interface record references peer %x, which is not in the device", ref)
 		}
-		key, err := c.GetPubKey(ctx, getTok, e.KID)
+		pub, err := resolve(ctx, ring, e.KID)
 		if err != nil {
-			return nil, fmt.Errorf("reading public key of peer %s: %w", e.KID, err)
-		}
-		if len(key.PubKey) != mac.PubKeyLen {
-			return nil, fmt.Errorf("peer %s has a %d-byte public key, expected %d",
-				e.KID, len(key.PubKey), mac.PubKeyLen)
-		}
-		// The device's identifier must be the one this client derives, or every
-		// reference it resolves is guesswork. Checking here turns a wrong
-		// assumption about the device into a clear error rather than a MAC
-		// failure with no explanation.
-		if got := descr.KID(key.PubKey); got != e.KID {
-			return nil, fmt.Errorf("peer %s reports a public key whose KID is %s; this client derives identifiers as SHA-1(pubkey)[:16] and the device evidently does not",
-				e.KID, got)
+			return nil, fmt.Errorf("peer %s: %w", e.KID, err)
 		}
 
-		p := Peer{KID: e.KID, Label: e.Label}
-		copy(p.PubKey[:], key.PubKey)
+		p := Peer{KID: e.KID, Label: e.Label, PubKey: pub}
 		if p.Raw, err = descr.Normalize(e.Descr); err != nil {
 			return nil, fmt.Errorf("peer record %s: %w", e.KID, err)
 		}

@@ -13,15 +13,21 @@ import (
 // else. That is a property of this struct, and a struct grows a field at a time
 // — each one convenient, none obviously wrong on its own. So it is checked.
 //
-// Token is the exception on purpose, and the only one: it is what the component
-// acts with, and the reason it needs neither the passphrase nor the
-// configuration.
+// There are exactly two exceptions and both are named here rather than let
+// through by a looser pattern, so that adding a third has to be a decision
+// somebody wrote down.
+//
+// Token is what the component acts with, and the reason it needs neither the
+// passphrase nor the configuration. PubKeys is public by definition and by §8,
+// and carrying it is what keeps the token standing alone — without it the
+// component would need keymgmt:get as well.
 func TestRequestsCarryOneSecretAndNoOther(t *testing.T) {
+	allowed := map[string]bool{"token": true, "pubkeys": true}
 	banned := []string{"key", "pass", "secret", "psk", "seed", "auth", "phrase"}
 	rt := reflect.TypeOf(Request{})
 	for i := 0; i < rt.NumField(); i++ {
 		name := strings.ToLower(rt.Field(i).Name)
-		if name == "token" {
+		if allowed[name] {
 			continue
 		}
 		for _, b := range banned {
@@ -193,5 +199,46 @@ func TestWritingAnOversizedMessageIsRefused(t *testing.T) {
 	}
 	if buf.Len() != 0 {
 		t.Errorf("%d bytes were written before the refusal; a partial frame desynchronises the stream", buf.Len())
+	}
+}
+
+// The handover is one token. Anything that made it a bundle again would be
+// undoing the reason keymgmt:get was removed from the component's side.
+func TestOnlyOneCredentialCrosses(t *testing.T) {
+	rt := reflect.TypeOf(Request{})
+	credentials := 0
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		if f.Type.Kind() == reflect.String && strings.Contains(strings.ToLower(f.Name), "token") {
+			credentials++
+		}
+		if f.Type.Kind() == reflect.Map && strings.Contains(strings.ToLower(f.Name), "token") {
+			t.Errorf("Request.%s is a bundle of tokens; the component holds one", f.Name)
+		}
+	}
+	if credentials != 1 {
+		t.Errorf("Request carries %d token fields, want exactly 1", credentials)
+	}
+}
+
+// Public keys are not secrets — §8 treats them and the records as public — so
+// carrying them is what lets the token stand alone.
+func TestPublicKeysMayCross(t *testing.T) {
+	r := Request{Op: OpStart, Build: Current(), HEMURL: "https://my.ence.do",
+		Identity: "aa", Token: "t",
+		PubKeys: map[string]string{"aa": "AAAA", "bb": "BBBB"}}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("a start carrying public keys was refused: %v", err)
+	}
+	b, err := Encode(r)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	got, err := DecodeRequest(b)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got.PubKeys) != 2 || got.PubKeys["bb"] != "BBBB" {
+		t.Errorf("public keys did not survive the wire: %v", got.PubKeys)
 	}
 }

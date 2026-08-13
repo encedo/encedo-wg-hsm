@@ -1,13 +1,33 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"strings"
 	"testing"
 
+	"golang.org/x/crypto/curve25519"
+
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 )
+
+// secondIdentity gives the fake a different identity key and returns the
+// identifier that names it.
+//
+// Derived rather than made up, because a device derives it: KID =
+// SHA-1(pubkey)[0:16], §3. A fixture that invents one disagrees with every real
+// appliance about the single relationship the client checks before it will
+// believe a public key.
+func secondIdentity(t *testing.T, f *fakeHEM) string {
+	t.Helper()
+	pub, err := curve25519.X25519(bytes.Repeat([]byte{9}, 32), curve25519.Basepoint)
+	if err != nil {
+		t.Fatalf("deriving a test public key: %v", err)
+	}
+	copy(f.ifPub[:], pub)
+	return descr.KID(pub)
+}
 
 // A second identity on the same peer servers is the point of the whole change:
 // one public key has one record, so the second configuration cannot import it
@@ -20,7 +40,7 @@ func TestSecondIdentityAdoptsExistingPeers(t *testing.T) {
 	firstIdentity := f.ifKID
 	importsAfterFirst := len(f.imported)
 	// A fresh identity key, as `provision` without --kid would create.
-	f.ifKID = "11112222333344445555666677778888"
+	f.ifKID = secondIdentity(t, f)
 	f.stored = map[string][]byte{}
 	f.mu.Unlock()
 
@@ -59,7 +79,7 @@ func TestAdoptRefusesDifferentSettings(t *testing.T) {
 	provisionInto(t, srv.URL)
 
 	f.mu.Lock()
-	f.ifKID = "11112222333344445555666677778888"
+	f.ifKID = secondIdentity(t, f)
 	f.stored = map[string][]byte{}
 	f.mu.Unlock()
 
@@ -87,7 +107,7 @@ func TestAdoptFlagTakesTheStoredSettings(t *testing.T) {
 	provisionInto(t, srv.URL)
 
 	f.mu.Lock()
-	f.ifKID = "11112222333344445555666677778888"
+	f.ifKID = secondIdentity(t, f)
 	f.stored = map[string][]byte{}
 	stored := f.imported[0].descr
 	f.mu.Unlock()
@@ -127,7 +147,7 @@ func TestAdoptRefusesAPeerWithAPSK(t *testing.T) {
 	provisionWithPSK(t, srv.URL)
 
 	f.mu.Lock()
-	f.ifKID = "11112222333344445555666677778888"
+	f.ifKID = secondIdentity(t, f)
 	f.stored = map[string][]byte{}
 	f.mu.Unlock()
 

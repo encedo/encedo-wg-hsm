@@ -97,14 +97,26 @@ costs keeping the passphrase-derived material in the window's memory for the
 session — a trade this project once rejected for convenience and would then be
 buying for containment.
 
-**How many tokens** is settled by a firmware change already asked for: search
-that returns public keys (`TODO.md`, the firmware list) lets the component read
-the whole tree without `keymgmt:get`, collapsing the handover to exactly one
-credential — `keymgmt:use:<if_kid>`. Until that ships, the handover is that token
-plus a small read bundle (search, get), and the analysis above must be read as
-covering the bundle: the read scopes reveal nothing the design does not already
-treat as public (§8 — descr and public keys), so the impersonation analysis is
-unchanged, but stating "one token" before the firmware ships would be false.
+**How many tokens: one.** `keymgmt:use:<if_kid>` and nothing else, and it did not
+need the firmware change that was expected to buy it.
+
+`keymgmt:get` was there so the component could read the interface's public key
+and each peer's — search returns identifiers and records, never key material.
+But the window has already read them, and `KID = SHA-1(pubkey)[0:16]` (§3) means
+a supplied key can be **checked against the identifier it claims**: offering a
+different key for a given identifier is a second-preimage attack on SHA-1, not a
+substitution. So the keys travel in `start` and the scope goes away.
+
+What does **not** travel is the records. The component searches for those itself,
+freshly, and that is the part worth stating plainly: a MAC authenticates a tree
+without saying which version of it is current, so an old configuration replayed
+— from before a peer was removed, say — would verify perfectly well. A fresh
+search is the only thing that notices. Reading the identifiers and taking the
+keys is therefore not a halfway house; it is the split that keeps rollback out
+while dropping a credential.
+
+Search itself needs no token on a device with `allow_keysearch`, which is what
+makes the count exactly one rather than two.
 
 **TLS is verified, always.** There is no `--insecure` in this design and there
 must not be: a request that tells a root process to skip certificate
