@@ -54,6 +54,34 @@ unanswered question into written permission, and it is worth having before a
 company signs a distribution with its own certificate: renaming afterwards costs
 incomparably more than asking now.
 
+## Open against the graphical client, 2026-08-13
+
+Found by testing the packaged Linux build. Each is a thing that worked at some
+point in the day, or was never checked, rather than something never written.
+
+**The dash icon is a placeholder again.** It was fixed once, with a desktop entry
+naming the WM_CLASS the window announces, and verified. The package installs its
+own entry and its own icon and the user-level copy was removed in between, so
+something about that hand-over is wrong. Do not guess: the entry, the icon path
+and the cache all have to be looked at, and the WM_CLASS the running window
+reports checked against what the installed entry names.
+
+**Disconnect does not return the window to Ready, and the reason is known.** The
+session clears its connection when the *connection* ends, which is what happens
+if the component goes away. Disconnect does not do that: it sends stop, the
+component takes the tunnel down and keeps the connection open. So the presence
+watch — which stands aside while a connection exists — never speaks again, and
+the passphrase never comes back. Clearing on the component's "ended" event, or
+on stop, is the fix; the first is better, since it also covers a tunnel that
+ended on its own.
+
+**Whether the notice box should exist at all.** It was designed against the
+scripted stand-in, where a coloured panel was the only way to show that something
+had happened. With a real component the state line, the dot and the fields carry
+most of it, and what is left — failover moved, the device went away — may be
+better as a sentence in the body than as an alert. Worth deciding rather than
+inheriting: it is one of the few things in the window that nobody has asked for.
+
 ## v2.1 — proposed: the version somebody's assistant can run
 
 Neither of these is started. Both assume `wg-hem` as it stands and add nothing to
