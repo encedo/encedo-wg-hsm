@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/paths"
 )
 
 // stateSuffix names a state file. Writing it and finding it again are in
@@ -37,7 +37,12 @@ var ErrAmbiguous = errors.New("several tunnels are running")
 
 // Dir is where state files live. A variable so tests can write somewhere they
 // are allowed to; everything else takes it from the platform.
-var Dir = rt.RunDir
+//
+// It comes from internal/paths rather than internal/runtime, and that is the
+// difference between this package being importable by a window and not: the run
+// directory is a string, while the package it used to live in carries netlink,
+// the tunnel device and the whole platform layer with it.
+var Dir = paths.RunDir
 
 // State is what a running tunnel leaves behind so another invocation can find
 // it. The UAPI socket says what the tunnel is doing; it does not say which peer

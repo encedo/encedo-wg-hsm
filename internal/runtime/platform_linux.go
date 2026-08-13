@@ -14,12 +14,16 @@ import (
 
 	"github.com/vishvananda/netlink"
 	"golang.zx2c4.com/wireguard/ipc"
+
+	"github.com/encedo/encedo-wg-hsm/internal/paths"
 )
 
 // RunDir is where a running interface leaves its UAPI socket, its public key
-// and, for wg-hem, its state file. The private key is not there and never will
-// be: the device is configured with a zeroed one.
-const RunDir = "/var/run/wireguard"
+// and, for wg-hem, its state file. Defined in internal/paths, which is a leaf:
+// knowing where a state file goes must not require importing netlink and a
+// tunnel device. Re-exported here because everything on this side of the
+// boundary already says rt.RunDir.
+const RunDir = paths.RunDir
 
 // Up assigns the interface its addresses and brings it up. Several are allowed:
 // one identity may hold an address in more than one family, or more than one
