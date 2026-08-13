@@ -78,9 +78,12 @@ var iconSVG []byte
 var appIcon = fyne.NewStaticResource("encedo-wg.svg", iconSVG)
 
 type ui struct {
-	app    fyne.App
-	win    fyne.Window
-	sess   *fakeSession
+	app fyne.App
+	win fyne.Window
+	// sess is the interface rather than the fake, which is what the interface
+	// was written for: the window drives one shape, and what is behind it is a
+	// scripted stand-in or a real appliance and a privileged component.
+	sess   Session
 	hasTr  bool
 	latest Event
 
@@ -135,6 +138,11 @@ func main() {
 	// under sudo the appearance setting consulted is root's, not the one whose
 	// desktop this is. See variantChoice.
 	themeName := flag.String("theme", "auto", "colour scheme: auto, dark or light (auto follows the desktop, which under sudo is root's)")
+	// -live drives a real appliance through the privileged component. It is opt
+	// in for now, so that -scenario and the render tests keep working on a
+	// machine with neither a device nor a service, and so that the first person
+	// to try it does so deliberately.
+	live := flag.String("live", "", "drive a real appliance: the `socket` the privileged component listens on\n(try /run/encedo-wg/wg-hem.sock)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println("encedo-wg-gui", guiVersion)
@@ -178,7 +186,14 @@ func main() {
 	a.SetIcon(appIcon)
 	a.Settings().SetTheme(th)
 
-	u := &ui{app: a, win: a.NewWindow(windowTitle), sess: newFakeSession()}
+	u := &ui{app: a, win: a.NewWindow(windowTitle)}
+	if *live != "" {
+		ls := newLiveSession(rememberedHEM(a.Preferences().StringWithFallback(prefHEM, defaultHEM)), *live)
+		go ls.watch(context.Background())
+		u.sess = ls
+	} else {
+		u.sess = newFakeSession()
+	}
 	u.build()
 	// Now that there is a window to show, start answering the launches that ask
 	// for it. Through fyne.Do: the request arrives on the listener's goroutine.
@@ -191,7 +206,7 @@ func main() {
 	go u.consume()
 	go u.tickCountdown()
 	if *auto {
-		go u.sess.play(func(what string) { println("scenario:", what) })
+		u.onFake(func(f *fakeSession) { go f.play(func(what string) { println("scenario:", what) }) })
 	}
 
 	// Fixed: nothing here benefits from more room, and three states stretched
@@ -262,11 +277,11 @@ func (u *ui) build() {
 		widget.NewSeparator(),
 		u.advText,
 		container.NewGridWithColumns(3,
-			outlined(widget.NewButton("Module in", func() { u.sess.setModulePresent(true) })),
-			outlined(widget.NewButton("Module out", func() { u.sess.setModulePresent(false) })),
-			outlined(widget.NewButton("Peer fails", func() { u.sess.triggerFailover() })),
+			outlined(widget.NewButton("Module in", func() { u.onFake(func(f *fakeSession) { f.setModulePresent(true) }) })),
+			outlined(widget.NewButton("Module out", func() { u.onFake(func(f *fakeSession) { f.setModulePresent(false) }) })),
+			outlined(widget.NewButton("Peer fails", func() { u.onFake(func(f *fakeSession) { f.triggerFailover() }) })),
 		),
-		outlined(widget.NewButton("Expire the session now", func() { u.sess.expireNow() })),
+		outlined(widget.NewButton("Expire the session now", func() { u.onFake(func(f *fakeSession) { f.expireNow() }) })),
 	)
 	u.advBox = widget.NewCheck("Advanced", func(bool) { u.compose(u.latest) })
 
@@ -282,7 +297,9 @@ func (u *ui) build() {
 	// state keeps the top, so the window does not read as half-drawn.
 	u.body = container.NewBorder(u.head, u.foot, nil, nil, nil)
 	u.win.SetContent(container.NewPadded(u.body))
-	u.render(u.sess.snapshot())
+	if f, ok := u.sess.(*fakeSession); ok {
+		u.render(f.snapshot())
+	}
 }
 
 // compose rebuilds both columns from what the state says belongs in them.
@@ -419,7 +436,11 @@ func (u *ui) applyHEM(url string) {
 		u.hem.SetText(url)
 	}
 	u.app.Preferences().SetString(prefHEM, url)
-	u.sess.setHEM(url)
+	// Only something that has not connected yet can be pointed elsewhere, and
+	// both implementations happen to offer it.
+	if h, ok := u.sess.(interface{ setHEM(string) }); ok {
+		h.setHEM(url)
+	}
 }
 
 // consume is the only writer of interface state. Fyne requires updates to come
@@ -719,4 +740,17 @@ func dash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// onFake runs something only the scripted stand-in can do.
+//
+// The debug panel drives states that are awkward to reach on real hardware — a
+// module pulled out, a peer going quiet, a token running out — which is the
+// point of having a stand-in at all. Against a real appliance those buttons have
+// nothing to do, and doing nothing quietly is better than offering a control
+// that would have to lie about what it did.
+func (u *ui) onFake(fn func(*fakeSession)) {
+	if f, ok := u.sess.(*fakeSession); ok {
+		fn(f)
+	}
 }

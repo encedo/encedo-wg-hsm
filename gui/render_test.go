@@ -194,7 +194,8 @@ func TestRenderScenario(t *testing.T) {
 	defer a.Quit()
 	a.Settings().SetTheme(shotTheme(t))
 
-	u := &ui{app: a, sess: newFakeSession()}
+	fake := newFakeSession()
+	u := &ui{app: a, sess: fake}
 	defer u.sess.Close()
 	u.win = test.NewWindow(nil)
 	defer u.win.Close()
@@ -202,7 +203,7 @@ func TestRenderScenario(t *testing.T) {
 	u.resizeForContent()
 
 	for i, s := range scenario {
-		s.do(u.sess)
+		s.do(fake)
 
 		// Drain for a fixed window rather than waiting for quiet: a connected
 		// session emits continuously, so quiescence never arrives. The last
