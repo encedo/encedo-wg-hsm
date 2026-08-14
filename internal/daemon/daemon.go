@@ -56,7 +56,7 @@ type Server struct {
 
 	mu      sync.Mutex
 	running bool
-	ownerID uint32 // uid of the connection that started the tunnel
+	owner   Principal // who started the tunnel that is running
 	cancel  context.CancelFunc
 	tun     Tunnel
 }
@@ -87,7 +87,7 @@ func (s *Server) Serve(ln net.Listener) error {
 func (s *Server) handle(c net.Conn) {
 	defer c.Close()
 
-	uid, err := peerUID(c)
+	who, err := peerPrincipal(c)
 	if err != nil {
 		// Not knowing who is asking is a refusal, not a detail to shrug at:
 		// every rule below is written in terms of the answer.
@@ -100,7 +100,7 @@ func (s *Server) handle(c net.Conn) {
 	started := false
 	defer func() {
 		if started {
-			s.stop(uid)
+			s.stop(who)
 		}
 	}()
 
@@ -108,7 +108,7 @@ func (s *Server) handle(c net.Conn) {
 		raw, err := ipc.ReadMsg(c)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) {
-				s.log("connection from uid %d ended: %v", uid, err)
+				s.log("connection from %s ended: %v", who, err)
 			}
 			return
 		}
@@ -124,7 +124,7 @@ func (s *Server) handle(c net.Conn) {
 
 		switch req.Op {
 		case ipc.OpStart:
-			if err := s.start(c, uid, req); err != nil {
+			if err := s.start(c, who, req); err != nil {
 				_ = ipc.WriteMsg(c, refusalFrom(err))
 				continue
 			}
@@ -132,12 +132,12 @@ func (s *Server) handle(c net.Conn) {
 			_ = ipc.WriteMsg(c, ipc.Msg{Type: ipc.TypeReply, Reply: &ipc.Reply{OK: true, Build: &s.Build}})
 
 		case ipc.OpStop:
-			s.stop(uid)
+			s.stop(who)
 			started = false
 			_ = ipc.WriteMsg(c, ipc.Msg{Type: ipc.TypeReply, Reply: &ipc.Reply{OK: true}})
 
 		case ipc.OpRefresh:
-			if err := s.refresh(uid, req.Token); err != nil {
+			if err := s.refresh(who, req.Token); err != nil {
 				_ = ipc.WriteMsg(c, refusalFrom(err))
 				continue
 			}
@@ -146,7 +146,7 @@ func (s *Server) handle(c net.Conn) {
 	}
 }
 
-func (s *Server) start(c net.Conn, uid uint32, req ipc.Request) error {
+func (s *Server) start(c net.Conn, who Principal, req ipc.Request) error {
 	if !s.Build.Matches(req.Build) {
 		// Named on both sides, because the usual mismatch is a record dialect
 		// and its natural symptom is a MAC failure — which reads as somebody
@@ -159,16 +159,16 @@ func (s *Server) start(c net.Conn, uid uint32, req ipc.Request) error {
 
 	s.mu.Lock()
 	if s.running {
-		owner := s.ownerID
+		owner := s.owner
 		s.mu.Unlock()
-		if owner != uid {
+		if owner != who {
 			return session.Fail(session.KindDevice, "a tunnel is already running, and it belongs to another user")
 		}
 		return session.Fail(session.KindDevice, "a tunnel is already running")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.running, s.ownerID, s.cancel = true, uid, cancel
+	s.running, s.owner, s.cancel = true, who, cancel
 	s.mu.Unlock()
 
 	t, err := s.Open(ctx, req)
@@ -195,10 +195,10 @@ func (s *Server) start(c net.Conn, uid uint32, req ipc.Request) error {
 }
 
 // stop takes the tunnel down, if this caller is the one entitled to.
-func (s *Server) stop(uid uint32) {
+func (s *Server) stop(who Principal) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.running || s.ownerID != uid {
+	if !s.running || s.owner != who {
 		return
 	}
 	if s.cancel != nil {
@@ -206,14 +206,14 @@ func (s *Server) stop(uid uint32) {
 	}
 }
 
-func (s *Server) refresh(uid uint32, token string) error {
+func (s *Server) refresh(who Principal, token string) error {
 	s.mu.Lock()
-	running, owner := s.running, s.ownerID
+	running, owner := s.running, s.owner
 	s.mu.Unlock()
 	if !running {
 		return session.Fail(session.KindDevice, "no tunnel is running")
 	}
-	if owner != uid {
+	if owner != who {
 		return session.Fail(session.KindDevice, "that tunnel belongs to another user")
 	}
 

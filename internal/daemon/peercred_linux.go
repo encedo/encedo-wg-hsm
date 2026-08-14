@@ -7,7 +7,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// peerUID asks the kernel who is on the other end.
+// peerPrincipal asks the kernel who is on the other end.
 //
 // This is the part of the access control that cannot be forged. The socket's
 // permissions decide who may connect at all — that is the primary control, set
@@ -18,14 +18,14 @@ import (
 // The kernel fills this in at connect time from the peer's real credentials.
 // Nothing the peer sends is involved, which is why it is worth having rather
 // than asking politely in the protocol.
-func peerUID(c net.Conn) (uint32, error) {
+func peerPrincipal(c net.Conn) (Principal, error) {
 	uc, ok := c.(*net.UnixConn)
 	if !ok {
-		return 0, fmt.Errorf("not a unix socket: %T", c)
+		return Anonymous, fmt.Errorf("not a unix socket: %T", c)
 	}
 	raw, err := uc.SyscallConn()
 	if err != nil {
-		return 0, err
+		return Anonymous, err
 	}
 	var cred *unix.Ucred
 	var credErr error
@@ -33,10 +33,10 @@ func peerUID(c net.Conn) (uint32, error) {
 		cred, credErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 	})
 	if err != nil {
-		return 0, err
+		return Anonymous, err
 	}
 	if credErr != nil {
-		return 0, credErr
+		return Anonymous, credErr
 	}
-	return cred.Uid, nil
+	return Principal(fmt.Sprintf("uid:%d", cred.Uid)), nil
 }
