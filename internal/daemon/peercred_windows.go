@@ -73,8 +73,27 @@ func peerPrincipal(c net.Conn) (Principal, error) {
 	if err != nil {
 		return Anonymous, fmt.Errorf("reading the caller's account: %w", err)
 	}
-	return Principal("sid:" + user.User.Sid.String()), nil
+	sid := user.User.Sid.String()
+
+	// A client chooses the impersonation level when it opens the pipe, and one
+	// that opens it anonymously — which is the default in every convenience
+	// wrapper worth naming, including go-winio's DialPipeContext — gets this
+	// answer for everybody. Accepting it would give every such caller the same
+	// principal, so any of them could stop any other's tunnel, and both ends
+	// would look correct throughout.
+	//
+	// The window asks for identification explicitly. Anything that did not is
+	// either mistaken or curious, and both are told rather than accommodated.
+	if sid == anonymousLogonSID {
+		return Anonymous, fmt.Errorf(
+			"the caller connected anonymously, so it cannot be identified — " +
+				"open the pipe at SECURITY_IDENTIFICATION or above")
+	}
+	return Principal("sid:" + sid), nil
 }
+
+// anonymousLogonSID is S-1-5-7, what an anonymous token reports as its user.
+const anonymousLogonSID = "S-1-5-7"
 
 // impersonateNamedPipeClient is in advapi32 and not in x/sys/windows, so it is
 // declared here rather than waited for.

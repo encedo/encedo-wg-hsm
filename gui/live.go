@@ -105,7 +105,7 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 		return s.failed(err)
 	}
 
-	conn, err := net.Dial("unix", s.socket)
+	conn, err := dialControl(ctx, s.socket)
 	if err != nil {
 		return s.failed(session.Fail(session.KindDevice,
 			"the privileged component is not answering on %s: %v\n"+

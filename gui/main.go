@@ -156,7 +156,7 @@ func main() {
 	// in for now, so that -scenario and the render tests keep working on a
 	// machine with neither a device nor a service, and so that the first person
 	// to try it does so deliberately.
-	live := flag.String("live", "", "drive a real appliance: the `socket` the privileged component listens on\n(try /run/encedo-wg/wg-hem.sock)")
+	live := flag.String("live", "", controlFlagUsage)
 	flag.Parse()
 	if *showVersion {
 		// One line, the same shape `wg-hem version` prints, because the two are

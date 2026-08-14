@@ -11,7 +11,11 @@ replace github.com/encedo/hem-sdk-go => ../hem-sdk-go
 
 require (
 	fyne.io/fyne/v2 v2.8.0
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/encedo/encedo-wg-hsm v0.0.0-20260812142211-6a1a8f42905d
+	github.com/encedo/hem-sdk-go v0.0.0
+	github.com/godbus/dbus/v5 v5.2.2
+	golang.org/x/sys v0.32.0
 )
 
 require (
@@ -21,7 +25,6 @@ require (
 	github.com/anthonynsimon/bild v0.14.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/encedo/hem-sdk-go v0.0.0 // indirect
 	github.com/fredbi/uri v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fyne-io/gl-js v0.2.1-0.20260315212741-029c47fd27e8 // indirect
@@ -32,7 +35,6 @@ require (
 	github.com/go-gl/glfw/v3.4/glfw v0.1.0-pre.1.0.20260707082822-2a407d02d01a // indirect
 	github.com/go-text/render v0.2.1 // indirect
 	github.com/go-text/typesetting v0.3.4 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hack-pad/go-indexeddb v0.3.2 // indirect
 	github.com/hack-pad/safejs v0.1.0 // indirect
 	github.com/jeandeaual/go-locale v0.0.0-20250612000132-0ef82f21eade // indirect
@@ -49,7 +51,6 @@ require (
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/image v0.24.0 // indirect
 	golang.org/x/net v0.39.0 // indirect
-	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
