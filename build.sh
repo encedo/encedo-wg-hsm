@@ -56,6 +56,21 @@ MSG
 done
 
 echo "==> Building..."
+
+# Emptied first, every time. This directory used to accumulate, and what
+# accumulated was two series differing by one suffix in the filename: a
+# descr64 build beside a default one, three days apart, both plausible. Picking
+# the wrong one does not fail — the record length is inside the configuration
+# MAC, so it reads as a corrupt tree rather than as a mismatched binary, which is
+# an hour spent looking at the wrong thing.
+#
+# The cost is that building both record sizes now means keeping the first
+# elsewhere, which is the right way round: two variants side by side is a
+# deliberate act and should look like one, rather than being what happens when
+# nobody cleans up. packaging/linux/reinstall.sh clears old packages for the same
+# reason, and that was written after a glob matched two of them and installed the
+# older.
+rm -rf dist
 mkdir -p dist
 
 # wg-quick-encedo: the config-file client (v1).
