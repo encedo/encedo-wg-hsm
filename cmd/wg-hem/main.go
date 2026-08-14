@@ -86,9 +86,17 @@ func main() {
 		usage()
 		os.Exit(exitOK)
 	default:
-		fmt.Fprintf(os.Stderr, "wg-hem: unknown command %q\n\n", os.Args[1])
-		usage()
-		os.Exit(exitUsage)
+		// Platforms add verbs of their own — Windows has a service to register
+		// with, and Linux has a package that does the equivalent at install
+		// time. An unknown command is only unknown once the platform has been
+		// asked as well.
+		handled, perr := platformCommand(os.Args[1], os.Args[2:])
+		if !handled {
+			fmt.Fprintf(os.Stderr, "wg-hem: unknown command %q\n\n", os.Args[1])
+			usage()
+			os.Exit(exitUsage)
+		}
+		err = perr
 	}
 
 	if err != nil {
