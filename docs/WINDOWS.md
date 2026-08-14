@@ -56,7 +56,7 @@ The three machines and what each is for:
 
 | Machine | Role |
 |---|---|
-| Windows on ARM, on this host | The fast loop. Same box as the development tree, so a build can be tested in seconds. |
+| Windows on ARM, on this host | The fast loop. Same box as the development tree, so a build can be tested in seconds — and it can run the whole thing, since Wintun ships an ARM64 build (see phase 5). |
 | Windows 10, second machine | The oldest API surface. Anything that compiles but needs a version newer than this one fails here and only here. |
 | Windows 11, third machine | The target most users are on. |
 
@@ -130,10 +130,24 @@ them ported for free:
 ## Phase 5 — packaging
 
 An installer that places both binaries, registers and starts the service, and
-ships Wintun. Whether Wintun distributes an `arm64` build is the open question
-that decides whether the fast-loop machine can run the whole thing or only the
-window — worth answering in phase 0, since it is a download rather than an
-experiment.
+ships Wintun.
+
+**Wintun covers every architecture here**, which was the one thing that could
+have reduced the ARM machine to running only the window. Checked by PE machine
+type rather than by the directory a file sits in, from Wintun 0.14.1 — the last
+release, October 2021, signed by WireGuard LLC:
+
+| | Machine type | SHA-256 |
+|---|---|---|
+| `amd64/wintun.dll` | PE32+ x86-64, min OS 6.00 | `e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce` |
+| `arm64/wintun.dll` | PE32+ ARM64, min OS 6.02 | `f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80` |
+
+`arm` (ARMv7) and `x86` are in the same distribution and are not targets here.
+The copy this work is using is at
+`/mnt/hgfs/Nextcloud/develop/tmp/wintun-0.14.1/` on the development host. It is
+deliberately not committed: it is a signed third-party binary, and an installer
+that fetches and verifies it is honest in a way a copy in a Git tree is not. The
+hashes above are what the installer should check against.
 
 ## What this plan does not do
 
