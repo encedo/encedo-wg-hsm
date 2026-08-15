@@ -66,6 +66,14 @@ type Event struct {
 	LastHandshake time.Time
 	Rx, Tx        uint64
 
+	// Reach is why the device did not answer, when it did not. Empty otherwise.
+	//
+	// It is deliberately not a Notice: the presence check runs every three
+	// seconds and a machine with nothing plugged in fails it forever, so this
+	// would be an alert that never stops. It belongs in the advanced panel,
+	// where somebody is already looking for a reason.
+	Reach string
+
 	// Notice carries something worth telling the user that is not an error —
 	// failover moving to another peer, most of all.
 	Notice string

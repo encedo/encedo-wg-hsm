@@ -590,8 +590,9 @@ func (u *ui) render(e Event) {
 	// one the component compared against — the same text `wg-hem version` prints
 	// after the program name.
 	u.advText.SetText(fmt.Sprintf(
-		"version        %s\nstate          %s\nhem            %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		ipc.Current(), e.State, dash(e.HEM), dash(e.Peer), stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+		"version        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
+		ipc.Current(), e.State, dash(e.HEM), reach(e), dash(e.Peer),
+		stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
 }
@@ -830,6 +831,27 @@ func humanError(err error) string {
 		return "The module did not answer. Check that it is plugged in."
 	default:
 		return err.Error()
+	}
+}
+
+// reach says why the device did not answer, for the advanced panel.
+//
+// "no module" is four facts wearing one word — nothing plugged in, no route to
+// it, a name that does not resolve, a certificate the system will not accept —
+// and on Windows they are especially easy to confuse, because the adapter, the
+// name and the certificate store are all different from the machine this was
+// written on. The main screen keeps its one friendly sentence; this line is for
+// the person who has opened the panel because that sentence was not true.
+func reach(e Event) string {
+	switch {
+	case e.Reach != "":
+		return e.Reach
+	case e.State == NoModule:
+		// Nothing was recorded and the device is absent, which happens on the
+		// first frame, before the first probe has returned.
+		return "not asked yet"
+	default:
+		return "answering"
 	}
 }
 

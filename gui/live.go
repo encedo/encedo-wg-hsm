@@ -311,14 +311,19 @@ func (s *liveSession) watch(ctx context.Context) {
 	defer tick.Stop()
 
 	present := false
+	why := ""
 	for {
-		now := s.probe(ctx)
-		if now != present {
-			present = now
+		now, reason := s.probe(ctx)
+		// The reason is followed as well as the answer: a device that stays
+		// away for a new reason — it answered, now the certificate is refused —
+		// is a change worth redrawing for, and the old text would otherwise sit
+		// there describing something that is no longer what is wrong.
+		if now != present || reason != why {
+			present, why = now, reason
 			if present {
 				s.emit(Event{State: Ready, HEM: s.hemURL})
 			} else {
-				s.emit(Event{State: NoModule, HEM: s.hemURL})
+				s.emit(Event{State: NoModule, HEM: s.hemURL, Reach: reason})
 			}
 		}
 		select {
@@ -331,19 +336,30 @@ func (s *liveSession) watch(ctx context.Context) {
 
 // probe asks the device whether it is there, and stops asking while a tunnel is
 // up: the answer is then either obvious or being carried over the tunnel itself.
-func (s *liveSession) probe(ctx context.Context) bool {
+func (s *liveSession) probe(ctx context.Context) (bool, string) {
 	s.mu.Lock()
 	busy := s.conn != nil || s.closed
 	url := s.hemURL
 	s.mu.Unlock()
 	if busy {
-		return true
+		return true, ""
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, presenceTimeout)
 	defer cancel()
 	_, err := hem.NewClient(url, hem.Config{}).GetVersion(ctx)
-	return err == nil
+	if err != nil {
+		// Kept rather than discarded, and shown in the advanced panel rather
+		// than on the main screen. "No module" is four different facts wearing
+		// one word — nothing plugged in, no route to it, a name that does not
+		// resolve, a certificate the system will not accept — and they are
+		// indistinguishable from the outside, which on Windows cost an evening.
+		// The friendly sentence stays where it is, because on a machine with
+		// nothing plugged in a dial error is a worse first thing to read than
+		// "plug in your key".
+		return false, err.Error()
+	}
+	return true, ""
 }
 
 // setHEM points the session at another appliance. The window offers this on the
