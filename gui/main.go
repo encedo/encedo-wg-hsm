@@ -92,7 +92,12 @@ type ui struct {
 	// sess is the interface rather than the fake, which is what the interface
 	// was written for: the window drives one shape, and what is behind it is a
 	// scripted stand-in or a real appliance and a privileged component.
-	sess   Session
+	sess Session
+	// faked is set when the session behind this window is the scripted stand-in.
+	// It is not a debug detail: a stand-in draws "Connected", a byte counter, a
+	// countdown and a desktop notification, and none of it is a tunnel. Somebody
+	// who believes that has no VPN and thinks they do.
+	faked  bool
 	hasTr  bool
 	latest Event
 	// heard records whether the session has ever reported. Without it the first
@@ -291,6 +296,13 @@ func (u *ui) build() {
 	// The debug panel drives the fake into states that are awkward to reach on
 	// real hardware — a peer going quiet, a token running out — which is the
 	// point of having a fake at all.
+	// From the session, not from whoever constructed the window. Set in main()
+	// it was missed by every other caller — the render tests among them, which
+	// is how a marker meant to stop a stand-in passing for a tunnel came to be
+	// absent from the pictures of the stand-in. It is the same condition that
+	// decides whether the debug buttons exist, and now it is asked once.
+	_, u.faked = u.sess.(*fakeSession)
+
 	u.advText = widget.NewLabel("")
 	u.advText.TextStyle = fyne.TextStyle{Monospace: true}
 	// The buttons drive states that are awkward to reach on real hardware — a
@@ -558,6 +570,13 @@ func (u *ui) render(e Event) {
 		u.action.Importance = widget.MediumImportance
 		u.action.Disable()
 	}
+	// Said on the line that is read rather than only in the panel that is
+	// opened. The status word is where somebody looks to learn whether they are
+	// protected, so it is where a stand-in has to admit it.
+	if u.faked {
+		u.status.SetText(u.status.Text + " (stand-in)")
+	}
+
 	u.action.Refresh()
 
 	// A notice outlives the events around it but not the state it belongs to.
@@ -594,8 +613,8 @@ func (u *ui) render(e Event) {
 	// one the component compared against — the same text `wg-hem version` prints
 	// after the program name.
 	u.advText.SetText(fmt.Sprintf(
-		"version        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		ipc.Current(), e.State, dash(e.HEM), u.reach(e), dash(e.Peer),
+		"version        %s\nsession        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
+		ipc.Current(), u.sessionKind(), e.State, dash(e.HEM), u.reach(e), dash(e.Peer),
 		stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
@@ -846,6 +865,16 @@ func humanError(err error) string {
 // name and the certificate store are all different from the machine this was
 // written on. The main screen keeps its one friendly sentence; this line is for
 // the person who has opened the panel because that sentence was not true.
+// sessionKind names what is behind the window, because the two look alike and
+// only one of them is a VPN. -live is opt-in, so the stand-in is what a person
+// gets by double-clicking, and it was mistaken for the real thing.
+func (u *ui) sessionKind() string {
+	if u.faked {
+		return "stand-in — nothing here reaches a device"
+	}
+	return "live"
+}
+
 func (u *ui) reach(e Event) string {
 	switch {
 	case e.Reach != "":
