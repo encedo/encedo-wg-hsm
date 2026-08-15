@@ -15,6 +15,12 @@ on:
 
 permissions:
   contents: read
+  # Trusted Signing authenticates through OIDC rather than a stored key: the job
+  # asks GitHub for a short-lived token and exchanges it for an Azure one, so
+  # nothing here holds a credential that could be read out of the repository.
+  # Harmless while signing is switched off — a token nobody requests is not
+  # issued.
+  id-token: write
 
 jobs:
   build:
@@ -198,6 +204,49 @@ jobs:
             esac
           done
           ls -l ../dist-gui
+
+      # Signing, and it is off until the Azure side exists.
+      #
+      # Turned on by setting three repository variables — no secret is involved,
+      # because there is no key to hold: AZURE_CLIENT_ID, AZURE_TENANT_ID and
+      # AZURE_SUBSCRIPTION_ID, plus TRUSTED_SIGNING_ENDPOINT,
+      # TRUSTED_SIGNING_ACCOUNT and TRUSTED_SIGNING_PROFILE. Every step below is
+      # conditioned on the first of them, so an unconfigured repository builds
+      # exactly as it does today rather than failing at a step nobody can
+      # satisfy yet.
+      #
+      # What has to exist in Azure before those mean anything is in
+      # docs/WINDOWS.md, under "Signing". The long pole is identity validation,
+      # which is Microsoft checking that the organisation is who it says it is
+      # and is not something a workflow can hurry.
+      - name: Sign in to Azure
+        if: runner.os == 'Windows' && vars.AZURE_CLIENT_ID != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Before the bundle, deliberately. The bundle copies these files, so
+      # signing them here is what makes every copy signed; signing the bundle's
+      # copies instead would leave the loose binaries beside it unsigned, and two
+      # downloads of one program where only one is signed is worse than neither.
+      #
+      # The timestamp is not decoration. A Trusted Signing certificate lives
+      # about three days and is renewed daily, so a signature without one stops
+      # verifying within the week.
+      - name: Sign the binaries
+        if: runner.os == 'Windows' && vars.AZURE_CLIENT_ID != ''
+        uses: azure/trusted-signing-action@v0
+        with:
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}/dist-gui
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       # A bundle somebody can install, rather than four files and a paragraph.
       # Assembled here because this is the only job that holds both halves — the

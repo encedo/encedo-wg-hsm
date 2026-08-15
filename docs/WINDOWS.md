@@ -256,6 +256,47 @@ For a signed installer the same verified file goes in unchanged, and it is the
 one thing in the payload that must **not** be signed by us — see the note above,
 and `package-windows.sh`, which says it at greater length.
 
+### Signing: what has to exist before the workflow can sign
+
+The steps are written and switched off. `gui.yml` signs nothing until the
+repository variables below are set, and every signing step is conditioned on the
+first of them — so an unconfigured checkout builds exactly as it does now rather
+than failing at a step nobody can satisfy yet.
+
+**In Azure, in this order.** The first item is the long one and is not something
+a workflow can hurry.
+
+1. **Identity validation.** Microsoft checks that the organisation is who it
+   says it is. Validate as an Organization rather than an Individual: the
+   certificate's subject is what a person sees in the publisher line, and it
+   should be the company.
+2. **A Trusted Signing account**, in a region — the endpoint the workflow uses
+   has to be that region's, and a mismatch there fails at signing time with
+   something that reads like a permissions problem.
+3. **A certificate profile**, Public Trust, for software distributed publicly.
+   This is the template the short-lived certificates are minted from.
+4. **An app registration** for the workflow to be, with a **federated
+   credential** for GitHub OIDC — scoped to this repository and, better, to a
+   branch or an environment. No client secret: the point of OIDC here is that
+   there is no key to store, leak or rotate.
+5. **Two role assignments** on the account, and both are needed — one is not
+   enough and the missing one is the usual reason a first attempt fails:
+   - *Trusted Signing Identity Verifier*, to act on behalf of the account;
+   - *Trusted Signing Certificate Profile Signer*, to request a certificate
+     from the profile. This is the one that actually permits signing.
+
+**In the repository**, as variables rather than secrets, because none of them is
+one — an application id and a tenant id identify, they do not authorise:
+
+    AZURE_CLIENT_ID            the app registration
+    AZURE_TENANT_ID
+    AZURE_SUBSCRIPTION_ID
+    TRUSTED_SIGNING_ENDPOINT   the region's, e.g. https://weu.codesigning.azure.net/
+    TRUSTED_SIGNING_ACCOUNT
+    TRUSTED_SIGNING_PROFILE
+
+Setting `AZURE_CLIENT_ID` is what turns the whole thing on.
+
 ### Signing, assumed to be Azure Trusted Signing
 
 Decided in principle on 2026-08-15: both halves and the installer signed with
