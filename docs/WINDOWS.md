@@ -1,4 +1,27 @@
-# Windows: what is left, in the order it has to happen
+# Windows: done, and how it got there
+
+**It works, 2026-08-15.** An unprivileged window, a service as LocalSystem, a
+named pipe between them, a tunnel whose key never leaves the module, and `ping
+10.99.0.1` answering in about 50 ms through it. Peer `blbx`, address
+10.99.0.7/32, Windows amd64, against the same stock server the Linux client
+talks to. Phases 1 through 4 of what follows are all closed; phase 5, packaging,
+is not started.
+
+The rest of this document is the plan as it was written on 2026-08-14, with each
+phase marked as it was settled. It is kept in that shape deliberately: two of
+the phases were harder than the plan said and one was easier, and the record of
+which is more useful than a tidy summary would be.
+
+Two findings on the way are worth carrying to any other platform. Upstream's
+fork of the namedpipe library hardcodes `SECURITY_ANONYMOUS`, so anything
+dialling a control pipe through it is identified as ANONYMOUS LOGON — found by
+reading the library, not by running it, and it would have made every caller the
+same principal. And the window runs a scripted stand-in unless given `-live`,
+which drew "Connected", an address, a byte counter and a desktop notification
+with nothing behind them; it now says "(stand-in)" beside the state, because
+somebody reading that screen has no VPN and thinks they do.
+
+## The plan, as written on 2026-08-14
 
 Linux was accepted as the reference implementation on 2026-08-14. This is the
 plan for bringing Windows to the same place, written against what that reference
@@ -152,7 +175,26 @@ is not an identity. It is also not in `x/sys/windows` yet (golang/go#70086),
 which would have meant a direct kernel32 call for an answer that should not be
 trusted anyway.
 
-## Phase 4 — the window
+## Phase 4 — done, and it ran first time
+
+The window built on windows-latest in CI, which was the first time
+`gui/control_windows.go` had been compiled by anything — Fyne needs cgo and the
+development machine has no mingw, so the pipe dial and the impersonation level
+were written blind. It then ran, connected and carried traffic without a code
+change.
+
+What it cost instead was two false starts that had nothing to do with the window
+itself. Half the artifacts came from one build and half from another, because
+the two halves were produced by two workflows and their stamps have to agree —
+fixed by building both in one job. And the first thing anybody sees on
+double-clicking is the stand-in, which is indistinguishable from a working
+tunnel unless you know the debug buttons only exist in front of a fake.
+
+The three counterparts this phase expected are settled: the taskbar icon and
+grouping came for free from the embedded icon, the tray answered `true` without
+the D-Bus question Linux needs, and close-to-tray behaves as it does elsewhere.
+
+## Phase 4 as it was planned — the window
 
 Fyne needs cgo, so the window is built on each target rather than cross-compiled;
 `windows/arm64` with cgo is the one build in this plan whose toolchain has not

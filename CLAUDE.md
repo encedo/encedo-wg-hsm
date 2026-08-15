@@ -311,21 +311,34 @@ then `The HEM is gone or the token has expired` and a clean teardown. `down` was
 exercised the same evening — it stops an `up` running in another terminal — and
 so was running without root, on `cap_net_admin` alone, on both arm64 and amd64.
 
-**Windows reached the handshake on 2026-08-13 and stopped at the UAPI pipe.**
-Run without elevation, Wintun refuses to create the adapter — expected, and
-documented. Run as an elevated administrator, the adapter is created and the
-first ECDH answers in 232 ms, so the whole device path works there; then
-`ipc.UAPIListen` fails with "this security ID may not be assigned as the owner of
-this object". Upstream creates that pipe with `O:SY`, and assigning SYSTEM as an
-owner is not something an administrator may do — the account it was written for
-is LocalSystem, which is what the official client's per-tunnel services use and
-what this client's Windows service will. The tunnel now runs blind in that case
-rather than refusing: traffic moves, and `wg show`, `wg-hem status` and failover
-are what go, since all three are answered from that pipe.
+**Windows works end to end, 2026-08-15.** An unprivileged window, a service
+running as LocalSystem, a named pipe between them, and a tunnel whose key never
+leaves the module — `ping` through it answered in about 50 ms. Peer `blbx`,
+address 10.99.0.7/32, on Windows amd64 against the same stock server the Linux
+client uses.
+
+The route there is worth keeping, because the wall was real. On 2026-08-13 an
+elevated administrator got as far as creating the adapter and answering the
+first ECDH in 232 ms, then `ipc.UAPIListen` failed with "this security ID may
+not be assigned as the owner of this object": upstream creates that pipe with
+`O:SY`, and assigning SYSTEM as an owner is not something an administrator may
+do. The account it was written for is LocalSystem, which is what the official
+client's per-tunnel services use — so the component became a service, and
+everything answered from that pipe came back with it. `docs/WINDOWS.md` has the
+phases and what each test settled.
+
+Two things found on the way that cost an evening each and are written up where
+they happened. Upstream's fork of the namedpipe library hardcodes
+`SECURITY_ANONYMOUS`, so anything dialling our control pipe through it is
+identified as ANONYMOUS LOGON — the window and the probe ask for
+`SECURITY_IDENTIFICATION` explicitly, and the component refuses S-1-5-7. And the
+window runs a scripted stand-in unless given `-live`, which looked exactly like a
+working tunnel: it now says "(stand-in)" beside the state.
 
 **Still not tested:** full-tunnel routing, failover across more than one
-candidate (there is one peer in the repository), macOS, and Windows past the
-point above. See `TODO.md`.
+candidate (there is one peer in the repository), macOS, Windows on ARM, and
+packaging for Windows — there is no installer, so the service is registered with
+`wg-hem service install` by hand. See `TODO.md` and `docs/WINDOWS.md`.
 
 ## Implemented
 
