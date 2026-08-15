@@ -28,6 +28,14 @@ jobs:
         # windows/arm64 is the one build in docs/WINDOWS.md whose toolchain was
         # never proven — a matrix entry answers that on every push instead of
         # once, by hand, on somebody's desk.
+        #
+        # Windows 10 is not an axis, and the testing machines include one. The
+        # axis is architecture: an amd64 window is one file and it is the same
+        # file on Windows 10 and on Windows 11. What differs between those two is
+        # not what gets built but whether what gets built will start, which is a
+        # property of the binary rather than of the builder — so it is checked
+        # below, on the artifact, instead of being guessed at by choosing a
+        # runner image and hoping it stands in for an older system.
         os: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
 
     steps:
@@ -148,6 +156,44 @@ jobs:
             esac
           done
           ls -l ../dist-gui
+
+      # Windows 10 is one of the machines this ships to, and "will it start
+      # there" is answered by the PE header rather than by where it was built.
+      # Two fields say it: the minimum operating system version and the
+      # subsystem version, both in the optional header. Go asks for 6.1 today —
+      # Windows 7 — so there is enormous room, and that is exactly why this is
+      # worth pinning: a linker flag or a toolchain change could raise it, the
+      # artifact would still build and upload, and the first anyone would know is
+      # a machine refusing to run it with a message about the wrong version of
+      # Windows.
+      - name: The window must still start on Windows 10
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bad = $false
+          Get-ChildItem ../dist-gui/*.exe | ForEach-Object {
+            $b = [IO.File]::ReadAllBytes($_.FullName)
+            $pe = [BitConverter]::ToInt32($b, 0x3C)
+            if ([Text.Encoding]::ASCII.GetString($b, $pe, 2) -ne 'PE') {
+              throw "$($_.Name): no PE signature where the DOS header points"
+            }
+            $opt   = $pe + 24
+            $osMaj = [BitConverter]::ToUInt16($b, $opt + 40)
+            $osMin = [BitConverter]::ToUInt16($b, $opt + 42)
+            $ssMaj = [BitConverter]::ToUInt16($b, $opt + 48)
+            $ssMin = [BitConverter]::ToUInt16($b, $opt + 50)
+            "{0}: minimum OS {1}.{2}, subsystem {3}.{4}" -f $_.Name, $osMaj, $osMin, $ssMaj, $ssMin
+            # 10.0 is Windows 10. Anything above it is a binary that will not
+            # start on one of the machines this is for.
+            foreach ($v in @(@($osMaj, $osMin), @($ssMaj, $ssMin))) {
+              if ($v[0] -gt 10 -or ($v[0] -eq 10 -and $v[1] -gt 0)) {
+                Write-Error "$($_.Name) demands Windows $($v[0]).$($v[1]), later than Windows 10"
+                $bad = $true
+              }
+            }
+          }
+          if ($bad) { exit 1 }
+        working-directory: gui
 
       - name: Upload
         uses: actions/upload-artifact@v4
