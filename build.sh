@@ -55,6 +55,16 @@ MSG
     fi
 done
 
+# WG_PREPARE_ONLY stops here, with the patched upstream tree in place and
+# nothing built. It exists for the Windows job in .github/workflows/gui.yml,
+# which needs that tree in order to build the component beside the window — the
+# component imports wireguard-go, and go.mod resolves it to this directory — but
+# does not want the other eleven binaries this script would go on to produce.
+if [ -n "${WG_PREPARE_ONLY:-}" ]; then
+    echo "==> Prepared; stopping before the build as asked."
+    exit 0
+fi
+
 echo "==> Building..."
 
 # Emptied first, every time. This directory used to accumulate, and what

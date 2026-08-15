@@ -159,6 +159,41 @@ jobs:
                 # rectangle nobody asked for.
                 GOARCH=$goarch build "$variant" "-H=windowsgui" \
                   -o "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" .
+
+                # The component beside the window, from this tree and this
+                # stamp. It is built in ci.yml too, and that is not the same
+                # thing: the two halves refuse each other unless their stamps
+                # agree, and two workflows mean two artifacts somebody has to
+                # pair up by hand from runs they have to match by commit. That
+                # went wrong the first time it was tried. Built here they cannot
+                # disagree, because there is one checkout and one call to
+                # scripts/version.sh behind both.
+                #
+                # CGO_ENABLED=0 as build.sh uses for it: the component needs no
+                # C and a static one starts anywhere.
+                #
+                # The patched upstream tree has to exist first. The component
+                # imports wireguard-go and go.mod resolves that to ./wireguard-go,
+                # which build.sh clones and patches — so this asks build.sh for
+                # exactly that and nothing else. Once per job, not once per
+                # variant.
+                if [ ! -d ../wireguard-go/device ]; then
+                  (cd .. && WG_PREPARE_ONLY=1 sh build.sh)
+                fi
+                case "$variant" in
+                  "")        cli_tags="" ;;
+                  -descr64)  cli_tags="descr64" ;;
+                esac
+                # From the repository root, not from here. gui/ is its own
+                # module with its own go.sum, and that go.sum has no entry for
+                # wireguard-go and must not gain one — deps_test.go exists to
+                # keep the tunnel out of the window. Building the component from
+                # inside gui/ resolves it against the wrong module and fails
+                # with six missing go.sum entries, which is the right answer to
+                # the wrong question.
+                ( cd .. && CGO_ENABLED=0 GOARCH=$goarch go build ${cli_tags:+-tags "$cli_tags"} \
+                    -ldflags "$STAMP" \
+                    -o "dist-gui/wg-hem-windows-$goarch$variant.exe" ./cmd/wg-hem )
                 ;;
             esac
           done
