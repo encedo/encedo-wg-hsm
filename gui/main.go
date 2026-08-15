@@ -161,11 +161,18 @@ func main() {
 	// under sudo the appearance setting consulted is root's, not the one whose
 	// desktop this is. See variantChoice.
 	themeName := flag.String("theme", "auto", "colour scheme: auto, dark or light (auto follows the desktop, which under sudo is root's)")
-	// -live drives a real appliance through the privileged component. It is opt
-	// in for now, so that -scenario and the render tests keep working on a
-	// machine with neither a device nor a service, and so that the first person
-	// to try it does so deliberately.
-	live := flag.String("live", "", controlFlagUsage)
+	// A real appliance is what this program is for, so it is what it does when
+	// asked for nothing. It was the other way round while the live path was
+	// being written — opt in, so that a machine with neither a device nor a
+	// service could still run the thing — and that reason expired the day the
+	// live path worked. It outlived its reason by two evenings, during which a
+	// stand-in drawing "Connected" was twice taken for a tunnel.
+	//
+	// -live still names the channel, for a component somebody started by hand
+	// somewhere else.
+	live := flag.String("live", defaultControl, controlFlagUsage)
+	standIn := flag.Bool("stand-in", false,
+		"run the scripted stand-in instead of an appliance: no device, no tunnel, nothing reaches anything")
 	flag.Parse()
 	if *showVersion {
 		// One line, the same shape `wg-hem version` prints, because the two are
@@ -218,12 +225,15 @@ func main() {
 	a.Settings().SetTheme(th)
 
 	u := &ui{app: a, win: a.NewWindow(windowTitle)}
-	if *live != "" {
+	// -scenario plays a scripted session, which is the stand-in by definition:
+	// asking for one without the other is asking for a script with nothing to
+	// act it.
+	if *standIn || *auto {
+		u.sess = newFakeSession()
+	} else {
 		ls := newLiveSession(rememberedHEM(a.Preferences().StringWithFallback(prefHEM, defaultHEM)), *live)
 		go ls.watch(context.Background())
 		u.sess = ls
-	} else {
-		u.sess = newFakeSession()
 	}
 	u.build()
 	// Now that there is a window to show, start answering the launches that ask

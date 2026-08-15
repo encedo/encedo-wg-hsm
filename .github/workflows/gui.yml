@@ -199,6 +199,50 @@ jobs:
           done
           ls -l ../dist-gui
 
+      # A bundle somebody can install, rather than four files and a paragraph.
+      # Assembled here because this is the only job that holds both halves — the
+      # window needs cgo and the component must carry the same stamp — and
+      # because the driver has to come with them or the tunnel fails at the
+      # moment it is created.
+      - name: Bundle
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: gui
+        run: |
+          set -eu
+          # One source of truth for both, read out of the script that has always
+          # owned them. A second copy of a checksum is a second thing to forget.
+          ver="$(sed -n 's/^WINTUN_VERSION="\(.*\)"$/\1/p' ../package-windows.sh)"
+          sum="$(sed -n 's/^WINTUN_SHA256="\(.*\)"$/\1/p' ../package-windows.sh)"
+          case "${{ runner.arch }}" in
+            X64)   goarch=amd64 ;;
+            ARM64) goarch=arm64 ;;
+          esac
+
+          curl -sSLf -o /tmp/wintun.zip "https://www.wintun.net/builds/wintun-${ver}.zip"
+          # Verified rather than trusted: this is redistributed to users, and a
+          # driver is the last thing to take on faith from a URL.
+          echo "${sum}  /tmp/wintun.zip" | sha256sum -c -
+          # Expand-Archive rather than unzip, which is not on every Windows
+          # runner image; PowerShell 5 is.
+          powershell -NoProfile -Command "Expand-Archive -Force /tmp/wintun.zip /tmp/wintun"
+
+          for variant in "" "-descr64"; do
+            stage="../dist-gui/encedo-wg-windows-$goarch$variant"
+            mkdir -p "$stage"
+            # Renamed to the plain names on the way in. The suffixes exist to
+            # keep dialects apart in a build directory; inside an installation
+            # they would only be something to get wrong.
+            cp "../dist-gui/wg-hem-windows-$goarch$variant.exe"        "$stage/wg-hem.exe"
+            cp "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" "$stage/encedo-wg-gui.exe"
+            cp "/tmp/wintun/wintun/bin/$goarch/wintun.dll"             "$stage/wintun.dll"
+            cp ../packaging/windows/install.ps1                        "$stage/"
+            cp ../packaging/windows/uninstall.ps1                      "$stage/"
+            cp ../LICENSE                                              "$stage/LICENSE.txt"
+            cp /tmp/wintun/wintun/LICENSE.txt                          "$stage/WINTUN-LICENSE.txt"
+          done
+          ls -R ../dist-gui
+
       # Windows 10 is one of the machines this ships to, and "will it start
       # there" is answered by the PE header rather than by where it was built.
       # Two fields say it: the minimum operating system version and the
