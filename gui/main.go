@@ -95,6 +95,10 @@ type ui struct {
 	sess   Session
 	hasTr  bool
 	latest Event
+	// heard records whether the session has ever reported. Without it the first
+	// frame and a broken reporter look identical, which cost an evening: the
+	// advanced panel said "not asked yet" and that was true of one of them.
+	heard bool
 
 	// The two columns are rebuilt from the state rather than having their rows
 	// shown and hidden. See compose.
@@ -483,7 +487,7 @@ func (u *ui) applyHEM(url string) {
 func (u *ui) consume() {
 	for e := range u.sess.Events() {
 		e := e
-		fyne.Do(func() { u.render(e) })
+		fyne.Do(func() { u.heard = true; u.render(e) })
 	}
 }
 
@@ -591,7 +595,7 @@ func (u *ui) render(e Event) {
 	// after the program name.
 	u.advText.SetText(fmt.Sprintf(
 		"version        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		ipc.Current(), e.State, dash(e.HEM), reach(e), dash(e.Peer),
+		ipc.Current(), e.State, dash(e.HEM), u.reach(e), dash(e.Peer),
 		stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
 
 	u.compose(e)
@@ -842,14 +846,21 @@ func humanError(err error) string {
 // name and the certificate store are all different from the machine this was
 // written on. The main screen keeps its one friendly sentence; this line is for
 // the person who has opened the panel because that sentence was not true.
-func reach(e Event) string {
+func (u *ui) reach(e Event) string {
 	switch {
 	case e.Reach != "":
 		return e.Reach
+	case !u.heard:
+		// Nothing has arrived from the session at all. The presence check runs
+		// every three seconds, so this is either the first second of the
+		// window's life or something is wrong upstream of the check.
+		return "waiting for the first report"
 	case e.State == NoModule:
-		// Nothing was recorded and the device is absent, which happens on the
-		// first frame, before the first probe has returned.
-		return "not asked yet"
+		// The session said the device is absent and gave no reason, which the
+		// presence check cannot do: every failure it reports carries the error
+		// it got. Saying so plainly beats a placeholder that reads like a
+		// normal state.
+		return "reported absent with no reason — that is a bug, please report it"
 	default:
 		return "answering"
 	}
