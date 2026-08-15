@@ -23,20 +23,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # windows-11-arm is the ARM64 runner. It is here because the machine
-        # this gets tested on first is Windows on ARM, and because cgo on
-        # windows/arm64 is the one build in docs/WINDOWS.md whose toolchain was
-        # never proven — a matrix entry answers that on every push instead of
-        # once, by hand, on somebody's desk.
+        # There is no windows-11-arm entry, and it is not an oversight: it was
+        # added on 2026-08-15 and taken out the same day.
         #
-        # Windows 10 is not an axis, and the testing machines include one. The
-        # axis is architecture: an amd64 window is one file and it is the same
-        # file on Windows 10 and on Windows 11. What differs between those two is
-        # not what gets built but whether what gets built will start, which is a
-        # property of the binary rather than of the builder — so it is checked
-        # below, on the artifact, instead of being guessed at by choosing a
-        # runner image and hoping it stands in for an older system.
-        os: [ubuntu-latest, macos-latest, windows-latest, windows-11-arm]
+        # It fails before reaching any of our code. cgo on that runner picks up
+        # an x86-64 gcc from PATH and hands it the arm64 assembly in
+        # runtime/cgo, which answers `no such instruction: stp x29,x30` — the
+        # same failure an empty main.go importing "C" would produce. Fixing it
+        # means putting a native aarch64 toolchain on the runner, MSYS2's
+        # CLANGARM64 being the usual way.
+        #
+        # Not done, because of what it would buy. Windows on ARM runs x64
+        # binaries under emulation, so the amd64 window built here already runs
+        # on the ARM machine, and a window spends its life idle in a tray. The
+        # half where native matters — the component, which is on the handshake
+        # path — is CGO_ENABLED=0 and already cross-builds to windows/arm64 in
+        # ci.yml. So the ARM machine gets a native privileged half today and an
+        # emulated window, which is the right way round.
+        #
+        # Add the entry back when somebody has a reason beyond tidiness; the
+        # Build step below already handles either architecture.
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout
