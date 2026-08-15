@@ -268,13 +268,23 @@ jobs:
             ARM64) goarch=arm64 ;;
           esac
 
-          curl -sSLf -o /tmp/wintun.zip "https://www.wintun.net/builds/wintun-${ver}.zip"
+          # Relative, and under dist-gui, for one reason: this step is bash and
+          # the next line is PowerShell, and the two do not agree on what a path
+          # is. An absolute /tmp/... is a real place to git-bash, which maps it
+          # into the MSYS tree, and nowhere at all to PowerShell — which is
+          # exactly how this failed the first time, after the download and the
+          # checksum had both succeeded. A relative path is resolved by each
+          # against the same working directory and means the same thing to both.
+          work=../dist-gui/_wintun
+          rm -rf "$work"; mkdir -p "$work"
+
+          curl -sSLf -o "$work/wintun.zip" "https://www.wintun.net/builds/wintun-${ver}.zip"
           # Verified rather than trusted: this is redistributed to users, and a
           # driver is the last thing to take on faith from a URL.
-          echo "${sum}  /tmp/wintun.zip" | sha256sum -c -
+          echo "${sum}  $work/wintun.zip" | sha256sum -c -
           # Expand-Archive rather than unzip, which is not on every Windows
           # runner image; PowerShell 5 is.
-          powershell -NoProfile -Command "Expand-Archive -Force /tmp/wintun.zip /tmp/wintun"
+          powershell -NoProfile -Command "Expand-Archive -Force '$work/wintun.zip' '$work/x'"
 
           for variant in "" "-descr64"; do
             stage="../dist-gui/encedo-wg-windows-$goarch$variant"
@@ -284,12 +294,17 @@ jobs:
             # they would only be something to get wrong.
             cp "../dist-gui/wg-hem-windows-$goarch$variant.exe"        "$stage/wg-hem.exe"
             cp "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" "$stage/encedo-wg-gui.exe"
-            cp "/tmp/wintun/wintun/bin/$goarch/wintun.dll"             "$stage/wintun.dll"
+            cp "$work/x/wintun/bin/$goarch/wintun.dll"                 "$stage/wintun.dll"
             cp ../packaging/windows/install.ps1                        "$stage/"
             cp ../packaging/windows/uninstall.ps1                      "$stage/"
             cp ../LICENSE                                              "$stage/LICENSE.txt"
-            cp /tmp/wintun/wintun/LICENSE.txt                          "$stage/WINTUN-LICENSE.txt"
+            cp "$work/x/wintun/LICENSE.txt"                            "$stage/WINTUN-LICENSE.txt"
           done
+
+          # Out of the way before the upload: it lives under dist-gui so that it
+          # is ignored by git and cleaned by the same rule as everything else
+          # here, not so that it ships.
+          rm -rf "$work"
           ls -R ../dist-gui
 
       # Windows 10 is one of the machines this ships to, and "will it start
