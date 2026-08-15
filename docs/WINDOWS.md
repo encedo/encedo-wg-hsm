@@ -70,9 +70,32 @@ failure on 2026-08-13 was right. The service installs, registers and runs.
 What that settles and what it does not. It settles the premise the whole plan
 rests on — that LocalSystem is both necessary and sufficient for the UAPI pipe —
 and with it phases 2 and 3, which were only worth writing if this were true.
-It does not exercise the named pipe, the impersonation, or the security
-descriptor: nothing has connected to the component yet, because the thing that
-connects is the window and the window is phase 4.
+## Phases 2 and 3 — done, confirmed the same day
+
+`wg-hem probe` against the installed service, 2026-08-15:
+
+	socket \\.\pipe\encedo-wg
+	component 0.9.1+506003a (descr 64 B)
+	this 0.9.1+506003a (descr 64 B)
+	identified-as sid:S-1-5-21-…-1002
+
+Four things at once, none of which had been run before. The service created the
+pipe with the descriptor written here, a client reached it, the protocol made a
+round trip over it, and the component identified the caller as a real account
+rather than as S-1-5-7. That last one is the whole of the authorisation on this
+channel and the part that was written blind: impersonation with the OS thread
+locked, and a client asking for SECURITY_IDENTIFICATION because go-winio and
+upstream's namedpipe both default to anonymous.
+
+**One thing it did not settle.** The probe ran from the same elevated prompt
+that installed the service, so the caller matched the descriptor's
+Administrators ACE. Whether an ordinary user can connect — the Authenticated
+Users ACE, which is the one that matters, since the window is not elevated — is
+still unproven. It is one run of `wg-hem probe` from a normal prompt.
+
+The refusal path is likewise unexercised: nothing has yet connected anonymously,
+so the S-1-5-7 check has never fired. That is a guard rather than a feature, and
+it fires only when something is wrong.
 
 One thing the test found on the way. `wg-hem status` from an ordinary elevated
 prompt answers "Odmowa dostępu" — access denied — and that is expected in
