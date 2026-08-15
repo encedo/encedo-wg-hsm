@@ -142,6 +142,14 @@ func (s *Server) handle(c net.Conn) {
 				continue
 			}
 			_ = ipc.WriteMsg(c, ipc.Msg{Type: ipc.TypeReply, Reply: &ipc.Reply{OK: true}})
+
+		case ipc.OpWhoami:
+			// Answered from `who`, which is the value every rule above is
+			// written in terms of — not recomputed for the occasion. A probe
+			// that asked the question a second way could agree with itself and
+			// disagree with the thing being probed.
+			_ = ipc.WriteMsg(c, ipc.Msg{Type: ipc.TypeReply,
+				Reply: &ipc.Reply{OK: true, Build: &s.Build, Who: string(who)}})
 		}
 	}
 }

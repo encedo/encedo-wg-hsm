@@ -76,6 +76,8 @@ func main() {
 		err = cmdWipe(os.Args[2:])
 	case "daemon":
 		err = cmdDaemon(os.Args[2:])
+	case "probe":
+		err = cmdProbe(os.Args[2:])
 	case "version", "--version":
 		// The record size goes with it: two builds of the same release talk to
 		// different firmware and cannot read each other's trees, so the number

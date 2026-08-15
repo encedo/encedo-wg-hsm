@@ -46,6 +46,21 @@ const (
 	// when the token expires, and without this verb the only thing the window
 	// could offer is to disconnect and start again.
 	OpRefresh Op = "refresh"
+
+	// OpWhoami asks the component two things it can answer without being
+	// trusted: which build it is, and who it thinks the caller is.
+	//
+	// It carries no token and changes nothing, and it exists because the two
+	// questions it answers are the two that fail silently. A build mismatch is
+	// refused at OpStart with both numbers named, but only once somebody has
+	// typed a passphrase; and the caller's identity is the whole of the
+	// authorisation here, computed from the connection rather than from anything
+	// sent, so nothing on either side would notice it being wrong. On Windows it
+	// is how a caller finds out that the pipe reported them as ANONYMOUS LOGON.
+	//
+	// Telling somebody their own identity grants nothing: it is the answer the
+	// component would act on anyway, and they are the only one who receives it.
+	OpWhoami Op = "whoami"
 )
 
 // Build identifies which artifact is speaking, closely enough to refuse a pair
@@ -152,6 +167,10 @@ type Reply struct {
 	// Build is answered on start, so a refusal names both sides rather than
 	// leaving somebody to work out which half is old.
 	Build *Build `json:"build,omitempty"`
+
+	// Who is answered on whoami: the caller as the component identified them,
+	// in whatever terms the platform gave — a uid on Linux, a SID on Windows.
+	Who string `json:"who,omitempty"`
 }
 
 // Event is what the window draws. A snapshot rather than a delta: a late
@@ -226,7 +245,7 @@ func (r Request) Validate() error {
 		if r.Token == "" {
 			return fmt.Errorf("refresh needs a token")
 		}
-	case OpStop:
+	case OpStop, OpWhoami:
 	default:
 		return fmt.Errorf("unknown operation %q", r.Op)
 	}

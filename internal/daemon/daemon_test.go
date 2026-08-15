@@ -3,6 +3,7 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -292,5 +293,61 @@ func TestRefreshWithNothingRunningIsRefused(t *testing.T) {
 	ipc.WriteMsg(c, ipc.Request{Op: ipc.OpRefresh, Token: "t"})
 	if r := reply(t, c); r.OK {
 		t.Fatal("a token was accepted for a tunnel that does not exist")
+	}
+}
+
+// TestWhoamiAnswersTheCallersOwnIdentity is the one test that exercises the
+// authorisation input rather than the rules written on top of it.
+//
+// Everything else here hands the server a request and checks what it does with
+// it. This checks the thing none of those can: that the principal the server
+// computes from the connection is the caller's, and is the same value the rules
+// compare. It runs on Linux, where the answer is a uid and is knowable from the
+// test; the Windows implementation answers a SID by impersonating the caller,
+// and this at least holds the protocol and the handler still while that is
+// written.
+func TestWhoamiAnswersTheCallersOwnIdentity(t *testing.T) {
+	_, c := serve(t, func(context.Context, ipc.Request) (Tunnel, error) {
+		t.Fatal("whoami must not open anything")
+		return nil, nil
+	})
+
+	if err := ipc.WriteMsg(c, ipc.Request{Op: ipc.OpWhoami, Build: ipc.Current()}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	r := reply(t, c)
+
+	if !r.OK {
+		t.Fatalf("refused: %s", r.Err)
+	}
+	if want := fmt.Sprintf("uid:%d", os.Getuid()); r.Who != want {
+		t.Errorf("identified the caller as %q, want %q", r.Who, want)
+	}
+	if r.Build == nil || !r.Build.Matches(ipc.Current()) {
+		t.Errorf("build = %v, want %v", r.Build, ipc.Current())
+	}
+}
+
+// TestWhoamiCarriesNoAuthority guards the reason this verb was allowed to exist:
+// it answers, and it does nothing. A future hand adding a convenience to it —
+// reporting the running tunnel, say — would be adding it to the one message on
+// this channel that carries no token.
+func TestWhoamiCarriesNoAuthority(t *testing.T) {
+	s, c := serve(t, func(context.Context, ipc.Request) (Tunnel, error) {
+		return &stubTunnel{refresh: make(chan string, 1)}, nil
+	})
+
+	if err := ipc.WriteMsg(c, ipc.Request{Op: ipc.OpWhoami, Build: ipc.Current()}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if r := reply(t, c); !r.OK {
+		t.Fatalf("refused: %s", r.Err)
+	}
+
+	s.mu.Lock()
+	running := s.running
+	s.mu.Unlock()
+	if running {
+		t.Error("whoami started a tunnel")
 	}
 }

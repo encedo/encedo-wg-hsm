@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 const (
@@ -74,4 +75,11 @@ func listenOn(path, group string) (net.Listener, error) {
 		}
 	}
 	return ln, nil
+}
+
+// dialControl opens the channel to a running component, for the diagnostic that
+// asks it who is calling. Nothing else in this command talks to it: running a
+// tunnel from here does not go through the component at all.
+func dialControl(path string) (net.Conn, error) {
+	return net.DialTimeout("unix", path, 3*time.Second)
 }

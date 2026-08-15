@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"net"
+	"time"
 
+	"github.com/Microsoft/go-winio"
 	"golang.org/x/sys/windows"
 	"golang.zx2c4.com/wireguard/ipc/namedpipe"
 )
@@ -68,4 +71,26 @@ func listenOn(path, sddl string) (net.Listener, error) {
 		return nil, failf(exitDevice, "listening on %s: %w", path, err)
 	}
 	return ln, nil
+}
+
+// dialControl opens the channel to a running component, for the diagnostic that
+// asks it who is calling.
+//
+// go-winio and not the namedpipe package three lines above, which is the odd
+// thing about this file and the reason worth writing down. Upstream's fork of
+// that library dropped the knob: tryDialPipe hardcodes
+// SECURITY_SQOS_PRESENT|SECURITY_ANONYMOUS and DialConfig exposes only
+// ExpectedOwner, so every connection made through it is anonymous and there is
+// no argument that changes it. The component would identify such a caller as
+// S-1-5-7 and refuse it — correctly, and confusingly, since the caller would be
+// this program.
+//
+// Fine for what upstream uses it for: it dials the UAPI pipe, whose descriptor
+// admits only SYSTEM and Administrators, so the level never mattered there. It
+// matters here, because identity is the authorisation.
+func dialControl(path string) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return winio.DialPipeAccessImpLevel(ctx, path,
+		windows.GENERIC_READ|windows.GENERIC_WRITE, winio.PipeImpLevelIdentification)
 }
