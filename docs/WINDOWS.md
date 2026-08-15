@@ -242,6 +242,51 @@ Setup or NSIS is quicker to write and gives neither. The upgrade table is the
 part worth having, because two builds installed beside each other is the failure
 this project keeps meeting in other forms.
 
+### Where the driver comes from, signed or not
+
+It is already answered and does not change. `wintun.dll` is not in this
+repository and will not be in the installer's sources either: the Bundle step in
+`gui.yml` reads the version and the SHA-256 out of `package-windows.sh`,
+downloads the archive from wintun.net, verifies it before opening it, and copies
+the DLL for the architecture being built. A driver is the last thing to take on
+faith from a URL, and a hash in a script is a claim somebody can check; a binary
+committed two years ago is not.
+
+For a signed installer the same verified file goes in unchanged, and it is the
+one thing in the payload that must **not** be signed by us — see the note above,
+and `package-windows.sh`, which says it at greater length.
+
+### Signing, assumed to be Azure Trusted Signing
+
+Decided in principle on 2026-08-15: both halves and the installer signed with
+Trusted Signing. Not started. Three things about it shape the pipeline rather
+than being details of it.
+
+*Order.* Sign `wg-hem.exe` and `encedo-wg-gui.exe` **before** the installer is
+built, then sign the installer. An installer embeds or compresses its payload,
+so signing it does not reach inside; signing the binaries afterwards would mean
+shipping unsigned copies of them.
+
+*Timestamping is not optional.* A Trusted Signing certificate is valid for about
+three days and is renewed daily. Without an RFC 3161 timestamp
+(`http://timestamp.acs.microsoft.com`, SHA-256) every signature is dead within
+the week — the timestamp is what makes it outlive the certificate that made it.
+
+*It runs on Windows only.* `azure/trusted-signing-action` needs a Windows
+runner, which the pipeline already converges on: the Windows job in `gui.yml` is
+where both halves exist with one stamp and where the bundle is assembled. The
+signing belongs in that job and nowhere else, and it needs an Azure identity —
+OIDC federated credentials and `id-token: write` — rather than a secret holding
+a key.
+
+One divergence to settle when this is done: `ci.yml` also produces Windows
+binaries, cross-built on Linux, and those cannot be signed there. Either they
+stop being published or they are signed in a Windows job of their own. Two
+downloads of the same program, one signed and one not, is worse than either.
+
+Also: any checksum published for these artifacts has to be taken after signing,
+because signing changes the file.
+
 **One thing gates it rather than following it.** `TODO.md` says to ask about the
 names before the first signed release — `wg-quick-encedo` reads as a variant of
 upstream's `wg-quick`, the policy has an address for exactly that question, and
