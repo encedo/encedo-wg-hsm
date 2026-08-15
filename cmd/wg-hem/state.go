@@ -43,12 +43,13 @@ func resolveState(ifname string, explicit bool) (*state, error) {
 func stateExit(err error) error {
 	switch {
 	case errors.Is(err, fs.ErrPermission):
-		// The run directory is shared by group — that is how a client without
-		// root writes there at all. A bare "permission denied" sends people
-		// looking at the file; the answer is almost always the group.
-		return failf(exitUsage, "%w\n"+
-			"That directory is shared by group. Add yourself to it and log in again:\n"+
-			"  sudo adduser \"$USER\" wireguard", err)
+		// A bare "permission denied" sends people looking at the file, and the
+		// answer is never the file. What it is instead differs by platform, so
+		// the remedy is written where the platform is — see state_unix.go and
+		// state_windows.go. Getting this wrong is not cosmetic: this branch used
+		// to offer `sudo adduser` on Windows, where there is no sudo, no adduser
+		// and no such group.
+		return failf(exitUsage, "%w\n%s", err, stateDeniedAdvice)
 	case errors.Is(err, session.ErrNotRunning):
 		return failf(exitUsage, "%w", err)
 	case errors.Is(err, session.ErrAmbiguous):

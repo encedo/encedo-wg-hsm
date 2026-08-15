@@ -60,7 +60,29 @@ The three machines and what each is for:
 | Windows 10, second machine | The oldest API surface. Anything that compiles but needs a version newer than this one fails here and only here. |
 | Windows 11, third machine | The target most users are on. |
 
-## Phase 1 — the service, which unblocks everything else
+## Phase 1 — done, and the hypothesis held
+
+**Confirmed on hardware, 2026-08-15**, on the amd64 machine. `wg-hem up` run as
+LocalSystem through `psexec -s -i` brings a tunnel up: the security-ID refusal is
+gone, so `ipc.UAPIListen` succeeds for that account and the reading of the
+failure on 2026-08-13 was right. The service installs, registers and runs.
+
+What that settles and what it does not. It settles the premise the whole plan
+rests on — that LocalSystem is both necessary and sufficient for the UAPI pipe —
+and with it phases 2 and 3, which were only worth writing if this were true.
+It does not exercise the named pipe, the impersonation, or the security
+descriptor: nothing has connected to the component yet, because the thing that
+connects is the window and the window is phase 4.
+
+One thing the test found on the way. `wg-hem status` from an ordinary elevated
+prompt answers "Odmowa dostępu" — access denied — and that is expected in
+substance: the state file belongs to whoever ran the tunnel, which here is
+LocalSystem, for the same reason the tunnel works. The message was wrong though,
+and wrong in a way that only shows up on this platform: the remedy offered was
+`sudo adduser "$USER" wireguard`, which is Linux's answer, and there is no sudo,
+no adduser and no such group here. The advice is now written per platform.
+
+## Phase 1 as it was planned — the service, which unblocks everything else
 
 A `wg-hem service` verb running under the Service Control Manager as
 LocalSystem, mirroring what `encedo-wg.service` does on Linux.
