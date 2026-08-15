@@ -216,8 +216,38 @@ them ported for free:
 
 ## Phase 5 — packaging
 
-An installer that places both binaries, registers and starts the service, and
-ships Wintun.
+A PowerShell pair, `packaging/windows/install.ps1` and `uninstall.ps1`, does this
+today: both binaries and the driver into Program Files, the service registered
+and started, one Start menu entry, and a refusal if the two halves carry
+different stamps. It is the shape of the `.deb` and it is enough to test with.
+
+**It is an interim, and an EXE or MSI is what this ends with.** Decided on
+2026-08-15; not started. What that step is really about is not the file format —
+a script already places files correctly — but the three things a script cannot
+be:
+
+- *Signed.* An installer somebody downloads and runs elevated should carry a
+  certificate, and a `.ps1` cannot. Note the one thing that must stay unsigned:
+  `wintun.dll` arrives signed by WireGuard LLC with Microsoft's attestation for
+  the driver inside it, and re-signing would both modify the Software, which its
+  licence clause 3(a) forbids, and displace the chain Windows trusts.
+- *Listed.* Add or remove programs, an upgrade path that replaces rather than
+  installs beside, and a rollback when a step fails partway.
+- *Ordinary.* Somebody who has not been told to bypass an execution policy can
+  double-click it.
+
+Between the two formats: MSI through WiX gives the upgrade table and the
+rollback and can be built on the runner with a dotnet tool; an EXE through Inno
+Setup or NSIS is quicker to write and gives neither. The upgrade table is the
+part worth having, because two builds installed beside each other is the failure
+this project keeps meeting in other forms.
+
+**One thing gates it rather than following it.** `TODO.md` says to ask about the
+names before the first signed release — `wg-quick-encedo` reads as a variant of
+upstream's `wg-quick`, the policy has an address for exactly that question, and
+such requests "will be trivially approved without debate". Signing a distribution
+with a company certificate is that moment. Renaming afterwards costs
+incomparably more than one email now.
 
 **Wintun covers every architecture here**, which was the one thing that could
 have reduced the ARM machine to running only the window. Checked by PE machine
