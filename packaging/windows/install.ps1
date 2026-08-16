@@ -122,21 +122,29 @@ $link.Save()
 
 # What a toast notification calls this program.
 #
-# Windows names the sender of a notification after its AppUserModelID, and with
-# nothing registered for ours it showed the identifier itself: a person got
+# Fyne sends the toast with CreateToastNotifier(<AppUserModelID>), and the ID is
+# the one this program registers itself under - so with nothing registered for
+# it, Windows had nothing to show but the identifier, and a person got
 # "com.encedo.wg" telling them they were connected. The identifier cannot simply
-# be made prettier - it is also the key the window's settings are stored under,
-# and changing it would orphan them - so the name is registered beside it.
+# be made prettier: it is also the key the window's settings live under.
 #
-# Under HKLM rather than HKCU on purpose: this script runs elevated, so HKCU here
-# is the administrator's hive and not the hive of whoever will actually see the
-# notification.
-$aumid = 'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg'
-New-Item -Path $aumid -Force | Out-Null
-New-ItemProperty -Path $aumid -Name DisplayName -PropertyType String -Force `
-    -Value 'encedo-wg' | Out-Null
-New-ItemProperty -Path $aumid -Name IconUri -PropertyType String -Force `
-    -Value (Join-Path $target 'icon.ico') | Out-Null
+# HKCU is the documented place for this, and the first attempt put it in HKLM
+# on reasoning that was wrong. Elevating with UAC raises a token; it does not
+# change who you are, so HKCU in an elevated prompt is still the hive of the
+# person who opened it. HKLM is written too, because a per-machine installation
+# should name itself for other accounts as well and Windows merges that branch
+# into HKEY_CLASSES_ROOT - but HKCU is the one expected to do the work.
+$aumidPaths = @(
+    'HKCU:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg',
+    'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg'
+)
+foreach ($path in $aumidPaths) {
+    New-Item -Path $path -Force | Out-Null
+    New-ItemProperty -Path $path -Name DisplayName -PropertyType String -Force `
+        -Value 'encedo-wg' | Out-Null
+    New-ItemProperty -Path $path -Name IconUri -PropertyType String -Force `
+        -Value (Join-Path $target 'icon.ico') | Out-Null
+}
 
 Write-Host @"
 
@@ -144,6 +152,9 @@ Done. Open "encedo-wg" from the Start menu.
 
 The service is running and waiting for a window; it holds no credential and
 brings nothing up on its own. Closing the window ends the tunnel.
+
+If a notification still says com.encedo.wg, Windows is holding the old name;
+it lets go after signing out and back in.
 
 To check the two halves can see each other:  "$target\wg-hem.exe" probe
 To remove all of it:                         uninstall.ps1

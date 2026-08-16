@@ -37,10 +37,13 @@ if (Test-Path $menu) { Remove-Item -Force $menu; Write-Host 'Shortcut removed.' 
 # The name notifications were sent under. Left behind it would point at an icon
 # that no longer exists, which is how a notification comes to have a blank
 # square where a mark was.
-$aumid = 'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg'
-if (Test-Path $aumid) {
-    Remove-Item -Path $aumid -Recurse -Force
-    Write-Host 'Notification name removed.'
+foreach ($path in @(
+    'HKCU:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg',
+    'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg')) {
+    if (Test-Path $path) {
+        Remove-Item -Path $path -Recurse -Force
+        Write-Host "Notification name removed from $($path.Split(':')[0])."
+    }
 }
 
 if (Test-Path $target) {
