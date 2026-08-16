@@ -351,6 +351,52 @@ jobs:
           rm -rf "$work"
           ls -R ../dist-gui
 
+      # The installer: one file to download and double-click.
+      #
+      # Only the descr64 dialect gets one. The two record sizes cannot read each
+      # other's configuration, so a machine wants exactly one of them, and two
+      # installers sharing an UpgradeCode would silently replace each other while
+      # two with different ones would fight over the same directory. Today's
+      # firmware is 64-byte; when that stops being true this grows a second
+      # product rather than a second file.
+      #
+      # Built here rather than anywhere else because WiX needs Windows: it is
+      # .NET and starts on Linux, but the bind phase - where the MSI database is
+      # written - wants msi.dll. The authoring is checked on Linux up to that
+      # point, which catches everything except one bogus complaint about
+      # Directory/@Name.
+      - name: Installer
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: gui
+        run: |
+          set -eu
+          case "${{ runner.arch }}" in
+            X64)   goarch=amd64; wixarch=x64   ;;
+            ARM64) goarch=arm64; wixarch=arm64 ;;
+          esac
+          stage="../dist-gui/encedo-wg-windows-$goarch-descr64"
+          VERSION="$(cd .. && sh scripts/version.sh)"
+
+          # MSI versions are numeric and only the first three fields decide an
+          # upgrade, so the release goes in those and the run number in the
+          # fourth. Without the run number every build of a release would look
+          # like the same version and an upgrade would decline to replace it.
+          release="${VERSION%%+*}"
+          msiversion="$release.${{ github.run_number }}"
+
+          dotnet tool install --global wix --version 5.0.2 >/dev/null
+          export PATH="$PATH:$HOME/.dotnet/tools"
+
+          wix build -arch "$wixarch" \
+            -d Version="$msiversion" \
+            -d Stamp="$VERSION (descr 64 B)" \
+            -d Payload="$(cd "$stage" && pwd)" \
+            ../packaging/windows/encedo-wg.wxs \
+            -o "../dist-gui/encedo-wg-$goarch.msi"
+
+          ls -l ../dist-gui/*.msi
+
       # Windows 10 is one of the machines this ships to, and "will it start
       # there" is answered by the PE header rather than by where it was built.
       # Two fields say it: the minimum operating system version and the

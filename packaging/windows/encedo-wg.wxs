@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Windows installer: one file somebody downloads and double-clicks.
+
+  This replaces install.ps1 as the thing that ships. The script stays, because it
+  is a far cheaper place to find out what Windows wants - three of the things
+  below were learned there, at a cost of one CI round trip each - but a folder of
+  seven files and an instruction about execution policies is not something to
+  hand anybody.
+
+  Three things WiX does declaratively that the script does by hand, and each was
+  a bug at some point:
+
+    - the service, rather than shelling out to `wg-hem service install`;
+    - the Start menu shortcut carrying System.AppUserModel.ID, which is the
+      documented way to name a program's notifications and does not depend on
+      which registry hive an elevated script happens to write to;
+    - removal, an upgrade that replaces rather than installs beside, and an
+      entry in Programs and Features.
+
+  Built on the Windows runner. WiX v5 is .NET and starts on Linux, but its bind
+  phase - where the MSI database is actually written - throws. The compile phase
+  does run there and is useful as a partial check, with one caveat: it rejects
+  Directory/@Name as "not a relative path" on Linux, which is a fault of that
+  platform and not of this file.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <!--
+    Version must be numeric and only its first three fields decide an upgrade,
+    which is a poor fit for a stamp like 0.9.1+aabd8cf. So the release goes in
+    the first three and the build number in the fourth, and the stamp that
+    actually identifies the pair is recorded where it can be read: in Programs
+    and Features, and in the registry beside the installation.
+
+    UpgradeCode never changes. It is what makes a later installer recognise this
+    one as the same product rather than a second copy of it.
+  -->
+  <Package
+      Name="encedo-wg"
+      Manufacturer="Encedo"
+      Version="$(var.Version)"
+      UpgradeCode="8D2CAF8F-E5DA-45F2-86B9-454C06911BAC"
+      Scope="perMachine"
+      Compressed="yes">
+
+    <MajorUpgrade
+        AllowSameVersionUpgrades="yes"
+        DowngradeErrorMessage="A newer version of encedo-wg is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- What Programs and Features shows. -->
+    <Icon Id="AppIcon" SourceFile="$(var.Payload)/icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPCOMMENTS" Value="$(var.Stamp)" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/encedo/encedo-wg-hsm" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Encedo WG" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Main" Title="encedo-wg" Level="1">
+      <ComponentGroupRef Id="Files" />
+      <ComponentRef Id="Shortcut" />
+      <ComponentRef Id="Stamp" />
+    </Feature>
+
+    <ComponentGroup Id="Files" Directory="INSTALLFOLDER">
+
+      <!--
+        The component runs as a service because the UAPI pipe wireguard-go
+        creates is owned by SYSTEM, and no other account may create it. Manual
+        start, not automatic: a tunnel needs a window and a window is somebody
+        sitting down. Started on install so that the first launch of the window
+        finds it already there.
+
+        Stopped and removed on uninstall, and stopped before an upgrade replaces
+        the file underneath it - without that, the upgrade asks for a reboot,
+        which is a rude thing to ask for a program nobody was running.
+      -->
+      <Component Id="Component" Guid="*">
+        <File Id="wg_hem" Source="$(var.Payload)/wg-hem.exe" KeyPath="yes" />
+        <ServiceInstall
+            Id="ServiceInstall"
+            Name="encedo-wg"
+            DisplayName="Encedo WireGuard tunnels for a graphical client"
+            Description="Runs tunnels on behalf of the encedo-wg window. Holds no credential and starts nothing on its own."
+            Type="ownProcess"
+            Start="demand"
+            ErrorControl="normal"
+            Account="LocalSystem"
+            Arguments="service run"
+            Vital="yes" />
+        <ServiceControl
+            Id="ServiceControl"
+            Name="encedo-wg"
+            Start="install"
+            Stop="both"
+            Remove="uninstall"
+            Wait="yes" />
+      </Component>
+
+      <Component Id="Window" Guid="*">
+        <File Id="gui" Source="$(var.Payload)/encedo-wg-gui.exe" KeyPath="yes" />
+      </Component>
+
+      <!--
+        Redistributed unmodified and deliberately not signed by us: it arrives
+        signed by WireGuard LLC carrying Microsoft's attestation for the driver
+        inside it, and re-signing would both modify the Software, which its
+        licence forbids, and displace the chain Windows trusts.
+      -->
+      <Component Id="Driver" Guid="*">
+        <File Id="wintun" Source="$(var.Payload)/wintun.dll" KeyPath="yes" />
+      </Component>
+
+      <Component Id="Assets" Guid="*">
+        <File Id="ico" Source="$(var.Payload)/icon.ico" KeyPath="yes" />
+        <File Id="license" Source="$(var.Payload)/LICENSE.txt" />
+        <File Id="wintun_license" Source="$(var.Payload)/WINTUN-LICENSE.txt" />
+      </Component>
+    </ComponentGroup>
+
+    <!--
+      The shortcut takes no arguments: the window drives a real appliance when
+      asked for nothing, and a Start menu entry that launched the scripted
+      stand-in would be an entry that lies.
+
+      ShortcutProperty is the point of doing this in an installer rather than a
+      script. Windows names a notification after the sender's AppUserModelID,
+      and a shortcut carrying that ID is the documented way to give the ID a
+      name and an icon. The script had to guess at registry hives twice.
+    -->
+    <Component Id="Shortcut" Directory="ProgramMenuFolder" Guid="*">
+      <Shortcut
+          Id="StartMenuShortcut"
+          Name="encedo-wg"
+          Description="A WireGuard tunnel whose private key never leaves the module"
+          Target="[INSTALLFOLDER]encedo-wg-gui.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="AppIcon">
+        <ShortcutProperty Key="System.AppUserModel.ID" Value="com.encedo.wg" />
+      </Shortcut>
+      <RemoveFolder Id="RemoveShortcut" On="uninstall" />
+      <RegistryValue
+          Root="HKCU" Key="Software\Encedo\encedo-wg"
+          Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <!--
+      The stamp, written where something other than this installer can read it.
+      The two halves refuse each other unless their stamps agree, and when that
+      happens the first question is which build is on the machine.
+    -->
+    <Component Id="Stamp" Directory="INSTALLFOLDER" Guid="*">
+      <RegistryValue
+          Root="HKLM" Key="Software\Encedo\encedo-wg"
+          Name="Build" Type="string" Value="$(var.Stamp)" KeyPath="yes" />
+      <RegistryValue
+          Root="HKLM" Key="Software\Encedo\encedo-wg"
+          Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+    </Component>
+
+  </Package>
+</Wix>
