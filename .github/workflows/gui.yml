@@ -172,12 +172,25 @@ jobs:
                 # the right one is linked and the rest are ignored. Generated
                 # rather than committed: it carries the stamp, which changes
                 # every commit.
-                ( cd .. && go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
-                    -icon gui/packaging/icon.ico \
+                #
+                # Run from here, which is gui/, and that is the whole of what
+                # went wrong the first time. -platform-specific ignores -o and
+                # writes into the working directory, so wrapping this in a
+                # subshell that stepped up to the repository root put four .syso
+                # files where nothing links them. Go only takes them from the
+                # directory of the package being built, so the window came out
+                # with no icon and nothing said a word.
+                go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
+                    -icon packaging/icon.ico \
                     -product-version "$VERSION (descr ${variant:+64}${variant:-128} B)" \
                     -platform-specific \
-                    -o gui/resource.syso \
-                    gui/packaging/versioninfo.json )
+                    packaging/versioninfo.json
+
+                # Said out loud, because the failure above was silent: a missing
+                # resource is a build that succeeds and an icon that is not
+                # there, found days later by somebody looking at a Start menu.
+                ls resource_windows_*.syso >/dev/null 2>&1 || {
+                  echo "goversioninfo produced no .syso in $(pwd)" >&2; exit 1; }
                 # Whatever the runner is, natively: cgo means no cross-building,
                 # so the ARM64 runner produces the ARM64 window and the x64 one
                 # produces x64. runner.arch is the only thing that distinguishes
