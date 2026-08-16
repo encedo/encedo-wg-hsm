@@ -78,6 +78,19 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 	}
 	defer auth.Wipe()
 
+	// The first token is where the passphrase is spent, and spending it means
+	// 600,000 rounds of PBKDF2 before anything reaches the network. On a machine
+	// whose processor does SHA-256 in hardware that is imperceptible; on one
+	// without it - Intel before Goldmont, AMD before Zen - it was measured at
+	// five seconds, during which the window said "Waiting for the first
+	// handshake" and was waiting for nothing of the sort.
+	//
+	// The count is not ours to lower: the device derives the same key from the
+	// same passphrase and the same salt, so it is part of the protocol rather
+	// than a setting. Saying what is happening is the part that was in our gift.
+	s.emit(Event{State: Connecting, HEM: s.hemURL,
+		Notice: "Working out the key from your passphrase. On some machines this takes a few seconds."})
+
 	ids, err := config.Identities(ctx, client, auth.Token)
 	if err != nil {
 		return s.failed(err)

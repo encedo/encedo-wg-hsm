@@ -547,7 +547,7 @@ func (u *ui) render(e Event) {
 	case Connecting:
 		u.setDot(theme.ColorNameWarning)
 		u.status.SetText("Connecting...")
-		u.baseDetail = "Waiting for the first handshake."
+		u.baseDetail = "Reaching the device."
 	case Connected:
 		u.setDot(theme.ColorNameSuccess)
 		u.status.SetText("Connected")
