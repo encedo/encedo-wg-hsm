@@ -99,16 +99,38 @@ jobs:
       # and its own checks; what it prints has been made ASCII there.
       - name: Everything must be plain ASCII
         run: |
-          bad="$(LC_ALL=C grep -rln '[^ -~\t\r]' \
-                   --include='*.go' --include='*.sh' --include='*.ps1' \
-                   --include='*.yml' --include='*.yaml' \
-                   --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go . || true)"
+          # tr and not grep, because there is no one regular expression that
+          # means the same thing in every grep. The first version of this used
+          # a bracket expression with \t and \r in it, passed on the machine it
+          # was written on - which turned out to have ugrep installed as grep,
+          # where those are escapes - and failed here, where GNU grep reads them
+          # as four literal characters. Deleting the bytes that are allowed and
+          # looking at what is left needs no dialect at all.
+          #
+          # Kept: tab, carriage return, and printable ASCII. Newline survives
+          # the deletion and is then eaten by the command substitution, so a
+          # clean file leaves an empty string.
+          #
+          # git ls-files rather than a walk, so this sees tracked files only: no
+          # generated wireguard-go tree, and a submodule appears as one entry
+          # rather than as its contents, which is right because it has its own
+          # rules.
+          bad=""
+          for f in $(git ls-files '*.go' '*.sh' '*.ps1' '*.yml' '*.yaml'); do
+            if [ -n "$(LC_ALL=C tr -d '\11\15\40-\176' < "$f")" ]; then
+              bad="$bad $f"
+            fi
+          done
           if [ -n "$bad" ]; then
             echo "These files contain characters that do not survive a Windows console:"
-            LC_ALL=C grep -rn '[^ -~\t\r]' \
-              --include='*.go' --include='*.sh' --include='*.ps1' \
-              --include='*.yml' --include='*.yaml' \
-              --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go .
+            for f in $bad; do
+              # The characters themselves, one per line, deduplicated. No
+              # pattern is matched to find them: what is left after deleting
+              # everything allowed is exactly what is wrong.
+              printf '%s: ' "$f"
+              LC_ALL=C tr -d '\11\15\40-\176' < "$f" | tr -d '\n' | fold -w1 | sort -u | tr '\n' ' '
+              echo
+            done
             exit 1
           fi
 
