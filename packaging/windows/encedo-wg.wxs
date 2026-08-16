@@ -19,10 +19,12 @@
       entry in Programs and Features.
 
   Built on the Windows runner. WiX v5 is .NET and starts on Linux, but its bind
-  phase - where the MSI database is actually written - throws. The compile phase
-  does run there and is useful as a partial check, with one caveat: it rejects
-  Directory/@Name as "not a relative path" on Linux, which is a fault of that
-  platform and not of this file.
+  phase - where the MSI database is actually written - throws, so what can be
+  checked there is compile and link only. That is less than it sounds: component
+  GUID rules are resolved during bind, so a local pass says nothing about them,
+  and the first build on Windows rejected a three-file component the local check
+  had waved through. The local check also rejects Directory/@Name as "not a
+  relative path", which is a fault of that platform and not of this file.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
@@ -116,10 +118,22 @@
         <File Id="wintun" Source="$(var.Payload)/wintun.dll" KeyPath="yes" />
       </Component>
 
+      <!--
+        One file per component, which is not tidiness. An automatically
+        generated GUID is only allowed where the component holds a single file,
+        or where its keypath is a versioned file and the rest are not. These
+        three are all unversioned, so grouping them was refused - and refused in
+        the bind phase, which is the half of WiX that does not run on Linux, so
+        the local check passed it.
+      -->
       <Component Id="Assets" Guid="*">
         <File Id="ico" Source="$(var.Payload)/icon.ico" KeyPath="yes" />
-        <File Id="license" Source="$(var.Payload)/LICENSE.txt" />
-        <File Id="wintun_license" Source="$(var.Payload)/WINTUN-LICENSE.txt" />
+      </Component>
+      <Component Id="License" Guid="*">
+        <File Id="license" Source="$(var.Payload)/LICENSE.txt" KeyPath="yes" />
+      </Component>
+      <Component Id="WintunLicense" Guid="*">
+        <File Id="wintun_license" Source="$(var.Payload)/WINTUN-LICENSE.txt" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
@@ -143,7 +157,12 @@
           Icon="AppIcon">
         <ShortcutProperty Key="System.AppUserModel.ID" Value="com.encedo.wg" />
       </Shortcut>
-      <RemoveFolder Id="RemoveShortcut" On="uninstall" />
+      <!--
+        No RemoveFolder here. That element exists to take away a folder the
+        installer created, and this shortcut goes straight into the Start menu's
+        Programs folder rather than into one of its own - so removing it would be
+        asking Windows to delete a directory shared with every other program.
+      -->
       <RegistryValue
           Root="HKCU" Key="Software\Encedo\encedo-wg"
           Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
