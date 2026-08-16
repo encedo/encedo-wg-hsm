@@ -5,12 +5,20 @@ name: GUI
 # builds and does not publish, like the other workflow, and it is scoped to the
 # gui/ module: a change to the CLI cannot break it and does not run it.
 
+# There is no paths filter, and there used to be: ["gui/**", this file]. It was
+# right when this job built only the window, and wrong from the moment the job
+# started assembling the whole Windows bundle. It now builds cmd/wg-hem, reads
+# the driver's version and checksum out of package-windows.sh, calls build.sh to
+# lay down the patched upstream tree, stamps with scripts/version.sh, and copies
+# packaging/windows and LICENSE - so the honest filter is most of the repository,
+# and a nine-pattern list is one somebody forgets to extend.
+#
+# It was forgotten already: a fix to install.ps1 was pushed and nothing ran,
+# which reads as a broken runner rather than as a filter doing its job.
 on:
   push:
     branches: [gui]
-    paths: ["gui/**", ".github/workflows/gui.yml"]
   pull_request:
-    paths: ["gui/**", ".github/workflows/gui.yml"]
   workflow_dispatch:
 
 permissions:

@@ -8,9 +8,16 @@ name: CI
 # build of the very commit that was just signed. Tags still build, as a check on
 # the exact commit about to be released; the artefacts are for inspection.
 
+# gui is here as well as main. Everything this workflow checks that the GUI
+# workflow does not - gofmt over cmd and internal, go vet and go test -race in
+# both record dialects, and the rule that everything is plain ASCII - had not run
+# once during the whole of the Windows work, because that work happens on a
+# branch this did not name. The ASCII check in particular was added here and then
+# cited as the reason the mistake could not come back, while never having
+# executed.
 on:
   push:
-    branches: [main]
+    branches: [main, gui]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -83,17 +90,22 @@ jobs:
       # would have fixed only the first half, and can be stripped by an editor or
       # a merge without anything saying so.
       #
+      # A carriage return is allowed and is not an oversight: the .ps1 files are
+      # checked out with CRLF on purpose, being the only thing here that runs on
+      # Windows alone. The first version of this check forbade it and would have
+      # failed on the two files it was written to protect.
+      #
       # hem-sdk-go is excluded because it is a submodule with its own repository
       # and its own checks; what it prints has been made ASCII there.
       - name: Everything must be plain ASCII
         run: |
-          bad="$(LC_ALL=C grep -rln '[^ -~\t]' \
+          bad="$(LC_ALL=C grep -rln '[^ -~\t\r]' \
                    --include='*.go' --include='*.sh' --include='*.ps1' \
                    --include='*.yml' --include='*.yaml' \
                    --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go . || true)"
           if [ -n "$bad" ]; then
             echo "These files contain characters that do not survive a Windows console:"
-            LC_ALL=C grep -rn '[^ -~\t]' \
+            LC_ALL=C grep -rn '[^ -~\t\r]' \
               --include='*.go' --include='*.sh' --include='*.ps1' \
               --include='*.yml' --include='*.yaml' \
               --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go .
