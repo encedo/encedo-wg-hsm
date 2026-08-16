@@ -166,8 +166,13 @@ jobs:
                 # not exist" while the step that would have created it sat two
                 # steps below. The Windows branch had it in the right place; the
                 # two are now the same.
+                # ./build.sh, not `sh build.sh`. It declares bash and uses
+                # `set -o pipefail`, and sh on Ubuntu is dash, which answers
+                # "Illegal option -o pipefail" and stops. It ran on the Windows
+                # runner because sh there is git-bash. Letting the shebang decide
+                # means nobody has to remember which script wants which shell.
                 if [ ! -d ../wireguard-go/device ]; then
-                  ( cd .. && WG_PREPARE_ONLY=1 sh build.sh )
+                  ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
                 fi
                 case "$variant" in
                   "")        cli_tags="" ;;
@@ -249,7 +254,7 @@ jobs:
                 # exactly that and nothing else. Once per job, not once per
                 # variant.
                 if [ ! -d ../wireguard-go/device ]; then
-                  (cd .. && WG_PREPARE_ONLY=1 sh build.sh)
+                  ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
                 fi
                 case "$variant" in
                   "")        cli_tags="" ;;
