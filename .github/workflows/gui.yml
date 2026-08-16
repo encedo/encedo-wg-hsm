@@ -151,6 +151,19 @@ jobs:
               Linux)
                 GOARCH=amd64 build "$variant" "" \
                   -o "../dist-gui/encedo-wg-gui-linux-amd64$variant" .
+
+                # The component beside the window, for the same reason it is
+                # built beside it on Windows: build-deb.sh needs both, they
+                # refuse each other unless their stamps agree, and two workflows
+                # producing them is how the stamps come to differ. From the
+                # repository root, because gui/ is its own module.
+                case "$variant" in
+                  "")        cli_tags="" ;;
+                  -descr64)  cli_tags="descr64" ;;
+                esac
+                ( cd .. && CGO_ENABLED=0 GOARCH=amd64 go build ${cli_tags:+-tags "$cli_tags"} \
+                    -ldflags "$STAMP" \
+                    -o "dist/wg-hem-linux-amd64$variant" ./cmd/wg-hem )
                 ;;
               macOS)
                 for arch in arm64 amd64; do
@@ -350,6 +363,41 @@ jobs:
           # here, not so that it ships.
           rm -rf "$work"
           ls -R ../dist-gui
+
+      # The Debian package, for the same reason the MSI exists: one file, and
+      # built where both halves are, from one tree and one stamp.
+      #
+      # It was not built here at all until now - only by hand on a developer's
+      # machine through reinstall.sh - which left Linux with nothing to download
+      # while Windows had an installer. build-deb.sh refuses a mismatched pair
+      # itself, so this is also a check on the two builds above.
+      #
+      # amd64 only. The window needs cgo, so the architecture is whatever the
+      # runner is, and an arm64 package still comes from reinstall.sh on the
+      # machine that wants it - the same trade as the ARM64 window, and for the
+      # same reason.
+      - name: Package
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          # The patched upstream tree, which the component needs and which only
+          # build.sh produces.
+          if [ ! -d wireguard-go/device ]; then
+            WG_PREPARE_ONLY=1 sh build.sh
+          fi
+          for variant in "" "-descr64"; do
+            sh packaging/linux/build-deb.sh amd64 "$variant"
+          done
+          ls -l dist-deb/
+
+      - name: Upload the Debian packages
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: encedo-wg-deb
+          path: dist-deb/
+          retention-days: 7
 
       # The installer: one file to download and double-click.
       #
