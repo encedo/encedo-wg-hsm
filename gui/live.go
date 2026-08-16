@@ -79,15 +79,22 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 	defer auth.Wipe()
 
 	// The first token is where the passphrase is spent, and spending it means
-	// 600,000 rounds of PBKDF2 before anything reaches the network. On a machine
-	// whose processor does SHA-256 in hardware that is imperceptible; on one
-	// without it - Intel before Goldmont, AMD before Zen - it was measured at
-	// five seconds, during which the window said "Waiting for the first
-	// handshake" and was waiting for nothing of the sort.
+	// 600,000 rounds of PBKDF2 before anything reaches the network.
 	//
 	// The count is not ours to lower: the device derives the same key from the
-	// same passphrase and the same salt, so it is part of the protocol rather
-	// than a setting. Saying what is happening is the part that was in our gift.
+	// same passphrase and the same salt, so it is protocol rather than a
+	// setting. What was in our gift is saying so, because connecting took about
+	// five seconds on Windows while the window claimed to be waiting for a
+	// handshake it was nowhere near.
+	//
+	// Whether those five seconds are this derivation is not established. It was
+	// asserted here once, on the strength of a 51 ms measurement taken on arm64,
+	// which says nothing about the other architecture; Go has a SHA-NI path for
+	// amd64 and the processor in question has SHA-NI, so the arithmetic does not
+	// work. The other candidates are the round trips to the device and a
+	// real-time scanner examining a newly built and unsigned executable. Until
+	// somebody times it there, this sentence is what the window can honestly say
+	// about a wait it cannot explain.
 	s.emit(Event{State: Connecting, HEM: s.hemURL,
 		Notice: "Working out the key from your passphrase. On some machines this takes a few seconds."})
 
