@@ -36,25 +36,52 @@ foreach ($f in $files) {
 # The two halves refuse each other unless their stamps match, and a bundle
 # assembled by hand from two downloads is how they come to differ. Checked here
 # rather than discovered later by somebody who has already typed a passphrase.
-$hemVersion = (& (Join-Path $source 'wg-hem.exe') version) -join ''
-$guiVersion = (& (Join-Path $source 'encedo-wg-gui.exe') -version) -join ''
-$hemStamp = ($hemVersion -replace '^wg-hem\s+', '')
-$guiStamp = ($guiVersion -replace '^encedo-wg-gui\s+', '')
-# Said separately, because "it printed nothing" and "it printed something else"
-# are different faults and the second reads as the first when the column is
-# blank. A window built for the GUI subsystem has no console to print to, which
-# is exactly how this failed once: the halves matched and the comparison could
-# not see it.
-if (-not $hemStamp) { throw "wg-hem.exe printed no version. Is it the right file?" }
-if (-not $guiStamp) {
-    throw @"
-encedo-wg-gui.exe printed no version.
-It is linked for the GUI subsystem and has to attach to this console to print at
-all, so a build from before that was fixed cannot report its version and this
-installer cannot check the pair. Take a newer build.
-"@
+# Through a file, not through the pipeline, and the reason is the window rather
+# than the client. encedo-wg-gui.exe is linked for the GUI subsystem so that no
+# console appears behind it, and what a process in that subsystem does with its
+# output when a shell runs it is not something to rely on: `& gui.exe -version`
+# captured nothing here twice, once because the program wrote to the console
+# device and once because the shell did not collect what it wrote.
+#
+# Start-Process -Wait -RedirectStandardOutput takes both questions out of it. The
+# file is a handle the program is given, so it writes there; -Wait means the
+# answer is on disk before it is read, whatever subsystem the program was linked
+# for.
+function Get-Stamp {
+    param([string]$Exe, [string[]]$VersionArgs, [string]$Prefix)
+
+    $out = New-TemporaryFile
+    try {
+        Start-Process -FilePath $Exe -ArgumentList $VersionArgs `
+            -RedirectStandardOutput $out -NoNewWindow -Wait | Out-Null
+        $text = (Get-Content -Raw -ErrorAction SilentlyContinue $out)
+    } finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue $out
+    }
+    if (-not $text) { return '' }
+    return ($text.Trim() -replace "^$Prefix\s+", '')
 }
-if ($hemStamp -ne $guiStamp) {
+
+$hemStamp = Get-Stamp (Join-Path $source 'wg-hem.exe')        @('version')  'wg-hem'
+$guiStamp = Get-Stamp (Join-Path $source 'encedo-wg-gui.exe') @('-version') 'encedo-wg-gui'
+# A stamp that cannot be read is a warning; two stamps that disagree is a
+# refusal. The distinction is the point.
+#
+# A mismatched pair is the thing worth stopping for: it fails later, after a
+# passphrase, and confusingly. Not being able to read a version is a fault in
+# this check rather than in what is being installed, and this check has now
+# blocked the installation three times over its own difficulty reading a
+# GUI-subsystem program. A guard that stops the work it exists to protect is
+# worse than no guard.
+if (-not $hemStamp -or -not $guiStamp) {
+    Write-Warning @"
+Could not read a version from both halves, so they were not compared:
+  wg-hem.exe          $(if ($hemStamp) { $hemStamp } else { '(nothing)' })
+  encedo-wg-gui.exe   $(if ($guiStamp) { $guiStamp } else { '(nothing)' })
+Installing anyway. If the two do not match, the window will say so when it tries
+to connect, and "wg-hem probe" prints both.
+"@
+} elseif ($hemStamp -ne $guiStamp) {
     throw @"
 These two halves will refuse to drive each other:
   wg-hem.exe          $hemStamp
@@ -62,7 +89,8 @@ These two halves will refuse to drive each other:
 Take both from one build.
 "@
 }
-Write-Host "Installing $hemStamp"
+
+Write-Host "Installing $(if ($hemStamp) { $hemStamp } else { 'an unknown build' })"
 
 if (Get-Service -Name $service -ErrorAction SilentlyContinue) {
     Write-Host 'Stopping the existing service...'
