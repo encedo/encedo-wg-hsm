@@ -1,13 +1,26 @@
 # Line endings are LF everywhere, on every platform, in the working tree.
 #
 # Without this, Git on Windows checks out text files with CRLF, and the Windows
-# CI runner then reports every Go file as unformatted — gofmt wants LF and says
+# CI runner then reports every Go file as unformatted - gofmt wants LF and says
 # so about all of them at once, which reads like a formatting catastrophe and is
 # really a checkout setting. The build was red on six files that were correct.
 #
 # Go itself is unambiguous about this: gofmt writes LF, so anything that turns it
 # into CRLF is changing gofmt's output.
 * text=auto eol=lf
+
+# Except the scripts that only ever run on Windows. CRLF is what that platform's
+# text is, and these are the one thing here that is read and edited on it rather
+# than merely built for it.
+#
+# No evidence LF broke anything: the installer's parse failure was an em dash
+# read as CP-1252, and PowerShell accepts either ending. This is the last respect
+# in which a file shipped to Windows still looked like it was written somewhere
+# else, and it costs a line to remove.
+#
+# Safe against the rule above, which exists for gofmt, because gofmt has no
+# opinion about .ps1.
+*.ps1 text eol=crlf
 
 # Binaries must not be touched at all. An icon is not text and a byte changed in
 # one is a corrupted file, not a tidied one.
