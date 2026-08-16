@@ -101,7 +101,7 @@ func cmdUp(ifname, cfgPath string) {
 	}
 	fmt.Fprintln(os.Stderr, "HEM connected")
 
-	// 3. Auth — two tokens: lookup (keymgmt:get, short-lived) + ecdh (keymgmt:use:KID, long-lived)
+	// 3. Auth - two tokens: lookup (keymgmt:get, short-lived) + ecdh (keymgmt:use:KID, long-lived)
 	needsLookup := false
 	for _, p := range cfg.Peers {
 		if p.HEMKID != "" {
@@ -120,7 +120,7 @@ func cmdUp(ifname, cfgPath string) {
 		fmt.Fprintln(os.Stderr, "Token OK")
 	}
 
-	// 4. GetPubKey (my key) — use ecdhToken (keymgmt:use:<KID> covers own key read)
+	// 4. GetPubKey (my key) - use ecdhToken (keymgmt:use:<KID> covers own key read)
 	myKey, err := client.GetPubKey(context.Background(), tokens.ecdh, cfg.Interface.HEMKID)
 	if err != nil {
 		fatal("GetPubKey: %v", err)
@@ -132,7 +132,7 @@ func cmdUp(ifname, cfgPath string) {
 	_ = os.MkdirAll(rt.RunDir, 0755)
 	_ = os.WriteFile(filepath.Join(rt.RunDir, ifname+".pub"), []byte(pubKeyB64+"\n"), 0644)
 
-	// 4b. Resolve peer public keys and build extKIDMap (peer pubkey → ext_kid)
+	// 4b. Resolve peer public keys and build extKIDMap (peer pubkey -> ext_kid)
 	// Peers with HEM_KID: GetPubKey via lookupToken, ECDH fully internal.
 	// Peers with PublicKey only: standard ECDH with pubkey value.
 	extKIDMap := make(map[device.NoisePublicKey]string)
@@ -158,13 +158,13 @@ func cmdUp(ifname, cfgPath string) {
 		fatal("routing: %v", err)
 	}
 
-	// 5. Inject HSM session — HSM must remain online for live ECDH during handshakes
+	// 5. Inject HSM session - HSM must remain online for live ECDH during handshakes
 	hsm := rt.NewHSM(client, tokens.ecdh, cfg.Interface.HEMKID, myPubKey)
 	for pub, kid := range extKIDMap {
 		hsm.AddPeerKID(pub, kid)
 	}
 	hsm.Inject()
-	fmt.Fprintln(os.Stderr, "HEM online — live ECDH on every handshake.")
+	fmt.Fprintln(os.Stderr, "HEM online - live ECDH on every handshake.")
 
 	// 7. Create TUN interface
 	tdev, err := tun.CreateTUN(ifname, device.DefaultMTU)
@@ -181,7 +181,7 @@ func cmdUp(ifname, cfgPath string) {
 
 	// Explicitly: on Linux the device is brought up by the event the interface
 	// emits when netlink raises it, and on Windows nothing emits anything. See
-	// the note in internal/tunnel — the same omission, found there first.
+	// the note in internal/tunnel - the same omission, found there first.
 	if err := wgdev.Up(); err != nil {
 		fatal("bringing the tunnel device up: %v", err)
 	}
@@ -232,7 +232,7 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 10b. Pin the endpoints the tunnel would otherwise swallow, before the
-	// tunnel's own routes go in — no window in which the endpoint has no path.
+	// tunnel's own routes go in - no window in which the endpoint has no path.
 	if err := exceptions.Add(plan.Endpoints); err != nil {
 		fail("route exception: %v", err)
 	}
@@ -255,7 +255,7 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 10e. With the routes in place, confirm the HEM is still there. It is
-	// consulted at every handshake, so losing it is not a degraded tunnel — it
+	// consulted at every handshake, so losing it is not a degraded tunnel - it
 	// is one that stops at the first rekey, roughly two minutes in.
 	if plan.HEMInside {
 		if err := rt.ProbeHEM(client, plan.HEMHost); err != nil {
@@ -290,7 +290,7 @@ func cmdUp(ifname, cfgPath string) {
 	case <-errs:
 	case <-wgdev.Wait():
 	case <-hsm.Dead():
-		fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable — bringing interface down.")
+		fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable - bringing interface down.")
 	}
 
 	// 13. Cleanup
@@ -301,7 +301,7 @@ func cmdUp(ifname, cfgPath string) {
 
 // runtimePeers reduces the parsed configuration to what the routing decision
 // needs. The runtime package deliberately knows nothing about keys, HEM_KIDs or
-// where the configuration came from — wg-hem feeds it the same shape from the
+// where the configuration came from - wg-hem feeds it the same shape from the
 // records it reads out of the device.
 func runtimePeers(peers []Peer) []rt.Peer {
 	out := make([]rt.Peer, 0, len(peers))
@@ -312,7 +312,7 @@ func runtimePeers(peers []Peer) []rt.Peer {
 }
 
 // buildUAPIConfig builds the WireGuard UAPI set-operation string.
-// private_key is all-zeros — intercepted by HSM patch in SetPrivateKey.
+// private_key is all-zeros - intercepted by HSM patch in SetPrivateKey.
 func buildUAPIConfig(cfg *Config) string {
 	var sb strings.Builder
 
@@ -340,8 +340,8 @@ func buildUAPIConfig(cfg *Config) string {
 }
 
 type tokenPair struct {
-	lookup string // keymgmt:get — startup only, resolves peer pubkeys
-	ecdh   string // keymgmt:use:<KID> — runtime ECDH
+	lookup string // keymgmt:get - startup only, resolves peer pubkeys
+	ecdh   string // keymgmt:use:<KID> - runtime ECDH
 }
 
 // authInteractive asks for session duration and auth method once, returns two tokens.
@@ -373,7 +373,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		opts := hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
 		var lookupToken string
 		if needsLookup {
-			fmt.Fprintln(os.Stderr, "Mobile auth #1 — peer key lookup (Ctrl+C = cancel)...")
+			fmt.Fprintln(os.Stderr, "Mobile auth #1 - peer key lookup (Ctrl+C = cancel)...")
 			var err error
 			lookupToken, err = client.AuthRemote(ctx, "keymgmt:get", opts)
 			if err != nil {
@@ -381,9 +381,9 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 			}
 		}
 		if needsLookup {
-			fmt.Fprintln(os.Stderr, "Mobile auth #2 — ECDH (Ctrl+C = cancel)...")
+			fmt.Fprintln(os.Stderr, "Mobile auth #2 - ECDH (Ctrl+C = cancel)...")
 		} else {
-			fmt.Fprintln(os.Stderr, "Mobile auth — ECDH (Ctrl+C = cancel)...")
+			fmt.Fprintln(os.Stderr, "Mobile auth - ECDH (Ctrl+C = cancel)...")
 		}
 		ecdhToken, err := client.AuthRemote(ctx, ecdhScope, opts)
 		if err != nil {
@@ -406,7 +406,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		ecdhPass := passBytes
 		var lookupToken string
 		if needsLookup {
-			fmt.Fprintln(os.Stderr, "Auth #1 — peer key lookup...")
+			fmt.Fprintln(os.Stderr, "Auth #1 - peer key lookup...")
 			lookupToken, err = client.AuthPassword(ctx, passBytes, "keymgmt:get", 120)
 			if err != nil {
 				return tokenPair{}, err
@@ -416,9 +416,9 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 			ecdhPass = nil
 		}
 		if needsLookup {
-			fmt.Fprintf(os.Stderr, "Auth #2 — ECDH, session %dh...\n", expSeconds/3600)
+			fmt.Fprintf(os.Stderr, "Auth #2 - ECDH, session %dh...\n", expSeconds/3600)
 		} else {
-			fmt.Fprintf(os.Stderr, "Auth — ECDH, session %dh...\n", expSeconds/3600)
+			fmt.Fprintf(os.Stderr, "Auth - ECDH, session %dh...\n", expSeconds/3600)
 		}
 		ecdhToken, err := client.AuthPassword(ctx, ecdhPass, ecdhScope, expSeconds)
 		if err != nil {

@@ -16,7 +16,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/tunnel"
 )
 
-// cmdUp brings the tunnel up from the configuration in the device (§6.2). No
+// cmdUp brings the tunnel up from the configuration in the device (section 6.2). No
 // file is read and nothing is written to disk beyond the public key and the
 // state file that lets `down` and `status` find this process.
 func cmdUp(args []string) error {
@@ -25,10 +25,10 @@ func cmdUp(args []string) error {
 	ifname := fs.String("interface", "wg0", "name of the tunnel interface")
 	peerIndex := fs.Int("peer", 0, "connect to peer N as numbered by `wg-hem verify` (1-based)")
 	peerKey := fs.String("peer-pubkey", "", "connect to the peer whose base64 public key starts with this prefix")
-	debug := fs.Bool("debug", false, "trace every handshake ECDH on stderr (no key material: values are shown head…tail)")
-	autoFailover := fs.Bool("auto-failover", false, "on a peer that never answers, try the next stored one instead of asking (§6.4)")
+	debug := fs.Bool("debug", false, "trace every handshake ECDH on stderr (no key material: values are shown head...tail)")
+	autoFailover := fs.Bool("auto-failover", false, "on a peer that never answers, try the next stored one instead of asking (section 6.4)")
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `wg-hem up — bring the tunnel up from the configuration in the device
+		fmt.Fprint(os.Stderr, `wg-hem up - bring the tunnel up from the configuration in the device
 
   wg-hem up [--interface wg0] [--peer N | --peer-pubkey PREFIX] [device flags]
 
@@ -52,7 +52,7 @@ A peer that never answers is reported and another is offered.
 	// Before the passphrase, not after. Everything this checks is knowable
 	// without touching the device, and discovering it later means the person has
 	// authenticated, waited, and then been told "operation not permitted" by
-	// netlink — at which point the obvious move is sudo, which works and teaches
+	// netlink - at which point the obvious move is sudo, which works and teaches
 	// the wrong lesson. Nothing here wants root; one capability and a writable
 	// directory are the whole of it.
 	if err := rt.Preflight(); err != nil {
@@ -98,7 +98,7 @@ A peer that never answers is reported and another is offered.
 	return nil
 }
 
-// selectPeer implements §6.2 step 5. WireGuard's cryptokey routing gives one
+// selectPeer implements section 6.2 step 5. WireGuard's cryptokey routing gives one
 // peer the AllowedIPs at a time, so exactly one is chosen; the stored order is
 // the failover priority and therefore the suggestion.
 func selectPeer(tree *config.Tree, index int, keyPrefix string) (*config.Peer, error) {
@@ -136,7 +136,7 @@ func selectPeer(tree *config.Tree, index int, keyPrefix string) (*config.Peer, e
 	return promptForPeer(tree)
 }
 
-// promptForPeer asks which peer to connect to, defaulting to the first — which
+// promptForPeer asks which peer to connect to, defaulting to the first - which
 // is the head of the stored failover order.
 func promptForPeer(tree *config.Tree) (*config.Peer, error) {
 	fmt.Fprintln(os.Stderr, "Peers in this configuration:")

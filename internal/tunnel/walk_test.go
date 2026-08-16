@@ -17,8 +17,8 @@ func threePeers(t *testing.T) *config.Tree {
 	)
 }
 
-// The stored order is the priority — §3.1 says so of PEER_REF, and the
-// configuration MAC covers it — so the walk follows it rather than inventing
+// The stored order is the priority - section 3.1 says so of PEER_REF, and the
+// configuration MAC covers it - so the walk follows it rather than inventing
 // one.
 func TestWalkFollowsTheStoredOrder(t *testing.T) {
 	tree := threePeers(t)
@@ -91,7 +91,7 @@ func TestWalkGivesUpWhenEveryPeerHasHadATurn(t *testing.T) {
 }
 
 // Nothing answering is a network fault. It decides the exit code a script sees
-// and, for a window, which screen somebody is shown — an appliance problem sends
+// and, for a window, which screen somebody is shown - an appliance problem sends
 // them to the module, and this is not one.
 func TestExhaustionIsANetworkFault(t *testing.T) {
 	tree := treeWith(t, testPeer("only", 1, "203.0.113.1:51820", "0.0.0.0/0"))
@@ -106,8 +106,8 @@ func TestExhaustionIsANetworkFault(t *testing.T) {
 	}
 }
 
-// The first call may arrive with nothing having failed yet — a caller that walks
-// from the start rather than after a failure — and must not be a crash.
+// The first call may arrive with nothing having failed yet - a caller that walks
+// from the start rather than after a failure - and must not be a crash.
 func TestWalkStartsFromNothing(t *testing.T) {
 	tree := threePeers(t)
 	next, err := WalkPeers()(tree, nil)

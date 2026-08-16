@@ -37,7 +37,7 @@ const (
 
 	// Comfortably longer than the warning threshold, so connecting does not
 	// immediately trip the warning. It did at ninety seconds, which made every
-	// connected state look like a session about to end — true of the fake and
+	// connected state look like a session about to end - true of the fake and
 	// false of anything real. The scenario reaches the warning by moving the
 	// expiry deliberately instead.
 	fakeSessionLen = 12 * time.Minute
@@ -148,7 +148,7 @@ func (f *fakeSession) triggerFailover() {
 	f.peer = "backup site"
 	f.last = time.Now()
 	f.mu.Unlock()
-	f.emitNotice(`Moved to "backup site" — "head office" stopped answering`)
+	f.emitNotice(`Moved to "backup site" - "head office" stopped answering`)
 }
 
 // connectWith is Connect without a context, for a script that has no caller to
@@ -213,7 +213,7 @@ func (f *fakeSession) run() {
 				f.peer = ""
 				f.expiry, f.last = time.Time{}, time.Time{}
 				f.mu.Unlock()
-				f.emitNotice("the session has expired — connect again to continue")
+				f.emitNotice("the session has expired - connect again to continue")
 				continue
 			}
 			f.rx += 1400

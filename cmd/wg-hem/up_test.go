@@ -171,7 +171,7 @@ func TestAnAnswerOutsideTheListIsRefused(t *testing.T) {
 	}
 }
 
-// A tree with no peers is not a usage problem — it means the configuration in
+// A tree with no peers is not a usage problem - it means the configuration in
 // the device is not one this client can run, which is an integrity answer.
 func TestNoPeersIsAnIntegrityFailure(t *testing.T) {
 	if _, err := selectPeer(treeWith(t), 0, ""); err == nil {

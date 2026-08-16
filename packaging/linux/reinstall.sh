@@ -7,8 +7,8 @@
 #	WG_HEM_DESCR=64 sh packaging/linux/reinstall.sh
 #
 # The record dialect follows build.sh's convention, so this and the client are
-# never asked the same question twice. Everything else — the capability, the
-# group, enabling the service — is the package's job and not repeated here.
+# never asked the same question twice. Everything else - the capability, the
+# group, enabling the service - is the package's job and not repeated here.
 set -eu
 
 cd "$(dirname "$0")/../.."

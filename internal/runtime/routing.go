@@ -21,7 +21,7 @@ const hemProbeTimeout = 3 * time.Second
 
 // A tunnel carries its own transport, and AllowedIPs decides what the tunnel
 // carries. With 0.0.0.0/0 the default route moves onto the interface and the UDP
-// to the peer's endpoint is routed by the same table as everything else — handed
+// to the peer's endpoint is routed by the same table as everything else - handed
 // to the tunnel it is supposed to carry, so the handshake can never complete and
 // the interface comes up dead.
 //
@@ -30,7 +30,7 @@ const hemProbeTimeout = 3 * time.Second
 // are installed in, so the endpoint keeps its physical path while everything
 // else goes through the tunnel.
 //
-// The HEM is a second address with the same exposure and a different answer —
+// The HEM is a second address with the same exposure and a different answer -
 // see ProbeHEM.
 
 // resolveHost turns a host name or literal address into addresses. It is a
@@ -64,7 +64,7 @@ type Plan struct {
 
 	// HEMInside records that AllowedIPs covers the HEM as well. Unlike an
 	// endpoint this is not automatically routed around the tunnel: it may be a
-	// deliberate choice to protect HEM traffic, and it works — see ProbeHEM.
+	// deliberate choice to protect HEM traffic, and it works - see ProbeHEM.
 	HEMInside bool
 }
 
@@ -72,7 +72,7 @@ type Plan struct {
 //
 // Call it before the interface exists. Afterwards the resolver may be behind the
 // tunnel whose construction depends on the answer, and a name that does not
-// resolve now will not resolve better once the default route has moved — so this
+// resolve now will not resolve better once the default route has moved - so this
 // fails rather than guessing.
 func PlanRouting(peers []Peer, hemURL string) (*Plan, error) {
 	p := &Plan{}
@@ -174,7 +174,7 @@ func (p *Pins) Restore() {
 	p.routes = nil
 }
 
-// AllowedPrefixes collects every AllowedIPs entry across the peers — what the
+// AllowedPrefixes collects every AllowedIPs entry across the peers - what the
 // interface will claim, and so also what may capture an address the tunnel
 // itself depends on.
 func AllowedPrefixes(peers []Peer) []netip.Prefix {
@@ -217,7 +217,7 @@ func HostOf(endpoint string) string {
 }
 
 // HEMHost extracts the host from a HEM base URL. The scheme is optional in
-// practice — the SDK accepts a bare host — so a missing one is not an error.
+// practice - the SDK accepts a bare host - so a missing one is not an error.
 func HEMHost(raw string) (string, error) {
 	if raw == "" {
 		return "", fmt.Errorf("the HEM URL is empty")

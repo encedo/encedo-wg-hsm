@@ -16,7 +16,7 @@ import (
 //	pubkey=BASE64,endpoint=vpn.acme.com:51820,allowed-ips=0.0.0.0/0[,keepalive=25][,label=NAME]
 //
 // allowed-ips may be repeated to give a peer several ranges. Nothing here is
-// secret — a peer's public key, endpoint and routes are all public — so unlike
+// secret - a peer's public key, endpoint and routes are all public - so unlike
 // the PSK these may travel on the command line.
 type peerSpec struct {
 	PubKey     []byte

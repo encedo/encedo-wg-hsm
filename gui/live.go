@@ -21,7 +21,7 @@ import (
 //
 // What it never does is run one. Everything privileged is on the other side of
 // the socket, which is why this file imports neither netlink nor wireguard-go
-// and a test proves it — see deps_test.go. See docs/ARCHITECTURE-GUI.md.
+// and a test proves it - see deps_test.go. See docs/ARCHITECTURE-GUI.md.
 type liveSession struct {
 	hemURL string
 	socket string
@@ -89,7 +89,7 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 
 	// Read and check the whole tree here as well as in the component. It is one
 	// device round trip, and it buys the person a legible refusal before
-	// anything privileged is asked to do anything — a configuration that does
+	// anything privileged is asked to do anything - a configuration that does
 	// not authenticate should not first become a failed tunnel.
 	tree, err := config.LoadIdentity(ctx, client, auth.Token, ifKID)
 	if err != nil {
@@ -145,10 +145,10 @@ func publicKeys(tree *config.Tree) map[string]string {
 }
 
 // consume turns what the component says into what the window draws, until the
-// connection ends — which is also when the tunnel does.
+// connection ends - which is also when the tunnel does.
 func (s *liveSession) consume(conn net.Conn) {
 	// Whatever ends this connection ends the tunnel with it, so the session goes
-	// back to being one that can be started again — and the presence watcher,
+	// back to being one that can be started again - and the presence watcher,
 	// which stands aside while a tunnel is up, starts answering once more.
 	defer func() {
 		s.mu.Lock()
@@ -182,7 +182,7 @@ func (s *liveSession) consume(conn net.Conn) {
 			// does while a tunnel is up, and the passphrase never came back.
 			//
 			// Ending it on the component saying the tunnel ended, rather than in
-			// Disconnect, is what also covers a tunnel that ended on its own —
+			// Disconnect, is what also covers a tunnel that ended on its own -
 			// an expired token, or a peer nobody could reach.
 			if ev.State == Ended {
 				conn.Close()
@@ -262,11 +262,11 @@ func (s *liveSession) failed(err error) error {
 }
 
 // pickIdentity and pickPeer apply the same rule the command line does: one is
-// used without asking, several are offered (§6.2 step 5, §2).
+// used without asking, several are offered (section 6.2 step 5, section 2).
 func pickIdentity(ids []config.Identity, choose func([]config.Identity) (string, error)) (string, error) {
 	switch {
 	case len(ids) == 0:
-		return "", session.Fail(session.KindIntegrity, "this module holds no configuration — provision it first")
+		return "", session.Fail(session.KindIntegrity, "this module holds no configuration - provision it first")
 	case len(ids) == 1:
 		return ids[0].KID, nil
 	case choose == nil:
@@ -315,7 +315,7 @@ func (s *liveSession) watch(ctx context.Context) {
 	for {
 		now, reason := s.probe(ctx)
 		// The reason is followed as well as the answer: a device that stays
-		// away for a new reason — it answered, now the certificate is refused —
+		// away for a new reason - it answered, now the certificate is refused -
 		// is a change worth redrawing for, and the old text would otherwise sit
 		// there describing something that is no longer what is wrong.
 		if now != present || reason != why {
@@ -351,8 +351,8 @@ func (s *liveSession) probe(ctx context.Context) (bool, string) {
 	if err != nil {
 		// Kept rather than discarded, and shown in the advanced panel rather
 		// than on the main screen. "No module" is four different facts wearing
-		// one word — nothing plugged in, no route to it, a name that does not
-		// resolve, a certificate the system will not accept — and they are
+		// one word - nothing plugged in, no route to it, a name that does not
+		// resolve, a certificate the system will not accept - and they are
 		// indistinguishable from the outside, which on Windows cost an evening.
 		// The friendly sentence stays where it is, because on a machine with
 		// nothing plugged in a dial error is a worse first thing to read than

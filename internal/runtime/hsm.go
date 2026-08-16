@@ -28,7 +28,7 @@ func SetDebug(on bool) { debug = on }
 var ecdhSeq atomic.Uint64
 
 // headTail renders a value as its first and last four bytes. For a 32-byte
-// shared secret that shows 8 of them — enough to see the value change from one
+// shared secret that shows 8 of them - enough to see the value change from one
 // handshake to the next, and 192 bits short of being of use to anyone who reads
 // the log. Peer ephemerals are rendered the same way for symmetry; those are
 // public regardless, since they cross the wire in cleartext.
@@ -36,7 +36,7 @@ func headTail(b []byte) string {
 	if len(b) <= 8 {
 		return hex.EncodeToString(b)
 	}
-	return hex.EncodeToString(b[:4]) + "…" + hex.EncodeToString(b[len(b)-4:])
+	return hex.EncodeToString(b[:4]) + "..." + hex.EncodeToString(b[len(b)-4:])
 }
 
 // ecdhTimeout bounds a single HEM call on the handshake path. WireGuard
@@ -52,7 +52,7 @@ const (
 // HSM binds a wireguard-go device to an interface key that never leaves the
 // Encedo device. Noise_IKpsk2 needs the private key in three places and only one
 // of them can be precomputed, so the tunnel makes a live call at every handshake
-// — roughly every three minutes, twice.
+// - roughly every three minutes, twice.
 //
 // Both clients share this because the retry policy is part of the tunnel's
 // failure behaviour, not a detail of either one: it decides how long a tunnel
@@ -70,7 +70,7 @@ type HSM struct {
 	//
 	// Guarded: failover adds to it from the foreground while the device's own
 	// goroutines may be reading it for a handshake already in flight. The token
-	// is under the same lock, for the same reason — a session that is renewed
+	// is under the same lock, for the same reason - a session that is renewed
 	// mid-flight is written from whoever is holding the conversation with the
 	// person, while a handshake in progress is reading it.
 	mu      sync.RWMutex
@@ -81,8 +81,8 @@ type HSM struct {
 
 // SetToken replaces the credential every subsequent handshake acts with.
 //
-// Renewal is a human act — the token expires and only somebody at a window or a
-// terminal can prove who they are again — so it arrives from outside, while
+// Renewal is a human act - the token expires and only somebody at a window or a
+// terminal can prove who they are again - so it arrives from outside, while
 // handshakes are in flight. A rekey that has already begun keeps the token it
 // started with, which is right: it is either still valid, in which case nothing
 // is wrong, or it has expired, in which case the retry after it picks up the
@@ -144,7 +144,7 @@ func (h *HSM) Inject() {
 			// handshake, so it goes to the device as a value.
 			result, err := h.ecdh(hem.CryptoOpts{PubKey: pub[:]})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable — shutting down interface: %v\n", err)
+				fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable - shutting down interface: %v\n", err)
 				select {
 				case h.dead <- struct{}{}:
 				default:
@@ -164,7 +164,7 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 	var lastErr error
 	for i := 0; i < ecdhRetries; i++ {
 		if i > 0 {
-			fmt.Fprintf(os.Stderr, "HEM %s error: %v — retrying (%d/%d)...\n", what, lastErr, i, ecdhRetries-1)
+			fmt.Fprintf(os.Stderr, "HEM %s error: %v - retrying (%d/%d)...\n", what, lastErr, i, ecdhRetries-1)
 			time.Sleep(ecdhRetryDelay)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), ecdhTimeout)
@@ -209,7 +209,7 @@ func trace(seq uint64, opts hem.CryptoOpts, ss []byte, took time.Duration, try i
 	if opts.ExtKID != "" {
 		operand = opts.ExtKID
 		if len(operand) > 16 {
-			operand = operand[:8] + "…" + operand[len(operand)-8:]
+			operand = operand[:8] + "..." + operand[len(operand)-8:]
 		}
 	} else if len(opts.PubKey) > 0 {
 		operand = headTail(opts.PubKey)

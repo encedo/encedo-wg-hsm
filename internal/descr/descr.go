@@ -1,14 +1,14 @@
 // Package descr encodes and decodes the binary records the config-free client
-// stores in a HEM key's descr field. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md §3.
+// stores in a HEM key's descr field. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md section 3.
 //
 // A record is exactly Size bytes: a 6-byte ASCII magic, a version byte, then a
 // TLV stream terminated by a 0x00 tag and zero-padded to the end. The ceiling is
-// the device's — 128 bytes, or 64 on older firmware, see size_default.go — and
+// the device's - 128 bytes, or 64 on older firmware, see size_default.go - and
 // it is tight enough that a legal-looking set of fields can overflow it, so
 // encoding validates the budget rather than truncating and the caller finds out
 // at provisioning time instead of at startup on someone else's machine.
 //
-// Every field here is covered by the interface record's MAC (§4), including the
+// Every field here is covered by the interface record's MAC (section 4), including the
 // zero padding, so the parser is deliberately strict: unknown tags, malformed
 // lengths, repeated singletons and non-zero padding are all errors, never
 // something to skip past.
@@ -34,7 +34,7 @@ const (
 )
 
 // Version is the record format version. A format change bumps this and the MAC
-// domain string together (§8.6). Version 2 redefined PEER_REF from a SHA-256
+// domain string together (section 8.6). Version 2 redefined PEER_REF from a SHA-256
 // digest of the peer's public key to the leading bytes of its KID.
 const Version = 0x02
 
@@ -47,7 +47,7 @@ const headerLen = magicLen + 1
 // difference between what was signed and what is used.
 const DefaultMTU = 1420
 
-// Tags of the interface record (§3.1).
+// Tags of the interface record (section 3.1).
 const (
 	tagEnd        = 0x00
 	TagADDR4      = 0x01
@@ -60,7 +60,7 @@ const (
 	TagMAC        = 0x7F
 )
 
-// Tags of the peer record (§3.2).
+// Tags of the peer record (section 3.2).
 const (
 	TagEndpoint4    = 0x10
 	TagEndpoint6    = 0x11
@@ -80,7 +80,7 @@ const PSKWrappedLen = 40
 // MaxHostname is the longest endpoint hostname the format can carry: the
 // format's own cap of 60, or whatever a record has room for once the header and
 // the tag's own 4 bytes are spent, whichever is smaller. Fitting is a further
-// question — this is the ceiling with nothing else in the record at all. See
+// question - this is the ceiling with nothing else in the record at all. See
 // Peer.Encode for the budget that actually applies.
 const MaxHostname = min(60, Size-headerLen-4)
 
@@ -95,7 +95,7 @@ const KIDLen = 16
 // its public key.
 //
 // It is the start of the peer's KID, which the device's key search returns
-// alongside every record — so a reference can be resolved against search results
+// alongside every record - so a reference can be resolved against search results
 // directly, with no public key read per candidate. Deriving it locally works
 // because the KID is a function of the key: see KID.
 //
@@ -110,7 +110,7 @@ type PeerRef [PeerRefLen]byte
 // leading 16 bytes of its SHA-1, rendered as lowercase hex.
 //
 // Confirmed against a device for Curve25519 keys. It is what makes the checks
-// this package supports possible at all — knowing a peer's KID before talking to
+// this package supports possible at all - knowing a peer's KID before talking to
 // the device means knowing whether it is already in the repository.
 //
 // SHA-1's collision weakness does not carry over here. The identifier is a
@@ -144,7 +144,7 @@ func PeerRefFromKID(kid string) (PeerRef, error) {
 	return ref, nil
 }
 
-// Interface is the decoded form of a WG:if: record — the identity key's own
+// Interface is the decoded form of a WG:if: record - the identity key's own
 // configuration plus the list of peers it may use.
 type Interface struct {
 	// Addrs are the addresses assigned to the tunnel interface, in the order
@@ -159,7 +159,7 @@ type Interface struct {
 	PeerRefs []PeerRef
 	// ListenPort is 0 when absent, which is what a client behind NAT wants.
 	ListenPort uint16
-	// MAC is the HMAC over the whole configuration tree (§4). HasMAC reports
+	// MAC is the HMAC over the whole configuration tree (section 4). HasMAC reports
 	// whether the record carried one at all.
 	MAC    [MACLen]byte
 	HasMAC bool
@@ -187,8 +187,8 @@ func (e Endpoint) String() string {
 	return netip.AddrPortFrom(e.IP, e.Port).String()
 }
 
-// Peer is the decoded form of a WG:pr: record. It carries no MAC of its own —
-// its integrity comes from the interface record that references it (§4).
+// Peer is the decoded form of a WG:pr: record. It carries no MAC of its own -
+// its integrity comes from the interface record that references it (section 4).
 type Peer struct {
 	Endpoint   Endpoint
 	AllowedIPs []netip.Prefix
@@ -218,14 +218,14 @@ func (w *writer) tlv(tag byte, value []byte) {
 
 // finish pads to Size, or reports by how much the record overflowed. The
 // overflow message names the excess because that is the number the operator
-// has to act on — one fewer peer, a shorter hostname, an IP instead of a name.
+// has to act on - one fewer peer, a shorter hostname, an IP instead of a name.
 func (w *writer) finish(kind string) ([Size]byte, error) {
 	var out [Size]byte
 	if w.err != nil {
 		return out, w.err
 	}
 	// The terminator is only needed when there is room left; a record that
-	// fills all 128 bytes is terminated by the end of the buffer (§3).
+	// fills all 128 bytes is terminated by the end of the buffer (section 3).
 	need := len(w.buf)
 	if need > Size {
 		return out, fmt.Errorf("descr: %s record needs %d bytes, %d over the %d-byte limit",
@@ -273,7 +273,7 @@ func encodePrefixes(w *writer, prefixes []netip.Prefix, tag4, tag6 byte, what st
 }
 
 // Encode serialises an interface record. The MAC tag is emitted last, as the
-// format requires, and only when HasMAC is set — provisioning encodes once with
+// format requires, and only when HasMAC is set - provisioning encodes once with
 // HasMAC false to obtain the bytes to authenticate, then again with the result.
 func (i Interface) Encode() ([Size]byte, error) {
 	w := &writer{buf: append([]byte(MagicInterface), Version)}
@@ -440,8 +440,8 @@ func once(seen map[byte]bool, tag byte) error {
 
 // nonZero rejects an optional numeric tag carrying zero.
 //
-// Zero is how these fields say "absent" — MTU 0 is not a usable MTU, listen
-// port 0 already means "let the kernel choose", keepalive 0 means disabled — so
+// Zero is how these fields say "absent" - MTU 0 is not a usable MTU, listen
+// port 0 already means "let the kernel choose", keepalive 0 means disabled - so
 // an explicit zero tag and a missing tag describe the same configuration.
 //
 // Rejecting the longer form is not what stops forgery; the MAC is over the
@@ -471,7 +471,7 @@ func prefixFrom(value []byte, addrLen int) (netip.Prefix, error) {
 }
 
 // DecodeInterface parses a WG:if: record. A record shorter than Size is
-// accepted — the device may return a trimmed descr — but a MAC computed over it
+// accepted - the device may return a trimmed descr - but a MAC computed over it
 // must use the zero-padded 128-byte form; see Normalize.
 func DecodeInterface(b []byte) (Interface, error) {
 	items, err := parse(b, MagicInterface)
@@ -664,7 +664,7 @@ func Normalize(b []byte) ([Size]byte, error) {
 }
 
 // ZeroMAC returns the record with the MAC tag's value replaced by zeros, which
-// is the form the canonical message uses (§4). A record without a MAC tag is
+// is the form the canonical message uses (section 4). A record without a MAC tag is
 // returned unchanged.
 func ZeroMAC(rec [Size]byte) ([Size]byte, error) {
 	items, err := parse(rec[:], MagicInterface)

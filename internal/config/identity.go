@@ -12,11 +12,11 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 )
 
-// A device may hold several interface records — several private keys, each with
-// its own peers and its own configuration (§2). They do not interact: one MAC
+// A device may hold several interface records - several private keys, each with
+// its own peers and its own configuration (section 2). They do not interact: one MAC
 // closes over one identity and the peers it names. The only thing multiplicity
-// changes is that something has to choose, and the rule is the one §6.2 step 5
-// already applies to peers — one is used without asking, several are offered.
+// changes is that something has to choose, and the rule is the one section 6.2 step 5
+// already applies to peers - one is used without asking, several are offered.
 //
 // The order is forced rather than preferred. `keymgmt:use:<if_kid>` names one
 // key, so the choice cannot come after the token that depends on it. Listing is
@@ -31,7 +31,7 @@ type Identity struct {
 
 	// Addrs is what the record says the tunnel's addresses are, decoded
 	// locally and with nothing vouching for it. It is here so a person can tell
-	// two identities apart in a list, and for no other purpose — acting on it
+	// two identities apart in a list, and for no other purpose - acting on it
 	// would be acting on unauthenticated bytes.
 	//
 	// Empty when the record does not decode. A listing that hid such a record
@@ -41,7 +41,7 @@ type Identity struct {
 	Addrs []netip.Prefix
 
 	// Created is when the device says the key was made, and is what the list is
-	// ordered by — see describe.
+	// ordered by - see describe.
 	Created int64
 }
 
@@ -56,7 +56,7 @@ type ChooseFunc func([]Identity) (kid string, err error)
 // Identities lists the interface records the device holds.
 //
 // It is what a window calls before it can offer anything, and it authenticates
-// nothing — the MAC covers one identity and its peers, so there is no signature
+// nothing - the MAC covers one identity and its peers, so there is no signature
 // over "the set of identities" to check. What it returns is the repository's
 // claim about what exists, which is exactly what a person is being asked to
 // choose from.
@@ -72,7 +72,7 @@ func Identities(ctx context.Context, c *hem.Client, tok TokenFunc) ([]Identity, 
 //
 // This is the privileged component's entry point: it is told which identity to
 // bring up and reads the tree itself rather than being handed one. Naming it by
-// KID rather than passing an Identity is deliberate — the name crosses a process
+// KID rather than passing an Identity is deliberate - the name crosses a process
 // boundary, and a KID is the only part of an Identity that means anything on the
 // other side of one.
 func LoadIdentity(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID string) (*Tree, error) {
@@ -83,8 +83,8 @@ func LoadIdentity(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID strin
 // keys, which spares a `keymgmt:get` token and one device call per peer.
 //
 // The saving is not why it is safe. Identifiers and records are still read from
-// the device, freshly — the MAC authenticates a tree without saying which
-// version is current, so an old one replayed would verify — and every supplied
+// the device, freshly - the MAC authenticates a tree without saying which
+// version is current, so an old one replayed would verify - and every supplied
 // key is checked against the identifier it claims. `KID = SHA-1(pubkey)[0:16]`,
 // so offering the wrong key for an identifier the caller did not choose is a
 // second-preimage attack, not a substitution.
@@ -114,7 +114,7 @@ func loadNamed(ctx context.Context, c *hem.Client, tok TokenFunc, ifKID string, 
 // something: the identity somebody has had longest is the one they will
 // recognise, and a list ordered by when things happened reads like a history
 // rather than like a hash. Sorting by label would have been stable and arbitrary
-// — two runs against an unchanged device would agree, and the agreement would say
+// - two runs against an unchanged device would agree, and the agreement would say
 // nothing.
 //
 // The identifier breaks ties, because provisioning a batch by script can stamp
@@ -146,7 +146,7 @@ func describe(entries []hem.KeyEntry) []Identity {
 func pick(entries []hem.KeyEntry, choose ChooseFunc) (hem.KeyEntry, error) {
 	switch len(entries) {
 	case 0:
-		return hem.KeyEntry{}, fmt.Errorf("no %s record in the device — run `wg-hem provision` first",
+		return hem.KeyEntry{}, fmt.Errorf("no %s record in the device - run `wg-hem provision` first",
 			descr.MagicInterface)
 	case 1:
 		return entries[0], nil

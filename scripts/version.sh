@@ -4,8 +4,8 @@
 # It exists as its own file because two builds need the same answer and they are
 # not the same build: the command-line client is cross-compiled from one machine
 # by build.sh, the window needs cgo and is built per platform in CI. When the two
-# disagree they refuse to drive each other — deliberately, since a mismatched
-# pair fails later and worse — so "the same answer" has to mean one definition
+# disagree they refuse to drive each other - deliberately, since a mismatched
+# pair fails later and worse - so "the same answer" has to mean one definition
 # rather than two that were equal when they were written.
 #
 # Run from the repository root.

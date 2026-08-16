@@ -42,7 +42,7 @@ func TestHumanErrorHidesTheJargon(t *testing.T) {
 	// module holding no configuration is the case that matters: it is not a
 	// hiccup, and "check it and try again" would be the wrong advice.
 	ours := session.Fail(session.KindIntegrity,
-		"this module holds no configuration — provision it first")
+		"this module holds no configuration - provision it first")
 	if got := humanError(ours); got != ours.Error() {
 		t.Errorf("our own wording was replaced:\n got  %s\n want %s", got, ours.Error())
 	}

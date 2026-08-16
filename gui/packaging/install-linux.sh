@@ -31,10 +31,10 @@ sed "s|^Exec=.*|Exec=$PREFIX/bin/encedo-wg-gui|" \
 	"$here/encedo-wg.desktop" > "$PREFIX/share/applications/encedo-wg.desktop"
 chmod 644 "$PREFIX/share/applications/encedo-wg.desktop"
 
-# Both caches are advisory — the desktop rebuilds them itself eventually, and
-# neither exists on every system — so a failure here is not a failed install.
+# Both caches are advisory - the desktop rebuilds them itself eventually, and
+# neither exists on every system - so a failure here is not a failed install.
 update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
 gtk-update-icon-cache -f -t "$PREFIX/share/icons/hicolor" 2>/dev/null || true
 
 echo "Installed to $PREFIX. It should appear in the applications list as encedo-wg."
-echo "If the icon is still a placeholder, log out and back in — the dash caches by WM_CLASS."
+echo "If the icon is still a placeholder, log out and back in - the dash caches by WM_CLASS."

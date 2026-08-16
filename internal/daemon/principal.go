@@ -6,7 +6,7 @@ package daemon
 // It used to be a uid, which is what Linux answers and what the rules here are
 // written in terms of: a tunnel belongs to whoever started it, and only they may
 // stop or renew it. Windows answers a SID, which is not a number and not
-// comparable to one, and the rules do not care — they only ever ask whether two
+// comparable to one, and the rules do not care - they only ever ask whether two
 // answers are the same.
 //
 // So it is an opaque string with a prefix naming what produced it. The prefix is

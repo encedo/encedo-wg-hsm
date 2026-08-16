@@ -103,7 +103,7 @@ HEM_KID = `+validKID+`
 }
 
 // The whole point of the client is that no key material sits in the file, so a
-// PrivateKey is not ignored — it is refused.
+// PrivateKey is not ignored - it is refused.
 func TestParseConfigRefusesAPrivateKey(t *testing.T) {
 	_, err := ParseConfig(writeConfig(t, `
 [Interface]

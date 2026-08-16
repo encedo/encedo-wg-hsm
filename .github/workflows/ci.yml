@@ -36,7 +36,7 @@ jobs:
         with:
           # hem-sdk-go is a submodule and go.mod resolves the SDK to it, so a
           # shallow checkout without it does not build. If the SDK repository is
-          # private, GITHUB_TOKEN cannot read it — add a SUBMODULE_TOKEN secret
+          # private, GITHUB_TOKEN cannot read it - add a SUBMODULE_TOKEN secret
           # holding a PAT with read access to encedo/hem-sdk-go.
           submodules: recursive
           token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
@@ -49,7 +49,7 @@ jobs:
 
       # This clones upstream wireguard-go and overlays our four files onto it.
       # go.mod points golang.zx2c4.com/wireguard at that directory, so nothing
-      # compiles before it has run — not the tests, not even `go vet`.
+      # compiles before it has run - not the tests, not even `go vet`.
       - name: Build
         env:
           WG_HEM_DESCR: ${{ matrix.descr }}
@@ -64,23 +64,39 @@ jobs:
           WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./package-windows.sh
 
-      # PowerShell 5.1 reads a .ps1 without a byte-order mark as ANSI, not UTF-8.
+      # Everything this repository builds or runs is plain ASCII, and it is
+      # checked rather than intended.
+      #
+      # PowerShell 5.1 reads a .ps1 with no byte-order mark as ANSI, not UTF-8.
       # An em dash then arrives as three CP-1252 characters, the last of which is
       # a right double quotation mark, and inside a double-quoted string that
-      # closes the string. install.ps1 shipped that way once: it parsed as far as
-      # the first dash and then produced four errors, none of which mentioned
-      # encoding.
+      # closes the string. install.ps1 shipped that way: it parsed as far as the
+      # first dash and produced four errors, none of which mentioned encoding.
       #
-      # A BOM would also fix it and is the conventional answer. This is the
-      # sturdier one: a BOM can be stripped by an editor, a merge or a tool that
-      # means well, and nothing would say so until somebody ran the installer.
-      - name: PowerShell must be plain ASCII
+      # Go is UTF-8 by definition so its comments were never at risk, but its
+      # string literals reach a Windows console, and a console on a Polish
+      # install is not UTF-8 either. The same dash that broke the installer was
+      # printing as garbage in wg-hem's own output.
+      #
+      # So the rule is the whole tree rather than the file type that failed:
+      # simple enough to remember, and checkable in one line. A byte-order mark
+      # would have fixed only the first half, and can be stripped by an editor or
+      # a merge without anything saying so.
+      #
+      # hem-sdk-go is excluded because it is a submodule with its own repository
+      # and its own checks; what it prints has been made ASCII there.
+      - name: Everything must be plain ASCII
         run: |
-          bad="$(LC_ALL=C grep -rln '[^ -~\t]' --include='*.ps1' . || true)"
+          bad="$(LC_ALL=C grep -rln '[^ -~\t]' \
+                   --include='*.go' --include='*.sh' --include='*.ps1' \
+                   --include='*.yml' --include='*.yaml' \
+                   --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go . || true)"
           if [ -n "$bad" ]; then
-            echo "These scripts contain characters PowerShell 5.1 will misread:"
-            echo "$bad"
-            LC_ALL=C grep -rn '[^ -~\t]' --include='*.ps1' .
+            echo "These files contain characters that do not survive a Windows console:"
+            LC_ALL=C grep -rn '[^ -~\t]' \
+              --include='*.go' --include='*.sh' --include='*.ps1' \
+              --include='*.yml' --include='*.yaml' \
+              --exclude-dir=hem-sdk-go --exclude-dir=wireguard-go .
             exit 1
           fi
 

@@ -42,7 +42,7 @@ func Down(_ string) error {
 
 func AddRoutes(ifname string, routes []netip.Prefix) error {
 	for _, r := range routes {
-		// Ignore errors — the route may already exist.
+		// Ignore errors - the route may already exist.
 		_ = run("netsh", "interface", ipFamily(r.Addr().Is6()), "add", "route",
 			r.Masked().String(), ifname)
 	}
@@ -144,7 +144,7 @@ func UAPIListen(ifname string) (net.Listener, error) {
 	return ipc.UAPIListen(ifname)
 }
 
-// UAPIDial opens a connection to a running interface's UAPI pipe — the same one
+// UAPIDial opens a connection to a running interface's UAPI pipe - the same one
 // `wg` talks to. It fails when nothing is listening, which is the answer to "is
 // this interface up".
 func UAPIDial(ifname string) (net.Conn, error) {

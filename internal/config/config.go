@@ -1,5 +1,5 @@
 // Package config loads a config-free client's whole configuration out of a HEM
-// and authenticates it. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md §6.2.
+// and authenticates it. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md section 6.2.
 //
 // Nothing here trusts the device's key repository on its own. The repository
 // says which records exist; the MAC says which ones were provisioned together.
@@ -19,7 +19,7 @@ import (
 )
 
 // PSKContextPrefix domain-separates the key that wraps a pre-shared key from any
-// other wrap use of the same interface key (§5).
+// other wrap use of the same interface key (section 5).
 const PSKContextPrefix = "ENC-WG-PSK-v2|"
 
 // PSKContext returns the HKDF context for one peer's wrapped pre-shared key.
@@ -73,10 +73,10 @@ type Tree struct {
 
 // Load finds the configuration in the device, resolves it, and verifies its MAC.
 // It returns an error rather than a partial result if anything does not add up:
-// there is no degraded mode to fall back to (§8.3).
+// there is no degraded mode to fall back to (section 8.3).
 //
 // choose is consulted only when the device holds more than one identity, and may
-// be nil where there is nobody to ask — see ChooseFunc.
+// be nil where there is nobody to ask - see ChooseFunc.
 func Load(ctx context.Context, c *hem.Client, tok TokenFunc, choose ChooseFunc) (*Tree, error) {
 	ifEntries, err := search(ctx, c, tok, descr.MagicInterface)
 	if err != nil {
@@ -108,7 +108,7 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 	}
 
 	// Search returns identifiers and records, never key material, so the public
-	// keys come from somewhere else — see keys.go for the two somewheres and why
+	// keys come from somewhere else - see keys.go for the two somewheres and why
 	// one of them costs nothing.
 	if t.IfPubKey, err = resolve(ctx, ring, t.IfKID); err != nil {
 		return nil, fmt.Errorf("the interface public key: %w", err)
@@ -121,7 +121,7 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 
 	// A reference is the start of the peer's KID, and search returns the KID of
 	// every record, so the candidates are matched without reading a single key.
-	// Only the peers this interface actually references are then read — a
+	// Only the peers this interface actually references are then read - a
 	// repository holding records for several identities costs nothing here.
 	byRef := make(map[descr.PeerRef]hem.KeyEntry, len(peerEntries))
 	for _, e := range peerEntries {

@@ -16,7 +16,7 @@ import (
 
 // TestRenderStates draws each state to a PNG through Fyne's test driver, which
 // rasterises a canvas with no display attached. It is here so the interface can
-// be looked at while it is being designed, rather than only run — the states
+// be looked at while it is being designed, rather than only run - the states
 // that matter are awkward to reach by hand, and comparing them side by side is
 // the only way to see whether the hierarchy holds across all of them.
 //
@@ -30,7 +30,7 @@ var scales = []float32{1, 1.5, 2}
 
 // shotTheme picks the scheme to render in. The test driver has one variant and
 // it is not a choice anybody makes, so without this only half the palette is
-// ever looked at — and the half that goes unseen is the one somebody eventually
+// ever looked at - and the half that goes unseen is the one somebody eventually
 // runs into by accident:
 //
 //	WG_GUI_SHOTS=/tmp/shots WG_GUI_THEME=light go test -run TestRenderStates
@@ -44,7 +44,7 @@ func shotTheme(t *testing.T) encedoTheme {
 }
 
 // shotDir is where images go, or "" to skip. Creating the directory belongs
-// here rather than in one of the three tests that write into it — it was in one,
+// here rather than in one of the three tests that write into it - it was in one,
 // and the other two failed on a path nobody had made yet.
 func shotDir(t *testing.T) string {
 	t.Helper()
@@ -97,11 +97,11 @@ func TestRenderStates(t *testing.T) {
 			ExpiresAt:     now.Add(6*time.Hour + 5*time.Minute),
 			LastHandshake: now,
 			Rx:            5_1290, Tx: 33_400,
-			Notice: `Moved to "backup site" — "head office" stopped answering`,
+			Notice: `Moved to "backup site" - "head office" stopped answering`,
 		}, false},
 		{"6-expired", Event{
 			State:  Ready,
-			Notice: "the session has expired — connect again to continue",
+			Notice: "the session has expired - connect again to continue",
 		}, false},
 		{"8-expiring", Event{
 			State: Connected, Peer: "head office", Addrs: []string{"10.99.0.7/32"},
@@ -139,7 +139,7 @@ func TestRenderStates(t *testing.T) {
 
 			// Render at each scale a real display might ask for. Nothing here
 			// is in pixels, so this should change the size of the image and
-			// nothing else — if a layout breaks at 2x, it breaks because
+			// nothing else - if a layout breaks at 2x, it breaks because
 			// something was measured in the wrong units.
 			for _, scale := range scales {
 				if c, ok := u.win.Canvas().(test.WindowlessCanvas); ok {
@@ -174,7 +174,7 @@ func TestRenderIcon(t *testing.T) {
 		img.FillMode = canvas.ImageFillContain
 		w := test.NewWindow(img)
 		// Without this the window pads the image, and at 16 px the padding is
-		// most of the icon — measuring the padding rather than the mark.
+		// most of the icon - measuring the padding rather than the mark.
 		w.SetPadded(false)
 		w.Resize(fyne.NewSize(px, px))
 		writeShot(t, dir, fmt.Sprintf("icon-%gpx", px), 1, w.Canvas().Capture())

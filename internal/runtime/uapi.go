@@ -10,7 +10,7 @@ import (
 )
 
 // DeviceStatus is what a running interface reports about itself over the UAPI
-// socket — the same source `wg show` reads, and the only one that knows whether
+// socket - the same source `wg show` reads, and the only one that knows whether
 // a handshake has actually happened.
 type DeviceStatus struct {
 	ListenPort uint16

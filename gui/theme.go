@@ -30,7 +30,7 @@ type encedoTheme struct {
 //
 // Two things make the desktop's answer wrong. The one that prompted this: an
 // appearance setting belongs to the account a process runs as, so the window run
-// under sudo — which it must be until the privileged helper lands — asks root
+// under sudo - which it must be until the privileged helper lands - asks root
 // and is told light, on a desktop that is set to dark. It comes up as the one
 // pale window among dark ones, and there is nothing to say otherwise with. The
 // other is simply that some people want one scheme regardless, which is a
@@ -161,14 +161,14 @@ func (t encedoTheme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.
 
 // Font falls through to the default for now. Fyne can embed a face through
 // go:embed and return it here, which would carry the page's typography across
-// every platform exactly — better than the page manages, since it has to name
+// every platform exactly - better than the page manages, since it has to name
 // system stacks and hope. That waits on choosing and licensing a face; the
 // palette is what makes the two look related, and it does not.
 func (encedoTheme) Font(s fyne.TextStyle) fyne.Resource { return theme.DefaultTheme().Font(s) }
 
 func (encedoTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
 
-// uiScale multiplies every metric uniformly, and is 1 — the interface is as
+// uiScale multiplies every metric uniformly, and is 1 - the interface is as
 // dense as the toolkit intends, and the desktop alone decides how large that is.
 //
 // It was 1.5 for a while, to answer a window that read as too small. That was
@@ -176,7 +176,7 @@ func (encedoTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.Defau
 // multiplying on top of it makes the window bigger than everything beside it on
 // a display that is scaled correctly, which is what happened on two machines.
 // The number stays because the window sizes are expressed in it, so density and
-// the window that holds it cannot drift apart again — but changing it is second
+// the window that holds it cannot drift apart again - but changing it is second
 // -guessing the desktop, and the desktop is usually right.
 const uiScale = 1
 

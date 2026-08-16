@@ -5,9 +5,9 @@ package main
 import "testing"
 
 // A monitor that does not report its size is the case this exists for. VMware's
-// virtual display says 0mm × 0mm, so the toolkit's calculation yields an
-// infinite DPI, falls back to its baseline, and concludes 1 — while the desktop
-// beside it is running at 2×.
+// virtual display says 0mm x 0mm, so the toolkit's calculation yields an
+// infinite DPI, falls back to its baseline, and concludes 1 - while the desktop
+// beside it is running at 2x.
 func TestAMonitorWithNoSizeDetectsAsUnscaled(t *testing.T) {
 	if got := fyneDetectedScale(0, 3420); got != 1 {
 		t.Errorf("detected %v for a monitor reporting no size, want 1", got)
@@ -15,7 +15,7 @@ func TestAMonitorWithNoSizeDetectsAsUnscaled(t *testing.T) {
 }
 
 // A real monitor reports millimetres over EDID, the toolkit's own calculation
-// works, and the correction has to come out as nothing — this must never
+// works, and the correction has to come out as nothing - this must never
 // double-apply on the machines that were never wrong.
 func TestARealMonitorNeedsNoCorrection(t *testing.T) {
 	// A 27-inch 4K panel: 597 mm wide, 3840 px. 163 DPI against a baseline of

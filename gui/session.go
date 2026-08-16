@@ -44,7 +44,7 @@ type Event struct {
 
 	// Addrs is what the tunnel's interface was given, in CIDR form. Usually one;
 	// the window shows the first and says how many more there are, because the
-	// question this answers — "what is my address on the VPN" — has one answer
+	// question this answers - "what is my address on the VPN" - has one answer
 	// in every configuration anybody has written so far.
 	Addrs []string
 
@@ -74,7 +74,7 @@ type Event struct {
 	// where somebody is already looking for a reason.
 	Reach string
 
-	// Notice carries something worth telling the user that is not an error —
+	// Notice carries something worth telling the user that is not an error -
 	// failover moving to another peer, most of all.
 	Notice string
 	Err    error

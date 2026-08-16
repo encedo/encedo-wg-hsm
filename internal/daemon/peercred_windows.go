@@ -24,8 +24,8 @@ import (
 // was issued to, and nothing the client sends is involved.
 //
 // The counterpart on Linux is SO_PEERCRED, and both are the same idea: the
-// pipe's security descriptor decides who may connect at all — that is the
-// primary control, set when the pipe is created — and this answers the question
+// pipe's security descriptor decides who may connect at all - that is the
+// primary control, set when the pipe is created - and this answers the question
 // that remains once somebody has, which is which account, so that a tunnel can
 // belong to the person who started it.
 func peerPrincipal(c net.Conn) (Principal, error) {
@@ -40,7 +40,7 @@ func peerPrincipal(c net.Conn) (Principal, error) {
 	// Impersonation is a property of the OS thread, not of the goroutine, so the
 	// goroutine has to stay on one for as long as it lasts. Without this the
 	// runtime may move it after the impersonation and before the token is read,
-	// and the token read would be of whatever thread it landed on — which is the
+	// and the token read would be of whatever thread it landed on - which is the
 	// service's own, LocalSystem, and would answer every caller with the same
 	// wrong and highly privileged identity.
 	runtime.LockOSThread()
@@ -52,7 +52,7 @@ func peerPrincipal(c net.Conn) (Principal, error) {
 	// Deferred, and its failure is not survivable: a thread left impersonating
 	// would hand the next caller the identity of this one. Unlocking the thread
 	// while it still wears somebody else's token is what makes that possible, so
-	// the panic is deliberate — the alternative is a silent authorisation bug.
+	// the panic is deliberate - the alternative is a silent authorisation bug.
 	defer func() {
 		if err := windows.RevertToSelf(); err != nil {
 			panic("wg-hem: could not stop impersonating a caller: " + err.Error())
@@ -76,8 +76,8 @@ func peerPrincipal(c net.Conn) (Principal, error) {
 	sid := user.User.Sid.String()
 
 	// A client chooses the impersonation level when it opens the pipe, and one
-	// that opens it anonymously — which is the default in every convenience
-	// wrapper worth naming, including go-winio's DialPipeContext — gets this
+	// that opens it anonymously - which is the default in every convenience
+	// wrapper worth naming, including go-winio's DialPipeContext - gets this
 	// answer for everybody. Accepting it would give every such caller the same
 	// principal, so any of them could stop any other's tunnel, and both ends
 	// would look correct throughout.
@@ -86,7 +86,7 @@ func peerPrincipal(c net.Conn) (Principal, error) {
 	// either mistaken or curious, and both are told rather than accommodated.
 	if sid == anonymousLogonSID {
 		return Anonymous, fmt.Errorf(
-			"the caller connected anonymously, so it cannot be identified — " +
+			"the caller connected anonymously, so it cannot be identified - " +
 				"open the pipe at SECURITY_IDENTIFICATION or above")
 	}
 	return Principal("sid:" + sid), nil

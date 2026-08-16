@@ -12,7 +12,7 @@ import (
 
 // defaultControl is the pipe the service listens on. It has to agree with
 // defaultSocket in cmd/wg-hem/control_windows.go, and the two are apart because
-// the window may not import anything the privileged half does — see
+// the window may not import anything the privileged half does - see
 // deps_test.go, which is the rule and the reason.
 const defaultControl = `\\.\pipe\encedo-wg`
 
@@ -26,12 +26,12 @@ var controlFlagUsage = fmt.Sprintf(
 // go-winio rather than the namedpipe package the component uses: that one comes
 // from wireguard-go, and the window is forbidden to depend on wireguard-go by a
 // test that exists to keep a tunnel implementation out of the unprivileged half.
-// The two are the same code — upstream's namedpipe is derived from this library
-// — so the rule costs a module and no behaviour.
+// The two are the same code - upstream's namedpipe is derived from this library
+// - so the rule costs a module and no behaviour.
 //
 // The impersonation level is the part that has to be spelled out, and getting it
 // wrong is silent. winio's DialPipe, DialPipeContext and DialPipeAccess all
-// connect at PipeImpLevelAnonymous — its own documented default — and a pipe
+// connect at PipeImpLevelAnonymous - its own documented default - and a pipe
 // opened that way gives the server an anonymous token when it impersonates. The
 // component would then read S-1-5-7, ANONYMOUS LOGON, for every caller: one
 // principal shared by everybody, so anybody could stop anybody's tunnel, and

@@ -9,7 +9,7 @@
 # with two halves from different commits.
 #
 #	WG_HEM_DESCR=64 bash build.sh
-#	(cd gui && go build -tags descr64 -ldflags "-X …version.Version=$(sh scripts/version.sh)" -o ../dist-gui/encedo-wg-gui-linux-arm64-descr64 .)
+#	(cd gui && go build -tags descr64 -ldflags "-X ...version.Version=$(sh scripts/version.sh)" -o ../dist-gui/encedo-wg-gui-linux-arm64-descr64 .)
 #	sh packaging/linux/build-deb.sh arm64 -descr64
 set -eu
 
@@ -24,12 +24,12 @@ DEBVER="$(printf '%s' "$VERSION" | tr '+' '~')"
 CLI="dist/wg-hem-linux-${ARCH}${VARIANT}"
 GUI="dist-gui/encedo-wg-gui-linux-${ARCH}${VARIANT}"
 for f in "$CLI" "$GUI"; do
-	[ -f "$ROOT/$f" ] || { echo "missing $f — see the comment at the top" >&2; exit 1; }
+	[ -f "$ROOT/$f" ] || { echo "missing $f - see the comment at the top" >&2; exit 1; }
 done
 
 # The two halves refuse to drive each other unless their stamps match, so a
 # package containing a mismatched pair is a package that cannot work. Better to
-# find that here than after somebody installs it — and both halves are checked,
+# find that here than after somebody installs it - and both halves are checked,
 # because a stale window is exactly the mismatch this is guarding against.
 stale() {
 	cat >&2 <<MSG
@@ -120,7 +120,7 @@ systemd-tmpfiles --create /usr/lib/tmpfiles.d/wireguard.conf >/dev/null 2>&1 || 
 # know that. It lives in the file's extended attributes, so every install drops
 # it and every install has to put it back.
 #
-# The service does not depend on this — it has the capability from its unit —
+# The service does not depend on this - it has the capability from its unit -
 # but a file carrying any capability clears the ambient set on exec, so this
 # grant is what the service ends up using too. One source rather than two that
 # could disagree.
@@ -140,7 +140,7 @@ fi
 
 # Not enabled at boot. The service exists so that opening the window does not
 # require being an administrator, not so that a tunnel exists without anybody
-# opening anything — and a socket-activated service would still be the right
+# opening anything - and a socket-activated service would still be the right
 # shape later.
 systemctl daemon-reload >/dev/null 2>&1 || true
 
@@ -155,8 +155,8 @@ encedo-wg is installed and the service is running.
   group        ${target_user:-nobody} added to "wireguard"
   service      enabled and started
 
-Group membership is fixed when a session begins, so log out and back in — or
-reboot — before opening the window. Until then it cannot reach the service, and
+Group membership is fixed when a session begins, so log out and back in - or
+reboot - before opening the window. Until then it cannot reach the service, and
 says so as a permission error rather than as anything about groups.
 
 MSG

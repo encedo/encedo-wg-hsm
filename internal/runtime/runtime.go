@@ -16,11 +16,11 @@ import (
 
 // Peer is what this package needs to know about one peer: where its transport
 // lives, and what the interface will claim on its behalf. It is deliberately
-// smaller than either client's notion of a peer — no keys, no labels, nothing
+// smaller than either client's notion of a peer - no keys, no labels, nothing
 // that would tie the routing decision to where the configuration came from.
 type Peer struct {
 	// Endpoint is host:port as configured. It may be a name; resolving it is
-	// this package's job, and the timing of that matters — see PlanRouting.
+	// this package's job, and the timing of that matters - see PlanRouting.
 	Endpoint string
 
 	// AllowedIPs are the prefixes the interface will route.
@@ -37,7 +37,7 @@ func run(args ...string) error {
 	return cmd.Run()
 }
 
-// hostPrefix is the single-address prefix for addr — /32 or /128, whichever
+// hostPrefix is the single-address prefix for addr - /32 or /128, whichever
 // family it belongs to.
 func hostPrefix(addr netip.Addr) netip.Prefix {
 	return netip.PrefixFrom(addr, addr.BitLen())

@@ -10,9 +10,9 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/tunnel"
 )
 
-// repromptPeer asks which peer to try next after one stopped answering (§6.4).
-// The failed peer stays on the list — an endpoint can come back, and the
-// operator may know something this process does not — but it is marked, and the
+// repromptPeer asks which peer to try next after one stopped answering (section 6.4).
+// The failed peer stays on the list - an endpoint can come back, and the
+// operator may know something this process does not - but it is marked, and the
 // suggestion moves on to the next one in the stored order.
 func repromptPeer(tree *config.Tree, failed *config.Peer) (*config.Peer, error) {
 	suggestion := 1

@@ -12,7 +12,7 @@ import (
 // One window per machine, because one window is one tunnel.
 //
 // A second copy is not a cosmetic duplicate. Each holds its own token and
-// configures the same interface, and the last one to do so wins — so the window
+// configures the same interface, and the last one to do so wins - so the window
 // somebody is looking at can be reporting a session that no longer owns
 // anything, with a countdown for a token that is not the one keeping the tunnel
 // alive. Closing that window then takes down a tunnel it did not create. The
@@ -24,7 +24,7 @@ import (
 const instanceFile = "instance.port"
 
 // pokeTimeout bounds the wait for the other window to answer. It is a loopback
-// connection to a process on the same machine — if that has not connected in
+// connection to a process on the same machine - if that has not connected in
 // this long, there is nothing there and the file is left over from a crash.
 const pokeTimeout = 300 * time.Millisecond
 

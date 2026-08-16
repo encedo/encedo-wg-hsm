@@ -9,7 +9,7 @@ import (
 
 // TestThemeOverride checks the one thing that could regress silently: a forced
 // scheme has to win over what the toolkit reports, in both directions. If it
-// stops winning, the window still draws — in the wrong colours, on the platform
+// stops winning, the window still draws - in the wrong colours, on the platform
 // where nobody is looking, which is exactly how this was noticed in the first
 // place.
 func TestThemeOverride(t *testing.T) {

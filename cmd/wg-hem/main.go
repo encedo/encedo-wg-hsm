@@ -1,7 +1,7 @@
 // Command wg-hem provisions and runs a WireGuard client that keeps no
-// configuration file and no key material on the host. Everything — the identity
+// configuration file and no key material on the host. Everything - the identity
 // key, the peer keys, the addresses, routes and DNS, and the MAC that
-// authenticates all of it — lives inside an Encedo HEM.
+// authenticates all of it - lives inside an Encedo HEM.
 //
 // See docs/ENCEDO-WG-CONFIGFREE-SPEC.md.
 package main
@@ -16,7 +16,7 @@ import (
 )
 
 // Exit codes are distinct so a script can tell a wrong password from an
-// unreachable device from a configuration that failed authentication (§10.4).
+// unreachable device from a configuration that failed authentication (section 10.4).
 const (
 	exitOK       = 0
 	exitUsage    = 1
@@ -35,7 +35,7 @@ const pubKeyLen = 32
 // A name rather than the address it stands for, because the connection is TLS
 // and certificates are issued for names. Pointing the default at the literal
 // address would mean every first run began with a verification failure and the
-// advice to work around it — which is the wrong first thing to teach about a
+// advice to work around it - which is the wrong first thing to teach about a
 // product whose argument is that the key never leaves the module.
 const defaultHEM = "https://my.ence.do"
 
@@ -88,7 +88,7 @@ func main() {
 		usage()
 		os.Exit(exitOK)
 	default:
-		// Platforms add verbs of their own — Windows has a service to register
+		// Platforms add verbs of their own - Windows has a service to register
 		// with, and Linux has a package that does the equivalent at install
 		// time. An unknown command is only unknown once the platform has been
 		// asked as well.
@@ -112,7 +112,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `wg-hem %s — WireGuard with no config file and no keys on disk
+	fmt.Fprintf(os.Stderr, `wg-hem %s - WireGuard with no config file and no keys on disk
 
 Usage:`, version.Version)
 	fmt.Fprint(os.Stderr, `

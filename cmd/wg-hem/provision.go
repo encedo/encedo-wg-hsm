@@ -58,7 +58,7 @@ Writes a complete WireGuard configuration into the HEM: an identity key, one
 imported key per peer, the addressing and routing in their descr fields, and a
 MAC over the whole tree. Nothing is written to disk.
 
-On success stdout carries the interface public key in base64 — hand it to
+On success stdout carries the interface public key in base64 - hand it to
 whoever runs the other end. With -psk generate, a second line "psk=<base64>"
 follows it; that value is shown once and is not recoverable afterwards.
 
@@ -168,7 +168,7 @@ Flags:
 	// A key this run created, which no record yet names, is litter only this run
 	// can identify: `wipe` searches by the WG: prefix and a bare key carries
 	// none. So it goes back out the way it came in. The condition is narrow on
-	// purpose — an adopted key belongs to the caller, and once the interface
+	// purpose - an adopted key belongs to the caller, and once the interface
 	// record is written the tree may be a working configuration, so a failure
 	// after that point is not licence to delete anything.
 	defer func() {
@@ -247,7 +247,7 @@ Flags:
 	var peerRecords []mac.PeerRecord
 	for _, p := range peers {
 		// The pre-shared key is wrapped once per peer, under a key that exists
-		// only inside the device — the interface key's ECDH against itself,
+		// only inside the device - the interface key's ECDH against itself,
 		// bound to this peer. Wrapping under ECDH(interface, peer) would instead
 		// hand the key-encryption key to whoever holds the peer's private key.
 		wrapped, err := wrapPSK(ctx, client, useTok, ifKID, descr.KID(p.PubKey), pskBytes)
@@ -314,7 +314,7 @@ Flags:
 		return classify(err, exitDevice, "writing the interface record")
 	}
 	// From here the key is named by a record, so a later failure leaves
-	// something `wipe` can find — and something that may already be a working
+	// something `wipe` can find - and something that may already be a working
 	// configuration. Either way it is no longer this run's to remove.
 	recordWritten = true
 
@@ -330,7 +330,7 @@ Flags:
 	fmt.Println(base64.StdEncoding.EncodeToString(ifPub[:]))
 	if *psk == "generate" {
 		fmt.Printf("psk=%s\n", base64.StdEncoding.EncodeToString(pskBytes))
-		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once — the stored copy is wrapped and cannot be read back.")
+		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once - the stored copy is wrapped and cannot be read back.")
 	}
 	return nil
 }
@@ -348,7 +348,7 @@ func deleteKey(ctx context.Context, client *hem.Client, auth *session.Auth, kid 
 
 // readPSK resolves the -psk flag. A pre-shared key is a secret, so it is never
 // taken from a command-line argument, where it would sit in the process list
-// and the shell history (§10.4).
+// and the shell history (section 10.4).
 func readPSK(mode string) ([]byte, error) {
 	switch mode {
 	case "":

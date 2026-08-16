@@ -32,11 +32,11 @@ var (
 	takeDownInterface = rt.Down
 )
 
-// cmdDown stops a running interface (§10.2).
+// cmdDown stops a running interface (section 10.2).
 //
 // The work is asked of the process that did it rather than done here. That
-// process holds what has to be undone — the host routes pinned around the
-// tunnel, the DNS the resolver was pointed at — and none of it is written down
+// process holds what has to be undone - the host routes pinned around the
+// tunnel, the DNS the resolver was pointed at - and none of it is written down
 // anywhere this command could rediscover it. Removing the interface from
 // underneath it would take the tunnel down and leave both behind.
 func cmdDown(args []string) error {
@@ -72,7 +72,7 @@ func cmdDown(args []string) error {
 
 	// Either there is no owning process or it will not go. The interface is
 	// still ours to remove, and saying so is better than reporting success over
-	// a live tunnel — but whatever that process would have undone stays undone,
+	// a live tunnel - but whatever that process would have undone stays undone,
 	// routing exceptions and DNS included.
 	err = takeDownInterface(name)
 	removeState(name)

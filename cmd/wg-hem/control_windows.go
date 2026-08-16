@@ -24,7 +24,7 @@ const (
 //
 // A pipe rather than a path: named pipes live in their own namespace and not on
 // a disk, so nothing here is under %ProgramData% alongside the state file. It is
-// also why there is no leftover to clean up before listening — a pipe with no
+// also why there is no leftover to clean up before listening - a pipe with no
 // server ceases to exist, which is the failure mode the Unix side needs a whole
 // paragraph about.
 func defaultSocket() string { return `\\.\pipe\encedo-wg` }
@@ -40,7 +40,7 @@ func defaultSocket() string { return `\\.\pipe\encedo-wg` }
 // privilege: every verb that does anything carries a token the caller obtained
 // by authenticating to the device, and the component mints nothing of its own.
 // What connecting does grant is the ability to *ask*, and the answers to the two
-// questions that matter — whose tunnel is this, who may stop it — come from
+// questions that matter - whose tunnel is this, who may stop it - come from
 // impersonating the caller rather than from the fact they got this far.
 //
 // The mandatory label (S:) is the part that is easy to leave off and worth
@@ -66,7 +66,7 @@ func listenOn(path, sddl string) (net.Listener, error) {
 	ln, err := (&namedpipe.ListenConfig{SecurityDescriptor: sd}).Listen(path)
 	if err != nil {
 		// A pipe name already in use fails here, which is the equivalent of the
-		// Unix side's refusal to take over a live socket — and needs no leftover
+		// Unix side's refusal to take over a live socket - and needs no leftover
 		// check, because a pipe nobody is serving does not exist.
 		return nil, failf(exitDevice, "listening on %s: %w", path, err)
 	}
@@ -82,7 +82,7 @@ func listenOn(path, sddl string) (net.Listener, error) {
 // SECURITY_SQOS_PRESENT|SECURITY_ANONYMOUS and DialConfig exposes only
 // ExpectedOwner, so every connection made through it is anonymous and there is
 // no argument that changes it. The component would identify such a caller as
-// S-1-5-7 and refuse it — correctly, and confusingly, since the caller would be
+// S-1-5-7 and refuse it - correctly, and confusingly, since the caller would be
 // this program.
 //
 // Fine for what upstream uses it for: it dials the UAPI pipe, whose descriptor

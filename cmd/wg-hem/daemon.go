@@ -34,7 +34,7 @@ func cmdDaemon(args []string) error {
 	sock := fs.String("socket", defaultSocket(), controlFlagUsage)
 	group := fs.String("socket-group", "", controlAccessFlagUsage)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `wg-hem daemon — run tunnels on behalf of a graphical client
+		fmt.Fprint(os.Stderr, `wg-hem daemon - run tunnels on behalf of a graphical client
 
   wg-hem daemon [--socket PATH]
 
@@ -112,7 +112,7 @@ func openTunnel(ctx context.Context, req ipc.Request) (daemon.Tunnel, error) {
 		}
 		return "", session.Fail(session.KindAuth,
 			"no token for %s: this component is given one, scoped to the interface key, "+
-				"and reads records by anonymous search — the device needs allow_keysearch", scope)
+				"and reads records by anonymous search - the device needs allow_keysearch", scope)
 	}
 
 	tree, err := config.LoadIdentityWithKeys(ctx, client, tok, req.Identity, keys)
@@ -215,7 +215,7 @@ func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
 	emit(e)
 
 	// The window draws counters, a last handshake and a countdown, and none of
-	// them are things the tunnel announces — it says five sentences over a
+	// them are things the tunnel announces - it says five sentences over a
 	// session and is silent in between. So they are read from the interface on a
 	// timer, which is the same place `wg-hem status` reads them and the same
 	// place `wg show` would.
@@ -249,7 +249,7 @@ func (d *daemonTunnel) Run(ctx context.Context, emit func(ipc.Event)) error {
 }
 
 // addrStrings puts the addresses on the wire as text. netip.Prefix marshals to
-// JSON on its own, but as a bare string either way — going through the wire type
+// JSON on its own, but as a bare string either way - going through the wire type
 // as strings keeps the protocol readable to anything that is not this program.
 func addrStrings(addrs []netip.Prefix) []string {
 	if len(addrs) == 0 {
@@ -283,7 +283,7 @@ const reportEvery = time.Second
 //
 // The peer and the endpoint come from the configuration, which does not change
 // under a running tunnel unless failover moves it. The counters and the last
-// handshake come from the interface, and the expiry from the token — read from
+// handshake come from the interface, and the expiry from the token - read from
 // the token itself and never computed from the length anybody asked for, since a
 // device issues what it chooses.
 func (d *daemonTunnel) snapshot() ipc.Event {
@@ -304,7 +304,7 @@ func (d *daemonTunnel) snapshot() ipc.Event {
 	}
 
 	// A tunnel whose UAPI listener could not be opened carries traffic and
-	// cannot be asked about it — Windows without LocalSystem. Nothing to add,
+	// cannot be asked about it - Windows without LocalSystem. Nothing to add,
 	// and nothing worth complaining about once per second.
 	live, err := rt.Status(e.Interface)
 	if err != nil {

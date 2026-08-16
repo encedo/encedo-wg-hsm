@@ -48,8 +48,8 @@ func (d *deviceFlags) url() string {
 }
 
 // device is what these flags describe, in the terms internal/session works in.
-// The two things that used to make a session terminal-only — reading a passphrase
-// and printing progress — are supplied here, which is the whole reason the
+// The two things that used to make a session terminal-only - reading a passphrase
+// and printing progress - are supplied here, which is the whole reason the
 // session itself can now be driven by something that has neither.
 func (d *deviceFlags) device() session.Device {
 	return session.Device{
@@ -85,8 +85,8 @@ func (d *deviceFlags) load(ctx context.Context) (*hem.Client, *session.Auth, *co
 }
 
 // chooseIdentity settles which interface key to work on when the device holds
-// more than one. It is not called otherwise, so the single-identity device — the
-// only kind that exists today — never sees any of this.
+// more than one. It is not called otherwise, so the single-identity device - the
+// only kind that exists today - never sees any of this.
 func (d *deviceFlags) chooseIdentity(ids []config.Identity) (string, error) {
 	if want := strings.TrimSpace(*d.identity); want != "" {
 		return matchIdentity(ids, want)
@@ -118,7 +118,7 @@ func matchIdentity(ids []config.Identity, want string) (string, error) {
 	}
 }
 
-// promptForIdentity asks, and — unlike the peer prompt — offers no default.
+// promptForIdentity asks, and - unlike the peer prompt - offers no default.
 //
 // The list is ordered oldest first, which is a real order and not merely a
 // stable one. It is still not a preference: PEER_REF order is the failover

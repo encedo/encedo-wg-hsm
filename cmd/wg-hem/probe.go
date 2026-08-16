@@ -11,7 +11,7 @@ import (
 // cmdProbe asks a running component two questions and prints both answers.
 //
 // It exists because those two are the ones that fail quietly. A build mismatch
-// is caught at OpStart and named on both sides — but only after somebody has
+// is caught at OpStart and named on both sides - but only after somebody has
 // typed a passphrase, which is a long way to walk to be told the halves do not
 // match. And the caller's identity is the whole of the authorisation on this
 // channel, computed from the connection rather than from anything sent, so
@@ -26,7 +26,7 @@ func cmdProbe(args []string) error {
 	fs := flag.NewFlagSet("probe", flag.ContinueOnError)
 	sock := fs.String("socket", defaultSocket(), controlFlagUsage)
 	fs.Usage = func() {
-		fmt.Fprint(os.Stderr, `wg-hem probe — ask the privileged component who it thinks you are
+		fmt.Fprint(os.Stderr, `wg-hem probe - ask the privileged component who it thinks you are
 
   wg-hem probe [--socket PATH]
 
@@ -92,14 +92,14 @@ whose tunnel is whose, so it is worth seeing before trusting it.
 
 func buildOf(b *ipc.Build) string {
 	if b == nil {
-		return "—"
+		return "-"
 	}
 	return b.String()
 }
 
 func dashIf(s string) string {
 	if s == "" {
-		return "—"
+		return "-"
 	}
 	return s
 }

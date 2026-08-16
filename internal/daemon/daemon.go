@@ -3,14 +3,14 @@
 //
 // It knows nothing about netlink or wireguard-go. What it does with a start
 // request arrives as a function, which is what lets everything here be tested
-// over a real socket without a device, an interface or a capability — and what
+// over a real socket without a device, an interface or a capability - and what
 // keeps the accept loop, the access control and the session rule readable
 // alongside each other rather than buried in a file that also opens tunnels.
 //
 // One tunnel at a time, and it belongs to the connection that started it: when
 // that connection closes the tunnel comes down. See docs/ARCHITECTURE-GUI.md,
 // "Liveness: no window, no tunnel". The component could keep running without a
-// window — it does its own device calls — so this is a rule it enforces rather
+// window - it does its own device calls - so this is a rule it enforces rather
 // than a consequence of anything.
 package daemon
 
@@ -145,7 +145,7 @@ func (s *Server) handle(c net.Conn) {
 
 		case ipc.OpWhoami:
 			// Answered from `who`, which is the value every rule above is
-			// written in terms of — not recomputed for the occasion. A probe
+			// written in terms of - not recomputed for the occasion. A probe
 			// that asked the question a second way could agree with itself and
 			// disagree with the thing being probed.
 			_ = ipc.WriteMsg(c, ipc.Msg{Type: ipc.TypeReply,
@@ -157,7 +157,7 @@ func (s *Server) handle(c net.Conn) {
 func (s *Server) start(c net.Conn, who Principal, req ipc.Request) error {
 	if !s.Build.Matches(req.Build) {
 		// Named on both sides, because the usual mismatch is a record dialect
-		// and its natural symptom is a MAC failure — which reads as somebody
+		// and its natural symptom is a MAC failure - which reads as somebody
 		// having tampered with a configuration rather than as two builds that
 		// disagree.
 		return session.Fail(session.KindDevice,

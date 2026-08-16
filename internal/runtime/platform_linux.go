@@ -164,7 +164,7 @@ func SetDNS(ifname string, servers []string) error {
 		return nil
 	}
 	if _, err := exec.LookPath("resolvectl"); err != nil {
-		// resolvectl not available — best-effort, skip
+		// resolvectl not available - best-effort, skip
 		return nil
 	}
 	if err := run(append([]string{"resolvectl", "dns", ifname}, servers...)...); err != nil {
@@ -174,7 +174,7 @@ func SetDNS(ifname string, servers []string) error {
 }
 
 // RevertDNS gives the resolver back what it had. It is best-effort by
-// construction — it runs while the tunnel is being dismantled, where there is
+// construction - it runs while the tunnel is being dismantled, where there is
 // nothing useful left to do about a failure.
 //
 // Its output is captured rather than passed through, which is the difference
@@ -225,7 +225,7 @@ func ipNet(p netip.Prefix) *net.IPNet {
 	}
 }
 
-// UAPIDial opens a connection to a running interface's UAPI socket — the same
+// UAPIDial opens a connection to a running interface's UAPI socket - the same
 // one `wg` talks to. It fails when nothing is listening, which is the answer to
 // "is this interface up".
 func UAPIDial(ifname string) (net.Conn, error) {

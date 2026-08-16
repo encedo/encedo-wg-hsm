@@ -20,8 +20,8 @@ type state = session.State
 func statePath(ifname string) string { return session.Path(ifname) }
 
 // loadState maps the package's errors onto this command's exit codes. Nothing
-// running is a usage error — the caller asked about something that is not there
-// — while a file that exists and will not parse is the device's problem.
+// running is a usage error - the caller asked about something that is not there
+// - while a file that exists and will not parse is the device's problem.
 func loadState(ifname string) (*state, error) {
 	s, err := session.Load(ifname)
 	if err != nil {
@@ -45,7 +45,7 @@ func stateExit(err error) error {
 	case errors.Is(err, fs.ErrPermission):
 		// A bare "permission denied" sends people looking at the file, and the
 		// answer is never the file. What it is instead differs by platform, so
-		// the remedy is written where the platform is — see state_unix.go and
+		// the remedy is written where the platform is - see state_unix.go and
 		// state_windows.go. Getting this wrong is not cosmetic: this branch used
 		// to offer `sudo adduser` on Windows, where there is no sudo, no adduser
 		// and no such group.
@@ -55,7 +55,7 @@ func stateExit(err error) error {
 	case errors.Is(err, session.ErrAmbiguous):
 		// The package says what is wrong; naming the flag that settles it is
 		// this command's business, and no other caller's.
-		return failf(exitUsage, "%w — name one with --interface", err)
+		return failf(exitUsage, "%w - name one with --interface", err)
 	default:
 		return failf(exitDevice, "%w", err)
 	}

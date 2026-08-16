@@ -13,7 +13,7 @@ import (
 // asking, and who to ask when proving needs a person.
 //
 // It exists because reaching the device is the half of a session that a window
-// keeps. The privileged component authenticates nothing — it is handed a token —
+// keeps. The privileged component authenticates nothing - it is handed a token -
 // so everything here belongs to whoever faces the human, and the two things that
 // used to make it terminal-only are now supplied rather than assumed.
 type Device struct {
@@ -24,8 +24,8 @@ type Device struct {
 
 	// Insecure skips TLS verification, and stays because the command-line
 	// client has always had it: a person typing a flag about their own session
-	// is entitled to. It must never become something a request can ask for —
-	// see docs/ARCHITECTURE-GUI.md — because a message telling a privileged
+	// is entitled to. It must never become something a request can ask for -
+	// see docs/ARCHITECTURE-GUI.md - because a message telling a privileged
 	// process to stop checking certificates is not the same act at all.
 	Insecure bool
 
@@ -38,7 +38,7 @@ type Device struct {
 	// Mobile is set.
 	Passphrase func() ([]byte, error)
 
-	// Notify carries what is happening while somebody waits — reaching the
+	// Notify carries what is happening while somebody waits - reaching the
 	// device, and each prod at a phone that has not answered yet. A terminal
 	// prints it, a window puts it in a status line, and a daemon logs it.
 	Notify func(string)
@@ -81,7 +81,7 @@ func (d Device) Connect(ctx context.Context) (*hem.Client, *Auth, error) {
 // not currently verify would launder someone else's edit into an authentic one.
 //
 // choose settles which identity, and is consulted only when the device holds
-// more than one — see config.ChooseFunc.
+// more than one - see config.ChooseFunc.
 func (d Device) Load(ctx context.Context, choose config.ChooseFunc) (*hem.Client, *Auth, *config.Tree, error) {
 	client, auth, err := d.Connect(ctx)
 	if err != nil {

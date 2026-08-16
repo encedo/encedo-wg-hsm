@@ -44,7 +44,7 @@ func TestFullTunnelPinsTheEndpoint(t *testing.T) {
 		t.Fatalf("PlanRouting: %v", err)
 	}
 	if len(plan.Endpoints) != 1 || plan.Endpoints[0] != netip.MustParseAddr("203.0.113.1") {
-		t.Fatalf("Endpoints = %v, want [203.0.113.1] — without the pin the tunnel routes its own transport", plan.Endpoints)
+		t.Fatalf("Endpoints = %v, want [203.0.113.1] - without the pin the tunnel routes its own transport", plan.Endpoints)
 	}
 }
 
@@ -116,7 +116,7 @@ func TestHEMInsideTheTunnelIsReported(t *testing.T) {
 }
 
 // The endpoint is pinned automatically; the HEM is not. Routing HEM traffic
-// through the tunnel can be deliberate, and it works — so the plan records it
+// through the tunnel can be deliberate, and it works - so the plan records it
 // rather than adding an exception behind the operator's back.
 func TestTheHEMIsNotPinnedWithTheEndpoints(t *testing.T) {
 	withResolver(t, nil)

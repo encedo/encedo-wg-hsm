@@ -15,7 +15,7 @@ import (
 // reason that is not administrative tidiness.
 //
 // wireguard-go creates its UAPI pipe with the descriptor
-// `O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)S:(ML;;NWNRNX;;;HI)` — owner SYSTEM. Assigning
+// `O:SYD:P(A;;GA;;;SY)(A;;GA;;;BA)S:(ML;;NWNRNX;;;HI)` - owner SYSTEM. Assigning
 // SYSTEM as the owner of an object is not something an administrator may do, so
 // an elevated console run gets as far as creating the adapter and completing a
 // handshake and then fails at `ipc.UAPIListen` with "this security ID may not be
@@ -23,7 +23,7 @@ import (
 //
 // The account that can is LocalSystem, and the supported way to be LocalSystem
 // is to be a service. That is the whole of why this file exists: everything
-// answered from that pipe — `wg show`, `wg-hem status`, failover — is off until
+// answered from that pipe - `wg show`, `wg-hem status`, failover - is off until
 // the component runs here.
 //
 // The Linux counterpart is packaging/linux/encedo-wg.service, and the two are
@@ -62,7 +62,7 @@ func platformCommand(name string, args []string) (bool, error) {
 }
 
 func serviceUsage() string {
-	return `wg-hem service — register the privileged component with Windows
+	return `wg-hem service - register the privileged component with Windows
 
   wg-hem service install     register it, running as LocalSystem
   wg-hem service uninstall   remove the registration
@@ -98,7 +98,7 @@ func serviceInstall() error {
 
 	if s, err := m.OpenService(serviceName); err == nil {
 		s.Close()
-		return failf(exitUsage, "%s is already installed — uninstall it first", serviceName)
+		return failf(exitUsage, "%s is already installed - uninstall it first", serviceName)
 	}
 
 	s, err := m.CreateService(serviceName, exe, mgr.Config{
@@ -109,7 +109,7 @@ func serviceInstall() error {
 		StartType: mgr.StartManual,
 		// LocalSystem is the default for a service with no account named, and
 		// it is named here anyway because it is the requirement rather than the
-		// default — see the descriptor quoted above.
+		// default - see the descriptor quoted above.
 		ServiceStartName: "LocalSystem",
 	}, "service", "run")
 	if err != nil {
@@ -221,7 +221,7 @@ func (h *handler) Execute(args []string, r <-chan svc.ChangeRequest, s chan<- sv
 				s <- c.CurrentStatus
 			case svc.Stop, svc.Shutdown:
 				// Closing the listener ends every connection on it, and a
-				// connection ending takes its tunnel down — the same rule the
+				// connection ending takes its tunnel down - the same rule the
 				// window relies on when it is closed. Nothing else to unwind.
 				s <- svc.Status{State: svc.StopPending}
 				return false, 0
@@ -264,7 +264,7 @@ func serviceRun() error {
 
 	// Run by hand rather than by the manager: do the work directly instead of
 	// waiting for control requests that will never arrive. This is how the
-	// component is debugged on a console, elevated, before it is installed —
+	// component is debugged on a console, elevated, before it is installed -
 	// and it will fail at the UAPI pipe there, which is the point of the note
 	// at the top of this file.
 	if !asService {

@@ -10,8 +10,8 @@ import (
 // TestCompactHeightFits is the guard on the one number in this window that has
 // been wrong twice.
 //
-// The window is a fixed height by choice — it must not move while somebody is
-// reading it — and a border layout asked for the impossible does not complain.
+// The window is a fixed height by choice - it must not move while somebody is
+// reading it - and a border layout asked for the impossible does not complain.
 // It gives the header its minimum, places the footer against it, and draws the
 // rows that do not fit over the top of each other. So a row added anywhere, or
 // a font that measures differently, silently produces overlapping text rather
@@ -22,7 +22,7 @@ import (
 // unannounced and the window will not grow to meet it.
 func TestCompactHeightFits(t *testing.T) {
 	now := time.Now()
-	long := `Moved to "backup site" — "head office" stopped answering`
+	long := `Moved to "backup site" - "head office" stopped answering`
 
 	// Each state, and each state that can carry a notice carrying one, because
 	// the notice is the row that pushes a state over the edge.
@@ -32,7 +32,7 @@ func TestCompactHeightFits(t *testing.T) {
 	}{
 		{"no module", Event{State: NoModule, HEM: "https://my.ence.do"}},
 		{"ready", Event{State: Ready}},
-		{"ready with a notice", Event{State: Ready, Notice: "the session has expired — connect again to continue"}},
+		{"ready with a notice", Event{State: Ready, Notice: "the session has expired - connect again to continue"}},
 		{"connecting", Event{State: Connecting}},
 		{"connecting with a notice", Event{State: Connecting, Notice: "Connecting to https://my.ence.do..."}},
 		{"connected", Event{
@@ -75,7 +75,7 @@ func TestCompactHeightFits(t *testing.T) {
 			u.resizeForContent()
 
 			if need := u.win.Content().MinSize().Height; need > compactHeight {
-				t.Errorf("needs %.1f but compactHeight is %d — rows will be drawn over each other",
+				t.Errorf("needs %.1f but compactHeight is %d - rows will be drawn over each other",
 					need, compactHeight)
 			}
 		})
@@ -83,7 +83,7 @@ func TestCompactHeightFits(t *testing.T) {
 }
 
 // TestAdvancedHeightFits is the same guard on the open panel, which is measured
-// rather than constant — the check is that the measurement is actually applied,
+// rather than constant - the check is that the measurement is actually applied,
 // so a panel that grows takes the window with it.
 func TestAdvancedHeightFits(t *testing.T) {
 	a := test.NewApp()

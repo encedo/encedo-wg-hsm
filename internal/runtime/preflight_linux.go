@@ -14,7 +14,7 @@ import (
 
 // capNetAdmin is the capability every privileged thing this client does on Linux
 // actually needs: creating the interface, assigning addresses, adding routes,
-// setting the MTU. Nothing here wants root — root is merely the usual way to get
+// setting the MTU. Nothing here wants root - root is merely the usual way to get
 // this one bit, and a coarse one.
 const capNetAdmin = 12
 
@@ -26,7 +26,7 @@ const capNetAdmin = 12
 // after the device has been authenticated and half the work is done, and the
 // message says nothing about which permission or how to grant it. A person then
 // reaches for sudo, which works, and never learns that a capability would have
-// done — or that running the whole client as root was never the intent.
+// done - or that running the whole client as root was never the intent.
 //
 // Both conditions are fixable without root at run time, which is the point:
 //
@@ -36,11 +36,11 @@ func Preflight() error {
 	var missing []string
 
 	if !hasCapNetAdmin() {
-		missing = append(missing, "cap_net_admin — the interface, its addresses and its routes all need it\n"+
+		missing = append(missing, "cap_net_admin - the interface, its addresses and its routes all need it\n"+
 			"    grant it with:  sudo setcap cap_net_admin=eip "+self())
 	}
 	if err := writable(RunDir); err != nil {
-		missing = append(missing, fmt.Sprintf("%s is not writable (%v) — the UAPI socket and the state file live there\n"+
+		missing = append(missing, fmt.Sprintf("%s is not writable (%v) - the UAPI socket and the state file live there\n"+
 			"    make it so with:  printf 'd %s 0770 root %s -\\n' | sudo tee /etc/tmpfiles.d/wireguard.conf && sudo systemd-tmpfiles --create",
 			RunDir, err, RunDir, currentGroup()))
 	}
@@ -100,7 +100,7 @@ func writable(dir string) error {
 }
 
 // currentGroup names the caller's primary group, for the tmpfiles line the error
-// suggests. A wrong guess here costs nothing — the line is a suggestion a person
+// suggests. A wrong guess here costs nothing - the line is a suggestion a person
 // reads before running it.
 func currentGroup() string {
 	gid := syscall.Getgid()
@@ -122,7 +122,7 @@ func currentGroup() string {
 // self names the binary that is running, for the command that fixes it.
 //
 // Not `$(command -v wg-hem)`, which was there before and named whichever copy
-// is on PATH — usually not the one being run. Somebody testing a fresh build out
+// is on PATH - usually not the one being run. Somebody testing a fresh build out
 // of dist/ would have granted the capability to an older installed copy and
 // watched the same refusal again.
 //

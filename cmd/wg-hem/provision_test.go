@@ -59,7 +59,7 @@ type fakeHEM struct {
 
 	// refuseImport fails every peer import, which is how a test reaches the
 	// window between the identity key being created and the interface record
-	// being written — the only window in which provisioning owns what it made.
+	// being written - the only window in which provisioning owns what it made.
 	refuseImport bool
 }
 
@@ -143,7 +143,7 @@ func newFakeHEM(t *testing.T) (*fakeHEM, *httptest.Server) {
 	copy(f.ifPub[:], pub)
 
 	// The identifier is derived from the key, because that is what a device
-	// does: KID = SHA-1(pubkey)[0:16], §3. A made-up one made this fake disagree
+	// does: KID = SHA-1(pubkey)[0:16], section 3. A made-up one made this fake disagree
 	// with every real appliance about the one relationship the client checks.
 	f.ifKID = descr.KID(f.ifPub[:])
 
@@ -379,7 +379,7 @@ func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
 	}
 
 	// The interface record must be stored with a MAC and with the references in
-	// the order the flags were given — that order is the failover priority.
+	// the order the flags were given - that order is the failover priority.
 	stored := f.stored[f.ifKID]
 	if stored == nil {
 		t.Fatal("no interface record was written")
@@ -451,7 +451,7 @@ func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
 
 	// Provisioning verifies its own work before reporting success.
 	if len(f.verifies) != 1 {
-		t.Errorf("%d hmac/verify calls, want 1 — the written tree must be read back", len(f.verifies))
+		t.Errorf("%d hmac/verify calls, want 1 - the written tree must be read back", len(f.verifies))
 	}
 
 	// Only the authorities the job needs, one token each.
@@ -481,7 +481,7 @@ func TestProvisionWrapsThePSKUnderSelfECDH(t *testing.T) {
 	}
 	w := f.wraps[0]
 	if w["kid"] != f.ifKID || w["ext_kid"] != f.ifKID {
-		t.Errorf("wrap kid/ext_kid = %v/%v, want both %s — a peer's key would expose the KEK",
+		t.Errorf("wrap kid/ext_kid = %v/%v, want both %s - a peer's key would expose the KEK",
 			w["kid"], w["ext_kid"], f.ifKID)
 	}
 	// The context names the peer the wrap belongs to, so a ciphertext lifted

@@ -63,7 +63,7 @@ func provisionInto(t *testing.T, srv string, extra ...string) {
 
 // provisionWithPSK seeds a tree whose single peer carries a wrapped key. On
 // 64-byte firmware that record lands on exactly 64 bytes, which is why it has
-// an IPv4 endpoint, one route and no keepalive — there is room for nothing else.
+// an IPv4 endpoint, one route and no keepalive - there is room for nothing else.
 func provisionWithPSK(t *testing.T, srv string) {
 	t.Helper()
 	if _, err := runProvision(t,
@@ -115,7 +115,7 @@ func TestVerifyReportsATamperedRecord(t *testing.T) {
 	f, srv := newFakeHEM(t)
 	provisionInto(t, srv.URL)
 
-	// Widen a peer's AllowedIPs after the fact — the change an attacker with
+	// Widen a peer's AllowedIPs after the fact - the change an attacker with
 	// write access to the repository would actually want to make, since it
 	// redirects traffic without touching any key.
 	tamperPeerAllowedIPs(t, f, 0, "0.0.0.0/0")

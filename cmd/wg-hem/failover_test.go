@@ -65,8 +65,8 @@ func TestRepromptSuggestsTheNextPeer(t *testing.T) {
 	}
 }
 
-// The failed peer stays selectable — an endpoint can come back, and the operator
-// may know something this process does not — but it is marked.
+// The failed peer stays selectable - an endpoint can come back, and the operator
+// may know something this process does not - but it is marked.
 func TestRepromptMarksTheFailedPeerAndKeepsIt(t *testing.T) {
 	withReadLine(t, "1\n")
 	tree := treeWith(t,

@@ -12,7 +12,7 @@ import (
 // A command turns these into exit codes so a script can tell a wrong passphrase
 // from an unreachable device. A window turns the same distinction into different
 // screens: authentication is somebody typing again, a network fault is somebody
-// waiting, and a failed integrity check is neither — it is a configuration that
+// waiting, and a failed integrity check is neither - it is a configuration that
 // must not be used and a person who has to be told so.
 //
 // Both need the distinction; only one of them has exit codes. So the kind lives
@@ -56,7 +56,7 @@ func Fail(kind Kind, format string, args ...any) error {
 
 // Classify reads what the SDK reports and names it. The device says "401" or
 // "timeout" and the caller needs "your passphrase was refused" or "it could not
-// be reached" — a distinction worth keeping because the two ask entirely
+// be reached" - a distinction worth keeping because the two ask entirely
 // different things of whoever is watching.
 //
 // fallback is what to call anything the SDK does not distinguish, which is most

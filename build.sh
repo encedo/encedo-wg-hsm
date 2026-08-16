@@ -57,8 +57,8 @@ done
 
 # WG_PREPARE_ONLY stops here, with the patched upstream tree in place and
 # nothing built. It exists for the Windows job in .github/workflows/gui.yml,
-# which needs that tree in order to build the component beside the window — the
-# component imports wireguard-go, and go.mod resolves it to this directory — but
+# which needs that tree in order to build the component beside the window - the
+# component imports wireguard-go, and go.mod resolves it to this directory - but
 # does not want the other eleven binaries this script would go on to produce.
 if [ -n "${WG_PREPARE_ONLY:-}" ]; then
     echo "==> Prepared; stopping before the build as asked."
@@ -70,7 +70,7 @@ echo "==> Building..."
 # Emptied first, every time. This directory used to accumulate, and what
 # accumulated was two series differing by one suffix in the filename: a
 # descr64 build beside a default one, three days apart, both plausible. Picking
-# the wrong one does not fail — the record length is inside the configuration
+# the wrong one does not fail - the record length is inside the configuration
 # MAC, so it reads as a corrupt tree rather than as a mismatched binary, which is
 # an hour spent looking at the wrong thing.
 #

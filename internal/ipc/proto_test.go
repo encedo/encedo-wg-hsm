@@ -11,15 +11,15 @@ import (
 
 // The boundary's claim is that one scoped, expiring token crosses it and nothing
 // else. That is a property of this struct, and a struct grows a field at a time
-// — each one convenient, none obviously wrong on its own. So it is checked.
+// - each one convenient, none obviously wrong on its own. So it is checked.
 //
 // There are exactly two exceptions and both are named here rather than let
 // through by a looser pattern, so that adding a third has to be a decision
 // somebody wrote down.
 //
 // Token is what the component acts with, and the reason it needs neither the
-// passphrase nor the configuration. PubKeys is public by definition and by §8,
-// and carrying it is what keeps the token standing alone — without it the
+// passphrase nor the configuration. PubKeys is public by definition and by section 8,
+// and carrying it is what keeps the token standing alone - without it the
 // component would need keymgmt:get as well.
 func TestRequestsCarryOneSecretAndNoOther(t *testing.T) {
 	allowed := map[string]bool{"token": true, "pubkeys": true}
@@ -84,7 +84,7 @@ func TestEventRoundTrips(t *testing.T) {
 		Peer: "blbx", PeerKID: "7b339a35", Endpoint: "185.200.244.117:51820",
 		Rx: 860, Tx: 948,
 		LastHandshake: when, ExpiresAt: when.Add(time.Hour),
-		Notice: `Moved to "backup" — "hq" did not answer within 15s.`,
+		Notice: `Moved to "backup" - "hq" did not answer within 15s.`,
 	}}
 	b, err := Encode(want)
 	if err != nil {
@@ -144,7 +144,7 @@ func TestValidateAccepts(t *testing.T) {
 }
 
 // The record dialect is part of what makes two builds compatible, because the
-// mismatch presents as a MAC failure — which reads as a tampered configuration
+// mismatch presents as a MAC failure - which reads as a tampered configuration
 // rather than as a build-flag disagreement.
 func TestBuildsOfDifferentDialectsDoNotMatch(t *testing.T) {
 	a := Build{Release: "0.9.1", Descr: 128}
@@ -221,7 +221,7 @@ func TestOnlyOneCredentialCrosses(t *testing.T) {
 	}
 }
 
-// Public keys are not secrets — §8 treats them and the records as public — so
+// Public keys are not secrets - section 8 treats them and the records as public - so
 // carrying them is what lets the token stand alone.
 func TestPublicKeysMayCross(t *testing.T) {
 	r := Request{Op: OpStart, Build: Current(), HEMURL: "https://my.ence.do",

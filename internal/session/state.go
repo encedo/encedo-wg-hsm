@@ -4,7 +4,7 @@
 // It exists because two very different things need the same answers. A terminal
 // asks "what is running" by printing a state file; a window asks the same
 // question to draw a status. While the answer lives in `package main` of one
-// command, only that command can ask — which is why this package is being grown
+// command, only that command can ask - which is why this package is being grown
 // rather than designed: pieces move here as they are needed, and each move is
 // the smallest thing that leaves both callers working.
 package session
@@ -47,9 +47,9 @@ var Dir = paths.RunDir
 // State is what a running tunnel leaves behind so another invocation can find
 // it. The UAPI socket says what the tunnel is doing; it does not say which peer
 // of which stored configuration was chosen, or which process owns the routes and
-// the DNS — and that is exactly what stopping and reporting need.
+// the DNS - and that is exactly what stopping and reporting need.
 //
-// It holds no secrets. Key identifiers are not key material, and §8 treats the
+// It holds no secrets. Key identifiers are not key material, and section 8 treats the
 // stored configuration as public; the pre-shared key exists only in memory,
 // between the unwrap and the moment the interface is configured.
 type State struct {
@@ -105,7 +105,7 @@ func Load(ifname string) (*State, error) {
 //
 // A name that was typed is used as given: guessing past an explicit argument
 // would act on a tunnel nobody named. A name left at its default may be
-// corrected, and on macOS it usually has to be — the caller asks for wg0, the
+// corrected, and on macOS it usually has to be - the caller asks for wg0, the
 // kernel hands back utunN, and the state file is written under the name that
 // came back, so the default names a file that was never going to exist. When
 // exactly one tunnel is running, that is the one meant; when several are, only
@@ -134,7 +134,7 @@ func Resolve(ifname string, explicit bool, found func(asked, using string)) (*St
 }
 
 // Running lists the tunnels that left a state file behind. A file here is not
-// proof the process is alive — stopping deals with that — only that this is a
+// proof the process is alive - stopping deals with that - only that this is a
 // name something used.
 func Running() ([]string, error) {
 	entries, err := os.ReadDir(Dir)

@@ -16,7 +16,7 @@ import (
 // identifier that names it.
 //
 // Derived rather than made up, because a device derives it: KID =
-// SHA-1(pubkey)[0:16], §3. A fixture that invents one disagrees with every real
+// SHA-1(pubkey)[0:16], section 3. A fixture that invents one disagrees with every real
 // appliance about the single relationship the client checks before it will
 // believe a public key.
 func secondIdentity(t *testing.T, f *fakeHEM) string {
@@ -58,7 +58,7 @@ func TestSecondIdentityAdoptsExistingPeers(t *testing.T) {
 	imports := len(f.imported)
 	f.mu.Unlock()
 	if imports != importsAfterFirst {
-		t.Errorf("%d peer records exist, want %d — the peers should have been reused, not re-imported",
+		t.Errorf("%d peer records exist, want %d - the peers should have been reused, not re-imported",
 			imports, importsAfterFirst)
 	}
 	if firstIdentity == f.ifKID {
@@ -73,7 +73,7 @@ func TestSecondIdentityAdoptsExistingPeers(t *testing.T) {
 
 // Adopting silently would be worse than refusing: one record serves every
 // identity that references it, so editing it to match new flags breaks the
-// others' MACs — on their machines, at their next startup.
+// others' MACs - on their machines, at their next startup.
 func TestAdoptRefusesDifferentSettings(t *testing.T) {
 	f, srv := newFakeHEM(t)
 	provisionInto(t, srv.URL)

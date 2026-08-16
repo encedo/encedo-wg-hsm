@@ -91,7 +91,7 @@ func TestInterfaceGoldenVector(t *testing.T) {
 	if back.MTU != 1380 || back.ListenPort != 51820 {
 		t.Errorf("MTU = %d, ListenPort = %d", back.MTU, back.ListenPort)
 	}
-	// Reference order is failover priority — it must survive a round trip.
+	// Reference order is failover priority - it must survive a round trip.
 	if len(back.PeerRefs) != 2 || back.PeerRefs[0] != ref1 || back.PeerRefs[1] != ref2 {
 		t.Errorf("PeerRefs = %x", back.PeerRefs)
 	}
@@ -385,7 +385,7 @@ func TestNormalizePadsTrimmedRecords(t *testing.T) {
 	}
 }
 
-// A reference is the start of the KID, and the KID is SHA-1(pubkey)[:16] — the
+// A reference is the start of the KID, and the KID is SHA-1(pubkey)[:16] - the
 // derivation the device uses, confirmed against real hardware. Deriving it
 // locally is what lets a peer be looked up, or found to be already present,
 // before anything is written.

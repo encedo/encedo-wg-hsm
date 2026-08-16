@@ -120,7 +120,7 @@ func TestStartRunsATunnel(t *testing.T) {
 }
 
 // The rule the architecture calls "no window, no tunnel". The component could
-// keep running without one — it makes its own device calls — so this is enforced
+// keep running without one - it makes its own device calls - so this is enforced
 // rather than inherent, and it is the connection closing that enforces it.
 func TestClosingTheConnectionTakesTheTunnelDown(t *testing.T) {
 	stub := newStub()
@@ -185,7 +185,7 @@ func TestASecondStartIsRefused(t *testing.T) {
 }
 
 // The record dialect is part of the build, and a mismatch would otherwise
-// surface as a MAC failure — which looks like a tampered configuration.
+// surface as a MAC failure - which looks like a tampered configuration.
 func TestAMismatchedBuildIsRefusedByName(t *testing.T) {
 	_, c := serve(t, func(context.Context, ipc.Request) (Tunnel, error) {
 		t.Fatal("a mismatched window was allowed to open a tunnel")
@@ -217,7 +217,7 @@ func TestAnInvalidRequestIsRefusedAndTheConnectionSurvives(t *testing.T) {
 		t.Fatal("a start with no identity was accepted")
 	}
 
-	// The same connection must still be usable — a refusal is not a hang-up.
+	// The same connection must still be usable - a refusal is not a hang-up.
 	ipc.WriteMsg(c, startReq())
 	if r := reply(t, c); !r.OK {
 		t.Fatalf("the connection was unusable after a refusal: %s", r.Err)
@@ -329,8 +329,8 @@ func TestWhoamiAnswersTheCallersOwnIdentity(t *testing.T) {
 }
 
 // TestWhoamiCarriesNoAuthority guards the reason this verb was allowed to exist:
-// it answers, and it does nothing. A future hand adding a convenience to it —
-// reporting the running tunnel, say — would be adding it to the one message on
+// it answers, and it does nothing. A future hand adding a convenience to it -
+// reporting the running tunnel, say - would be adding it to the one message on
 // this channel that carries no token.
 func TestWhoamiCarriesNoAuthority(t *testing.T) {
 	s, c := serve(t, func(context.Context, ipc.Request) (Tunnel, error) {

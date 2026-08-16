@@ -30,7 +30,7 @@ func TestOneIdentityIsNotWorthAsking(t *testing.T) {
 	}
 }
 
-// An unprovisioned module is not a device fault or a network one — it is a
+// An unprovisioned module is not a device fault or a network one - it is a
 // configuration that is not there, and the window shows a different thing for
 // each.
 func TestNoIdentityIsAnIntegrityFault(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSeveralIdentitiesWithNoChooserRefuse(t *testing.T) {
 	}
 }
 
-// The stored order is the failover priority — somebody wrote it down — so the
+// The stored order is the failover priority - somebody wrote it down - so the
 // first peer is an answer rather than a guess.
 func TestTheFirstPeerIsTheStoredPriority(t *testing.T) {
 	peers := []config.Peer{{KID: "aa", Label: "hq"}, {KID: "bb", Label: "backup"}}
@@ -105,7 +105,7 @@ func TestTheComponentsStatesBecomeTheWindows(t *testing.T) {
 	}
 }
 
-// A window that is not reading its events — mid-redraw, or wedged — must not be
+// A window that is not reading its events - mid-redraw, or wedged - must not be
 // able to block the side that is running a tunnel.
 func TestASlowWindowDoesNotBlockTheSession(t *testing.T) {
 	s := newLiveSession("https://my.ence.do", "/nowhere")
@@ -149,7 +149,7 @@ func TestAMissingComponentSaysSo(t *testing.T) {
 		t.Fatal("connecting with no device and no component succeeded")
 	}
 	// It fails at the device, before the socket, since there is no appliance
-	// here either — what matters is that it is legible and not a panic.
+	// here either - what matters is that it is legible and not a panic.
 	if err.Error() == "" {
 		t.Error("the failure had nothing to say")
 	}

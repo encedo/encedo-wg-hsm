@@ -3,7 +3,7 @@
 //
 // It lives apart from internal/session on purpose. This is the half that needs
 // netlink, the patched wireguard-go and the platform layer, and anything
-// importing it inherits all three — which is right for the process that runs a
+// importing it inherits all three - which is right for the process that runs a
 // tunnel and wrong for the window that only authenticates a person. The two
 // halves meet at a scoped token: see docs/ARCHITECTURE-GUI.md.
 //
@@ -92,11 +92,11 @@ type Tunnel struct {
 	// privileged call, and a client running on a capability instead of as root
 	// is one polkit asks a human about: Ctrl+C on a tunnel with no DNS of its
 	// own raised an authentication dialogue, on a desktop, to undo nothing.
-	// Running as root hid this — root is never asked.
+	// Running as root hid this - root is never asked.
 	dnsSet bool
 
-	// blind records that the UAPI listener could not be opened, so nothing —
-	// including this process — can ask the interface what it is doing. The
+	// blind records that the UAPI listener could not be opened, so nothing -
+	// including this process - can ask the interface what it is doing. The
 	// tunnel still carries traffic; failover is what goes, because it is
 	// answered entirely from the handshake timestamp.
 	blind bool
@@ -114,7 +114,7 @@ type Tunnel struct {
 }
 
 // runDir is where a running interface leaves its public key. The private key is
-// not there and never will be — `wg` cannot even derive the public one, because
+// not there and never will be - `wg` cannot even derive the public one, because
 // the device is configured with a zeroed private key.
 //
 // A variable rather than the constant it starts as, so a test can write
@@ -133,7 +133,7 @@ func (t *Tunnel) Interface() string { return t.ifname }
 // Addrs is what the interface was given, from the configuration rather than
 // from the interface: these are the addresses the tunnel asked the OS for, and
 // rt.Up refuses rather than settling for fewer, so the two cannot disagree.
-// Failover does not touch them — they belong to the identity, not to the peer.
+// Failover does not touch them - they belong to the identity, not to the peer.
 func (t *Tunnel) Addrs() []netip.Prefix { return t.opts.Tree.Iface.Addrs }
 
 // Peer is the peer the tunnel is currently pointed at, which failover changes
@@ -163,7 +163,7 @@ const (
 	// Progress narrates what the state already shows: coming up, handshaking,
 	// going down.
 	Progress Note = iota
-	// News is what nothing else would tell them — a peer that stopped
+	// News is what nothing else would tell them - a peer that stopped
 	// answering, a device that went away, something left behind.
 	News
 )
@@ -175,7 +175,7 @@ func (t *Tunnel) notify(kind Note, format string, args ...any) {
 }
 
 // Run brings the interface up on peer and holds it until something ends it,
-// offering another peer whenever the current one never answers (§6.4).
+// offering another peer whenever the current one never answers (section 6.4).
 func (t *Tunnel) Run(peer *config.Peer) error {
 	if err := t.openDevice(); err != nil {
 		return err
@@ -206,8 +206,8 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 
 	// The UAPI listener is how anything outside this process sees the tunnel:
 	// `wg show`, `wg-hem status`, and the handshake watch that failover depends
-	// on. It is not how packets move — the device was configured in memory by
-	// IpcSet — so failing to open it is a loss of sight, not of function, and
+	// on. It is not how packets move - the device was configured in memory by
+	// IpcSet - so failing to open it is a loss of sight, not of function, and
 	// refusing to carry traffic because nobody can watch is the worse trade.
 	//
 	// Windows is where this happens. Upstream's pipe is created with SYSTEM as
@@ -255,7 +255,7 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		// service restarting.
 		case <-t.ctx.Done():
 		case <-t.hsm.Dead():
-			endMsg = "The HEM is gone or the token has expired — bringing the interface down."
+			endMsg = "The HEM is gone or the token has expired - bringing the interface down."
 		}
 		close(ending)
 	}()
@@ -275,7 +275,7 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 }
 
 // hold waits for the current peer to answer, and offers another when it does
-// not (§6.4). Once a handshake has happened it just waits for the end: a peer
+// not (section 6.4). Once a handshake has happened it just waits for the end: a peer
 // that answers and later stops is v2's problem, with the health check and the
 // hysteresis that telling a quiet tunnel from a dead one actually needs.
 func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
@@ -307,10 +307,10 @@ func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
 			return err
 		}
 		// Said here rather than by whoever chose. A prompt announces itself by
-		// existing — the person reading it already knows what happened — but a
+		// existing - the person reading it already knows what happened - but a
 		// walk that moves silently leaves somebody looking at a tunnel that is
 		// working through a peer they did not pick.
-		t.notify(News, "Moved to %q — %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
+		t.notify(News, "Moved to %q - %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
 		if err := st.Save(); err != nil {
 			t.notify(News, "WARNING: the state file no longer names the active peer: %v", err)
@@ -349,7 +349,7 @@ func (t *Tunnel) openDevice() error {
 	//
 	// On Linux the tunnel device reports an up event when the interface is
 	// brought up, and wireguard-go's own event reader turns that into this call
-	// — so bringing the link up with netlink did it for us, and this client
+	// - so bringing the link up with netlink did it for us, and this client
 	// never had to. Windows has no such event: Wintun emits none, which is why
 	// upstream's own Windows entry point calls Up itself.
 	//
@@ -369,7 +369,7 @@ func (t *Tunnel) openDevice() error {
 
 // usePeer points the interface at a peer: its pre-shared key out of the device,
 // its endpoint pinned outside the tunnel, and the peer itself into wireguard-go
-// — which precomputes the static-static DH as it goes in, one more call the
+// - which precomputes the static-static DH as it goes in, one more call the
 // device answers.
 func (t *Tunnel) usePeer(peer *config.Peer) error {
 	psk, err := t.opts.Tree.UnwrapPSK(t.ctx, t.opts.Client, t.opts.UseTok, *peer)
@@ -442,7 +442,7 @@ func (t *Tunnel) configureInterface() error {
 		t.dnsSet = true
 	}
 	// With the routes in place, confirm the HEM is still there. It is consulted
-	// at every handshake, so losing it is not a degraded tunnel — it is one that
+	// at every handshake, so losing it is not a degraded tunnel - it is one that
 	// stops at the first rekey, roughly two minutes in.
 	if t.hemInside {
 		if err := rt.ProbeHEM(t.opts.Client, t.hemHost); err != nil {
@@ -460,7 +460,7 @@ func (t *Tunnel) pubPath() string { return runDir + "/" + t.ifname + ".pub" }
 func (t *Tunnel) teardown() {
 	// DNS goes back before the device closes, not after. Closing removes the
 	// interface, and `resolvectl revert` on an interface that is gone prints
-	// "Failed to resolve interface: No such device" on its own stderr — so every
+	// "Failed to resolve interface: No such device" on its own stderr - so every
 	// clean shutdown ended with an error message about a failure that had not
 	// happened. Seen in the 7.5-hour soak of 2026-08-11.
 	if t.dnsSet {

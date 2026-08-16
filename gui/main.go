@@ -41,15 +41,15 @@ const defaultHEM = "https://my.ence.do"
 const prefHEM = "hem-url"
 
 // legacyHEM is what the default used to be, before the appliance was reached by
-// name. Finding it stored is not somebody's choice — it is the old default,
-// written the first time the window was opened — so it is read as unset rather
+// name. Finding it stored is not somebody's choice - it is the old default,
+// written the first time the window was opened - so it is read as unset rather
 // than carried forward into a certificate that was never issued for it. Anything
 // else stored is a decision and is left alone.
 const legacyHEM = "https://192.168.7.1"
 
 // appID identifies the application to the desktop it runs on, and it is not
 // decoration. Without it the toolkit refuses to load or save preferences at all
-// — the address typed into the window was written nowhere and read back never —
+// - the address typed into the window was written nowhere and read back never -
 // and it is the name under which the settings of this application, and no other,
 // are kept.
 const appID = "com.encedo.wg"
@@ -63,8 +63,8 @@ const appID = "com.encedo.wg"
 const windowTitle = "encedo-wg"
 
 // The window used to carry a number of its own, 0.9, on the grounds that the two
-// halves are built differently — the command-line client is static and
-// cross-compiled from one machine, this one needs cgo and a build per platform —
+// halves are built differently - the command-line client is static and
+// cross-compiled from one machine, this one needs cgo and a build per platform -
 // and so would not move in step.
 //
 // They do move in step, and not by convention: ipc.Build.Matches compares the
@@ -72,7 +72,7 @@ const windowTitle = "encedo-wg"
 // from a window that does not agree with it. Two artifacts that must agree to
 // work at all do not have two versions. So the window reports what the check
 // reports, in the shape `wg-hem version` uses, and the number nobody compared
-// against anything is gone — it was a second answer to a question with one, and
+// against anything is gone - it was a second answer to a question with one, and
 // the wrong one to read out when the two halves refuse each other.
 
 // warnBefore is how much of the session is left when the warning appears. Long
@@ -126,7 +126,7 @@ type ui struct {
 
 	// fields is the middle of the window: what the tunnel is doing, as label and
 	// value. Values are monospaced because that is the vernacular of the subject
-	// — endpoints, byte counts, key identifiers — and the typeface the product
+	// - endpoints, byte counts, key identifiers - and the typeface the product
 	// page uses for the same reason.
 	fields   *fyne.Container
 	fAddr    *widget.Label
@@ -163,8 +163,8 @@ func main() {
 	themeName := flag.String("theme", "auto", "colour scheme: auto, dark or light (auto follows the desktop, which under sudo is root's)")
 	// A real appliance is what this program is for, so it is what it does when
 	// asked for nothing. It was the other way round while the live path was
-	// being written — opt in, so that a machine with neither a device nor a
-	// service could still run the thing — and that reason expired the day the
+	// being written - opt in, so that a machine with neither a device nor a
+	// service could still run the thing - and that reason expired the day the
 	// live path worked. It outlived its reason by two evenings, during which a
 	// stand-in drawing "Connected" was twice taken for a tunnel.
 	//
@@ -194,7 +194,7 @@ func main() {
 
 	// Before anything is drawn: a window that appears and vanishes is worse than
 	// no window. A failure to tell either way is not a reason to refuse to
-	// start — it leaves the rule unenforced, which is where this began.
+	// start - it leaves the rule unenforced, which is where this began.
 	var ln net.Listener
 	if dir, derr := instanceDir(); derr != nil {
 		fmt.Fprintf(os.Stderr, "WARNING: cannot tell whether another window is open: %v\n", derr)
@@ -252,7 +252,7 @@ func main() {
 
 	// Fixed: nothing here benefits from more room, and three states stretched
 	// across a large display read as a mistake. It also removes the maximise
-	// button, which is the honest signal — a control that does nothing useful is
+	// button, which is the honest signal - a control that does nothing useful is
 	// worse than no control. The size accommodates the advanced panel with its
 	// debug rows open, so nothing is clipped when somebody opens it.
 	u.win.SetFixedSize(true)
@@ -304,10 +304,10 @@ func (u *ui) build() {
 	u.actionBox = outlined(u.action)
 
 	// The debug panel drives the fake into states that are awkward to reach on
-	// real hardware — a peer going quiet, a token running out — which is the
+	// real hardware - a peer going quiet, a token running out - which is the
 	// point of having a fake at all.
 	// From the session, not from whoever constructed the window. Set in main()
-	// it was missed by every other caller — the render tests among them, which
+	// it was missed by every other caller - the render tests among them, which
 	// is how a marker meant to stop a stand-in passing for a tunnel came to be
 	// absent from the pictures of the stand-in. It is the same condition that
 	// decides whether the debug buttons exist, and now it is asked once.
@@ -315,8 +315,8 @@ func (u *ui) build() {
 
 	u.advText = widget.NewLabel("")
 	u.advText.TextStyle = fyne.TextStyle{Monospace: true}
-	// The buttons drive states that are awkward to reach on real hardware — a
-	// module pulled out, a peer going quiet, a token running out — which is the
+	// The buttons drive states that are awkward to reach on real hardware - a
+	// module pulled out, a peer going quiet, a token running out - which is the
 	// point of having a stand-in. Against a real appliance there is nothing for
 	// them to do, and a control that does nothing is worse than no control.
 	u.adv = container.NewVBox(widget.NewSeparator(), u.advText)
@@ -349,7 +349,7 @@ func (u *ui) build() {
 
 // compose rebuilds both columns from what the state says belongs in them.
 //
-// The alternative — keeping every row in place and calling Show and Hide — is
+// The alternative - keeping every row in place and calling Show and Hide - is
 // what this replaces, and it did not work. A hidden container still claimed its
 // row, so the footer drew through the middle of the header; and one Hide that
 // was never wired left a field on screen in every state. Rebuilding the object
@@ -358,7 +358,7 @@ func (u *ui) build() {
 func (u *ui) compose(e Event) {
 	// The status row is closed on both sides rather than only underneath, so it
 	// reads as a header rather than as the first of a list of lines. The rule
-	// appears only when something follows it — a line under the last thing on
+	// appears only when something follows it - a line under the last thing on
 	// screen is a line to nowhere.
 	head := []fyne.CanvasObject{u.statusRow, u.topRule}
 	if u.detail.Text != "" {
@@ -395,7 +395,7 @@ func (u *ui) compose(e Event) {
 }
 
 // Window heights. Fixed size stops somebody dragging the window about, but the
-// program may still choose one — and it has to, because the advanced panel adds
+// program may still choose one - and it has to, because the advanced panel adds
 // more than the compact height can hold. Squeezing it instead is what a border
 // layout does when asked for the impossible: the header keeps its minimum, the
 // footer is placed against it, and the rows that do not fit are drawn over the
@@ -403,11 +403,11 @@ func (u *ui) compose(e Event) {
 // Each is a multiple of uiScale rather than a number, because that is what they
 // are: every metric inside the window is scaled by it, so the window that holds
 // them has to be. Written as constants they drift apart at exactly the moment
-// nobody is looking — changing the density and not the window is how the rows
+// nobody is looking - changing the density and not the window is how the rows
 // came to be drawn over each other once already.
 const (
 	// Measured, not chosen: the tallest the window gets with the panel closed is
-	// connected with a notice — five rows, a status line and a footer — which
+	// connected with a notice - five rows, a status line and a footer - which
 	// comes to 376. TestCompactHeightFits is what keeps this honest, because
 	// this number has been wrong twice, both times by somebody adding a row.
 	compactHeight = 384 * uiScale
@@ -416,7 +416,7 @@ const (
 
 // resizeForContent gives the window the height the current content needs.
 //
-// Closed, that is one height whatever is on screen — the window must not move
+// Closed, that is one height whatever is on screen - the window must not move
 // while somebody is reading it, and a notice arrives unannounced, which is the
 // worst possible moment. The compact height has room for one either way.
 //
@@ -424,7 +424,7 @@ const (
 // be a second constant, 590, taken from the panel at its tallest: the four
 // buttons that only exist in front of the scripted stand-in. Against a real
 // appliance the panel is a few lines of text and the rest was an empty gap
-// above the button — which is what the constant bought, and it was not worth it.
+// above the button - which is what the constant bought, and it was not worth it.
 // Measuring is safe here for the reason a constant was chosen elsewhere: this
 // changes only when somebody ticks the box, never underneath them.
 func (u *ui) resizeForContent() {
@@ -465,7 +465,7 @@ func (u *ui) onAction() {
 		// desktop offered to kill the application.
 		//
 		// The state does not change here either: the session emits Connecting
-		// when it starts, and everything after that arrives the same way — so
+		// when it starts, and everything after that arrives the same way - so
 		// there is no path where the window believes something the session has
 		// not said.
 		go func() {
@@ -514,7 +514,7 @@ func (u *ui) consume() {
 }
 
 // tickCountdown redraws the remaining time once a second. The value comes from
-// the session's ExpiresAt and is never computed from a requested duration — see
+// the session's ExpiresAt and is never computed from a requested duration - see
 // the comment on Event.ExpiresAt.
 func (u *ui) tickCountdown() {
 	for range time.Tick(time.Second) {
@@ -540,7 +540,7 @@ func (u *ui) render(e Event) {
 		u.baseDetail = "Module present."
 	case Connecting:
 		u.setDot(theme.ColorNameWarning)
-		u.status.SetText("Connecting…")
+		u.status.SetText("Connecting...")
 		u.baseDetail = "Waiting for the first handshake."
 	case Connected:
 		u.setDot(theme.ColorNameSuccess)
@@ -552,7 +552,7 @@ func (u *ui) render(e Event) {
 		u.fShake.SetText(ago(e.LastHandshake))
 	case Disconnecting:
 		u.setDot(theme.ColorNameWarning)
-		u.status.SetText("Disconnecting…")
+		u.status.SetText("Disconnecting...")
 		u.baseDetail = ""
 	case Ended:
 		u.setDot(theme.ColorNameDisabled)
@@ -575,7 +575,7 @@ func (u *ui) render(e Event) {
 	default:
 		// Naming the action that will be available, not the one that was. Left
 		// alone, the button still said "Disconnect" after the module was pulled
-		// out — offering, in disabled grey, something it could no longer do.
+		// out - offering, in disabled grey, something it could no longer do.
 		u.action.SetText("Connect")
 		u.action.Importance = widget.MediumImportance
 		u.action.Disable()
@@ -592,7 +592,7 @@ func (u *ui) render(e Event) {
 	// A notice outlives the events around it but not the state it belongs to.
 	// Clearing it on the next event carrying none made every notice flash and
 	// vanish, since the component reports once a second; never clearing it left
-	// "Connecting to …" sitting in front of a tunnel that had been up for an
+	// "Connecting to ..." sitting in front of a tunnel that had been up for an
 	// hour. The state it arrived in is the thing it is about, so that is what it
 	// lasts for: failover and expiry both hold while the tunnel does, and the
 	// narration of connecting goes when connecting does.
@@ -606,7 +606,7 @@ func (u *ui) render(e Event) {
 
 	// Notifications only where the state changed, and only for the two changes
 	// worth interrupting somebody over. The tunnel says five sentences over a
-	// session — up, handshake, moved, expired, down — and a popup for each is
+	// session - up, handshake, moved, expired, down - and a popup for each is
 	// four too many for something whose whole job is to be unremarkable.
 	if e.State != prev.State {
 		switch e.State {
@@ -620,7 +620,7 @@ func (u *ui) render(e Event) {
 	u.renderCountdown(e)
 	// The build, not a number of the window's own: this is the line somebody
 	// reads out when the component has refused the window, and it has to be the
-	// one the component compared against — the same text `wg-hem version` prints
+	// one the component compared against - the same text `wg-hem version` prints
 	// after the program name.
 	u.advText.SetText(fmt.Sprintf(
 		"version        %s\nsession        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
@@ -645,7 +645,7 @@ func (u *ui) setNotice(text string, bad bool) {
 // scripted stand-in, where a box was the only way to show that anything had
 // happened; with a real component the word, the dot and the fields already carry
 // the state, and what was left was one sentence being shouted. Colour says the
-// same thing more quietly, and the line wraps — the panel could not, because a
+// same thing more quietly, and the line wraps - the panel could not, because a
 // wrapping label inside a background box has its height computed before its
 // width is known, so the failover message was cut off mid-word.
 func (u *ui) applyDetail() {
@@ -669,7 +669,7 @@ func (u *ui) setDot(name fyne.ThemeColorName) {
 
 func (u *ui) renderCountdown(e Event) {
 	if e.State != Connected || e.ExpiresAt.IsZero() {
-		u.fExpires.SetText("—")
+		u.fExpires.SetText("-")
 		return
 	}
 	left := time.Until(e.ExpiresAt)
@@ -682,7 +682,7 @@ func (u *ui) renderCountdown(e Event) {
 		u.warned = true
 		// The countdown above already says how long; this says the part it
 		// cannot, which is that nothing will renew it.
-		u.setNotice("Reconnect before it ends — the session does not renew itself", false)
+		u.setNotice("Reconnect before it ends - the session does not renew itself", false)
 		u.app.SendNotification(fyne.NewNotification("encedo-wg",
 			"The tunnel will disconnect in "+fmtLeft(left)+"."))
 	}
@@ -700,7 +700,7 @@ func (u *ui) installCloseIntercept() {
 
 // askToClose is the single place that decides what leaving means, because there
 // is more than one way to ask for it and they were not agreeing: the window made
-// somebody confirm, and the tray's Quit — the same decision, two clicks away —
+// somebody confirm, and the tray's Quit - the same decision, two clicks away -
 // ended the tunnel without a word.
 func (u *ui) askToClose() {
 	if u.latest.State != Connected {
@@ -725,7 +725,7 @@ func (u *ui) askToClose() {
 		}
 		// Declining is not cancelling, where there is a tray: what was offered
 		// was to put the window away and keep the tunnel, so put it away.
-		// Hiding and not minimising is the difference somebody actually sees —
+		// Hiding and not minimising is the difference somebody actually sees -
 		// a minimised window keeps its place in the task bar, so it looks as
 		// though nothing was sent anywhere.
 		if u.hasTr {
@@ -741,7 +741,7 @@ func (u *ui) askToClose() {
 //
 // Show on its own is not enough, and Windows is where that shows: a window put
 // down by the task bar is minimised rather than hidden, and showing something
-// already shown does nothing at all — the task bar entry blinks and the window
+// already shown does nothing at all - the task bar entry blinks and the window
 // stays where it was. Asking for focus is what raises it.
 func (u *ui) present() {
 	u.win.Show()
@@ -754,7 +754,7 @@ func (u *ui) present() {
 // toolkit the application is meant to outlive its windows, so closing the last
 // one left the process running with nothing on screen. For most applications
 // that is the point of a tray. Here it contradicts the arrangement the whole
-// design rests on — the window is the session, and a process that survives it
+// design rests on - the window is the session, and a process that survives it
 // is one holding a credential nobody is watching, which is the thing this
 // client exists not to do.
 func (u *ui) quit() {
@@ -764,7 +764,7 @@ func (u *ui) quit() {
 
 // installTray records whether a tray exists rather than assuming one. Stock
 // GNOME has none, and on such a desktop the gesture that means "keep the
-// session" does not exist — so the close dialogue stops offering it instead of
+// session" does not exist - so the close dialogue stops offering it instead of
 // promising what the desktop will not honour.
 func (u *ui) installTray() {
 	desk, ok := u.app.(desktop.App)
@@ -772,7 +772,7 @@ func (u *ui) installTray() {
 		return
 	}
 	// Asked before anything is offered. The toolkit accepts a tray menu on any
-	// desktop and finds out later whether one exists — see tray_linux.go — and
+	// desktop and finds out later whether one exists - see tray_linux.go - and
 	// a window that hides itself into a tray that is not there is a live tunnel
 	// nobody can reach.
 	if !trayAvailable() {
@@ -782,7 +782,7 @@ func (u *ui) installTray() {
 		fyne.NewMenuItem("Show", u.present),
 		fyne.NewMenuItem("Disconnect", func() { _ = u.sess.Disconnect() }),
 		// A tray with no way out is a trap: minimising to it is what keeps the
-		// session, so it has to offer the other thing too — and it asks the
+		// session, so it has to offer the other thing too - and it asks the
 		// same question the window asks, rather than ending a live tunnel from
 		// a menu without one.
 		fyne.NewMenuItem("Quit", u.askToClose),
@@ -829,14 +829,14 @@ func human(n uint64) string {
 
 func stamp(t time.Time) string {
 	if t.IsZero() {
-		return "—"
+		return "-"
 	}
 	return t.Format("15:04:05")
 }
 
 func dash(s string) string {
 	if s == "" {
-		return "—"
+		return "-"
 	}
 	return s
 }
@@ -852,14 +852,14 @@ func dash(s string) string {
 // So the kind is translated and the text is dropped, for the two kinds where the
 // person can act and the wording is the SDK's rather than ours. A refused
 // credential and an unreachable device are the whole of what a connect attempt
-// does wrong from a window; everything else — a configuration that does not
-// authenticate, a module holding no identity — this repository already words
+// does wrong from a window; everything else - a configuration that does not
+// authenticate, a module holding no identity - this repository already words
 // itself, and passing those through keeps the sentence somebody wrote for the
 // occasion.
 func humanError(err error) string {
 	switch session.KindOf(err) {
 	case session.KindAuth:
-		return "That passphrase was not accepted — check it and try again."
+		return "That passphrase was not accepted - check it and try again."
 	case session.KindNetwork:
 		return "The module did not answer. Check that it is plugged in."
 	default:
@@ -869,8 +869,8 @@ func humanError(err error) string {
 
 // reach says why the device did not answer, for the advanced panel.
 //
-// "no module" is four facts wearing one word — nothing plugged in, no route to
-// it, a name that does not resolve, a certificate the system will not accept —
+// "no module" is four facts wearing one word - nothing plugged in, no route to
+// it, a name that does not resolve, a certificate the system will not accept -
 // and on Windows they are especially easy to confuse, because the adapter, the
 // name and the certificate store are all different from the machine this was
 // written on. The main screen keeps its one friendly sentence; this line is for
@@ -880,7 +880,7 @@ func humanError(err error) string {
 // gets by double-clicking, and it was mistaken for the real thing.
 func (u *ui) sessionKind() string {
 	if u.faked {
-		return "stand-in — nothing here reaches a device"
+		return "stand-in - nothing here reaches a device"
 	}
 	return "live"
 }
@@ -899,7 +899,7 @@ func (u *ui) reach(e Event) string {
 		// presence check cannot do: every failure it reports carries the error
 		// it got. Saying so plainly beats a placeholder that reads like a
 		// normal state.
-		return "reported absent with no reason — that is a bug, please report it"
+		return "reported absent with no reason - that is a bug, please report it"
 	default:
 		return "answering"
 	}
@@ -912,7 +912,7 @@ func (u *ui) reach(e Event) string {
 func addrs(list []string) string {
 	switch len(list) {
 	case 0:
-		return "—"
+		return "-"
 	case 1:
 		return list[0]
 	default:
@@ -922,8 +922,8 @@ func addrs(list []string) string {
 
 // onFake runs something only the scripted stand-in can do.
 //
-// The debug panel drives states that are awkward to reach on real hardware — a
-// module pulled out, a peer going quiet, a token running out — which is the
+// The debug panel drives states that are awkward to reach on real hardware - a
+// module pulled out, a peer going quiet, a token running out - which is the
 // point of having a stand-in at all. Against a real appliance those buttons have
 // nothing to do, and doing nothing quietly is better than offering a control
 // that would have to lie about what it did.

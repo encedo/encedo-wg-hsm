@@ -1,10 +1,10 @@
 // Package mac builds and checks the single MAC that authenticates a whole
-// config-free WireGuard configuration. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md §4.
+// config-free WireGuard configuration. See docs/ENCEDO-WG-CONFIGFREE-SPEC.md section 4.
 //
 // The MAC key is the interface key's self-ECDH, computed inside the HEM and
 // never present outside it. Keying it with ECDH(interface, peer) would be a
-// mistake worth naming: whoever holds the peer's private key — or imports a
-// public key of their own choosing — could derive the same secret offline and
+// mistake worth naming: whoever holds the peer's private key - or imports a
+// public key of their own choosing - could derive the same secret offline and
 // forge a configuration. Self-ECDH has no such holder.
 //
 // One MAC covers the interface record and every peer record it references, so
@@ -26,7 +26,7 @@ import (
 )
 
 // Domain separates this MAC from any other use of the same key. A change to the
-// record format bumps this string and the record version together (§8.6); v2
+// record format bumps this string and the record version together (section 8.6); v2
 // accompanies the PEER_REF change from a public-key digest to a KID prefix.
 const Domain = "ENC-WG-MAC-v2"
 
@@ -109,7 +109,7 @@ func Canonical(ifPubKey [PubKeyLen]byte, ifDescr [descr.Size]byte, peers []PeerR
 }
 
 // matchRefs checks that the supplied peers are exactly the ones the interface
-// record names — a bijection, so neither a missing peer nor an unreferenced
+// record names - a bijection, so neither a missing peer nor an unreferenced
 // extra can slip into the authenticated set.
 func matchRefs(refs []descr.PeerRef, peers []PeerRecord) error {
 	if len(refs) != len(peers) {
@@ -139,7 +139,7 @@ func matchRefs(refs []descr.PeerRef, peers []PeerRecord) error {
 // it will be stored, with the MAC tag present and zeroed or absent entirely;
 // the returned value is what goes into that tag.
 //
-// Scope: keymgmt:use:<kid> — the same scope the handshake already needs, so
+// Scope: keymgmt:use:<kid> - the same scope the handshake already needs, so
 // authenticating a configuration grants no new authority, and every attempt
 // lands in the device's audit log.
 func Sign(ctx context.Context, c *hem.Client, token, kid string,
@@ -166,7 +166,7 @@ func Sign(ctx context.Context, c *hem.Client, token, kid string,
 //
 // A failure means the stored configuration is not the one that was provisioned.
 // There is no degraded mode to fall back to: the caller must refuse to start
-// (§8.3).
+// (section 8.3).
 func Verify(ctx context.Context, c *hem.Client, token, kid string,
 	ifPubKey [PubKeyLen]byte, ifDescr [descr.Size]byte, peers []PeerRecord) error {
 
@@ -182,9 +182,9 @@ func Verify(ctx context.Context, c *hem.Client, token, kid string,
 		return err
 	}
 	if err := c.HmacVerify(ctx, token, kid, msg, rec.MAC[:], hem.CryptoOpts{Alg: Alg, ExtKID: kid}); err != nil {
-		// The record length is inside the canonical message (§3), so a build that
+		// The record length is inside the canonical message (section 3), so a build that
 		// reads the wrong size computes a different message over the same bytes
-		// and the device refuses it — which is indistinguishable, from here, from
+		// and the device refuses it - which is indistinguishable, from here, from
 		// somebody having edited the configuration.
 		//
 		// It is worth naming because the two call for opposite reactions: one is
@@ -192,7 +192,7 @@ func Verify(ctx context.Context, c *hem.Client, token, kid string,
 		// reads, so whoever sees it can check that first.
 		return fmt.Errorf("mac: %w: %w\n"+
 			"This build reads %d-byte records. If the appliance stores the other size, "+
-			"that alone produces this — rebuild with the matching descr size before "+
+			"that alone produces this - rebuild with the matching descr size before "+
 			"treating it as tampering.", ErrNotAuthentic, err, descr.Size)
 	}
 	return nil

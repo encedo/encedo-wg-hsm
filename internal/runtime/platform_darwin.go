@@ -51,7 +51,7 @@ func Down(ifname string) error {
 
 func AddRoutes(ifname string, routes []netip.Prefix) error {
 	for _, r := range routes {
-		// Ignore errors — the subnet route may already exist from Up.
+		// Ignore errors - the subnet route may already exist from Up.
 		_ = run("route", "-q", "-n", "add", inetFlag(r.Addr().Is6()),
 			r.Masked().String(), "-interface", ifname)
 	}
@@ -113,7 +113,7 @@ func SetDNS(_ string, servers []string) error {
 		return nil
 	}
 	// macOS DNS requires networksetup with a service name, not interface name.
-	// Service name lookup from utun interface name is non-trivial — not implemented yet.
+	// Service name lookup from utun interface name is non-trivial - not implemented yet.
 	fmt.Printf("WARNING: DNS configuration not supported on macOS yet (servers: %v)\n", servers)
 	return nil
 }
@@ -128,7 +128,7 @@ func UAPIListen(ifname string) (net.Listener, error) {
 	return ipc.UAPIListen(ifname, f)
 }
 
-// UAPIDial opens a connection to a running interface's UAPI socket — the same
+// UAPIDial opens a connection to a running interface's UAPI socket - the same
 // one `wg` talks to. It fails when nothing is listening, which is the answer to
 // "is this interface up".
 func UAPIDial(ifname string) (net.Conn, error) {

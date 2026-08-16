@@ -18,7 +18,7 @@ permissions:
   # Trusted Signing authenticates through OIDC rather than a stored key: the job
   # asks GitHub for a short-lived token and exchanges it for an Azure one, so
   # nothing here holds a credential that could be read out of the repository.
-  # Harmless while signing is switched off — a token nobody requests is not
+  # Harmless while signing is switched off - a token nobody requests is not
   # issued.
   id-token: write
 
@@ -34,7 +34,7 @@ jobs:
         #
         # It fails before reaching any of our code. cgo on that runner picks up
         # an x86-64 gcc from PATH and hands it the arm64 assembly in
-        # runtime/cgo, which answers `no such instruction: stp x29,x30` — the
+        # runtime/cgo, which answers `no such instruction: stp x29,x30` - the
         # same failure an empty main.go importing "C" would produce. Fixing it
         # means putting a native aarch64 toolchain on the runner, MSYS2's
         # CLANGARM64 being the usual way.
@@ -42,8 +42,8 @@ jobs:
         # Not done, because of what it would buy. Windows on ARM runs x64
         # binaries under emulation, so the amd64 window built here already runs
         # on the ARM machine, and a window spends its life idle in a tray. The
-        # half where native matters — the component, which is on the handshake
-        # path — is CGO_ENABLED=0 and already cross-builds to windows/arm64 in
+        # half where native matters - the component, which is on the handshake
+        # path - is CGO_ENABLED=0 and already cross-builds to windows/arm64 in
         # ci.yml. So the ARM machine gets a native privileged half today and an
         # emulated window, which is the right way round.
         #
@@ -55,7 +55,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The submodule is not reachable from here yet — the session is faked,
+          # The submodule is not reachable from here yet - the session is faked,
           # so gui/ imports nothing from the core and the SDK never enters the
           # build. Fetching it anyway keeps this identical to a developer's
           # checkout, and it becomes load-bearing the moment the fake is
@@ -70,7 +70,7 @@ jobs:
           go-version-file: gui/go.mod
           cache-dependency-path: gui/go.sum
 
-      # A GUI toolkit needs cgo, and cgo on Linux needs headers — for both
+      # A GUI toolkit needs cgo, and cgo on Linux needs headers - for both
       # display servers, because GLFW compiles an X11 backend and a Wayland one
       # into the same binary and chooses at run time. Leaving either set out
       # fails the build on a machine that would never have used that backend.
@@ -103,7 +103,7 @@ jobs:
 
       # cgo means one build per operating system: the compilers and SDKs cannot
       # be crossed the way the CLI's can. macOS is the exception in the other
-      # direction — one runner holds both architectures' SDKs, so it produces
+      # direction - one runner holds both architectures' SDKs, so it produces
       # both. Windows on arm64 would need its own toolchain and is not built.
       - name: Build
         working-directory: gui
@@ -114,8 +114,8 @@ jobs:
 
           # The same stamp build.sh puts on the command-line client, from the
           # same script. The window and the privileged component refuse to drive
-          # each other unless these match — deliberately, since a mismatched pair
-          # fails later and worse — so a window built without it can never talk
+          # each other unless these match - deliberately, since a mismatched pair
+          # fails later and worse - so a window built without it can never talk
           # to a component that has one.
           VERSION="$(cd .. && sh scripts/version.sh)"
           STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION"
@@ -123,7 +123,7 @@ jobs:
 
           # Both record dialects, as build.sh does for the command-line client.
           # The window reads the configuration itself, so a 128-byte build against
-          # 64-byte firmware fails at MAC verification — which looks exactly like
+          # 64-byte firmware fails at MAC verification - which looks exactly like
           # somebody having tampered with the configuration. Shipping only one
           # size is how that happens to a person rather than to a test.
           # $1 is the dialect suffix, $2 anything extra for the linker, the rest
@@ -180,7 +180,7 @@ jobs:
                 #
                 # The patched upstream tree has to exist first. The component
                 # imports wireguard-go and go.mod resolves that to ./wireguard-go,
-                # which build.sh clones and patches — so this asks build.sh for
+                # which build.sh clones and patches - so this asks build.sh for
                 # exactly that and nothing else. Once per job, not once per
                 # variant.
                 if [ ! -d ../wireguard-go/device ]; then
@@ -192,7 +192,7 @@ jobs:
                 esac
                 # From the repository root, not from here. gui/ is its own
                 # module with its own go.sum, and that go.sum has no entry for
-                # wireguard-go and must not gain one — deps_test.go exists to
+                # wireguard-go and must not gain one - deps_test.go exists to
                 # keep the tunnel out of the window. Building the component from
                 # inside gui/ resolves it against the wrong module and fails
                 # with six missing go.sum entries, which is the right answer to
@@ -207,7 +207,7 @@ jobs:
 
       # Signing, and it is off until the Azure side exists.
       #
-      # Turned on by setting three repository variables — no secret is involved,
+      # Turned on by setting three repository variables - no secret is involved,
       # because there is no key to hold: AZURE_CLIENT_ID, AZURE_TENANT_ID and
       # AZURE_SUBSCRIPTION_ID, plus TRUSTED_SIGNING_ENDPOINT,
       # TRUSTED_SIGNING_ACCOUNT and TRUSTED_SIGNING_PROFILE. Every step below is
@@ -249,8 +249,8 @@ jobs:
           timestamp-digest: SHA256
 
       # A bundle somebody can install, rather than four files and a paragraph.
-      # Assembled here because this is the only job that holds both halves — the
-      # window needs cgo and the component must carry the same stamp — and
+      # Assembled here because this is the only job that holds both halves - the
+      # window needs cgo and the component must carry the same stamp - and
       # because the driver has to come with them or the tunnel fails at the
       # moment it is created.
       - name: Bundle
@@ -271,7 +271,7 @@ jobs:
           # Relative, and under dist-gui, for one reason: this step is bash and
           # the next line is PowerShell, and the two do not agree on what a path
           # is. An absolute /tmp/... is a real place to git-bash, which maps it
-          # into the MSYS tree, and nowhere at all to PowerShell — which is
+          # into the MSYS tree, and nowhere at all to PowerShell - which is
           # exactly how this failed the first time, after the download and the
           # checksum had both succeeded. A relative path is resolved by each
           # against the same working directory and means the same thing to both.
@@ -310,8 +310,8 @@ jobs:
       # Windows 10 is one of the machines this ships to, and "will it start
       # there" is answered by the PE header rather than by where it was built.
       # Two fields say it: the minimum operating system version and the
-      # subsystem version, both in the optional header. Go asks for 6.1 today —
-      # Windows 7 — so there is enormous room, and that is exactly why this is
+      # subsystem version, both in the optional header. Go asks for 6.1 today -
+      # Windows 7 - so there is enormous room, and that is exactly why this is
       # worth pinning: a linker flag or a toolchain change could raise it, the
       # artifact would still build and upload, and the first anyone would know is
       # a machine refusing to run it with a message about the wrong version of

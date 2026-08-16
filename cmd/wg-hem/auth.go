@@ -43,7 +43,7 @@ func classify(err error, fallback int, format string, args ...any) error {
 }
 
 // exitFrom gives an error that already knows its kind the matching exit code.
-// Errors from internal/session arrive named — the command's part is only to
+// Errors from internal/session arrive named - the command's part is only to
 // number them.
 func exitFrom(err error) error {
 	if err == nil {

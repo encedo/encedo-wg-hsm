@@ -5,8 +5,8 @@
 # user gets a failure at the moment the tunnel is created, which is late and
 # unhelpful, so it ships in the same archive.
 #
-# Redistributing wintun.dll is permitted by its own licence — clause 3(d)
-# excepts "the Software … distributed alongside other software that uses the
+# Redistributing wintun.dll is permitted by its own licence - clause 3(d)
+# excepts "the Software ... distributed alongside other software that uses the
 # Software only via the Permitted API", which is what wireguard-go does through
 # wintun.h. The conditions that come with it are honoured here: the DLL is
 # copied byte for byte and never modified, and its licence travels with it.
@@ -14,8 +14,8 @@
 # DO NOT SIGN wintun.dll. It arrives signed by WireGuard LLC through DigiCert,
 # carrying Microsoft's attestation for the driver inside it, and that is the
 # signature Windows trusts. Authenticode is written into the PE file, so signing
-# it again would both modify the Software — which clause 3(a) forbids, and which
-# is the same clause the permission above depends on — and displace a chain we
+# it again would both modify the Software - which clause 3(a) forbids, and which
+# is the same clause the permission above depends on - and displace a chain we
 # cannot reissue. Sign wg-hem.exe and wg-quick-encedo.exe; leave the driver
 # exactly as it came.
 #
@@ -35,7 +35,7 @@ if [ "${WG_HEM_DESCR:-128}" = "64" ]; then
 fi
 
 if [ ! -f "dist/wg-hem-windows-amd64${SUFFIX}.exe" ]; then
-    echo "dist/wg-hem-windows-amd64${SUFFIX}.exe is missing — run build.sh first" >&2
+    echo "dist/wg-hem-windows-amd64${SUFFIX}.exe is missing - run build.sh first" >&2
     exit 1
 fi
 
@@ -88,14 +88,14 @@ convenient: creating the adapter and opening the management pipe both need it.
   .\\wg-hem.exe status
   .\\wg-hem.exe down
 
-Runtime files — the interface public key and wg-hem's state file — are written
+Runtime files - the interface public key and wg-hem's state file - are written
 to %ProgramData%\\WireGuard.
 
 Only Linux has been tested end to end. These binaries are built and checked on
 every push, but no tunnel has been run on Windows.
 
 LICENSE.txt          this project, MIT
-WINTUN-LICENSE.txt   wintun.dll, WireGuard LLC — redistributed unmodified under
+WINTUN-LICENSE.txt   wintun.dll, WireGuard LLC - redistributed unmodified under
                      clause 3(d) of that licence
 EOF
 

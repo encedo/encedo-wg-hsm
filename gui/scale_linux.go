@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Fyne works out how large a pixel is from the monitor's physical size — width
-// in millimetres against width in pixels — and on Linux that is the only thing
+// Fyne works out how large a pixel is from the monitor's physical size - width
+// in millimetres against width in pixels - and on Linux that is the only thing
 // it looks at. It never reads the desktop's own scaling setting, unlike macOS
 // and Windows, where the system answers directly.
 //
@@ -19,19 +19,19 @@ import (
 //	Virtual-1 connected primary 3420x2146+0+0 ... 0mm x 0mm
 //	Xft.dpi: 192
 //
-// The desktop is running at 2×, says so the standard X11 way, and the virtual
-// monitor reports no physical size at all — so Fyne falls back to 1.0 and the
+// The desktop is running at 2x, says so the standard X11 way, and the virtual
+// monitor reports no physical size at all - so Fyne falls back to 1.0 and the
 // window comes out at half the size of everything around it. A real monitor
 // reports millimetres over EDID and none of this applies, which is why the same
 // build looks right on hardware.
 //
 // So: work out what Fyne is about to conclude, work out what the desktop is
 // actually doing, and only correct the difference. Where Fyne already agrees
-// with the desktop the correction is 1 and nothing is set — this must not
+// with the desktop the correction is 1 and nothing is set - this must not
 // double-apply on the machines that were never wrong.
 
 // baseDPI is the X11 convention: Xft.dpi of 96 means no scaling. GTK reads it
-// the same way, which is what makes matching it the right target — the window
+// the same way, which is what makes matching it the right target - the window
 // should be the size of the windows beside it.
 const baseDPI = 96.0
 
@@ -77,8 +77,8 @@ func alignScaleWithDesktop() (string, bool) {
 }
 
 // fyneDetectedScale reproduces what the toolkit will conclude from the monitor,
-// including its fallback: a physical size that yields an implausible DPI — zero
-// millimetres yields infinity — is replaced by its baseline, which is how a
+// including its fallback: a physical size that yields an implausible DPI - zero
+// millimetres yields infinity - is replaced by its baseline, which is how a
 // monitor that does not know its own size ends up at 1.
 func fyneDetectedScale(widthMm, widthPx int) float64 {
 	dpi := fyneBaselineDPI
@@ -118,7 +118,7 @@ var connectedLine = regexp.MustCompile(`^\S+ connected (?:primary )?(\d+)x\d+\+\
 
 // primaryMonitor reports the width the toolkit will measure against, in pixels
 // and in millimetres. The primary display when one is marked, otherwise the
-// first connected one — the same order the toolkit would arrive at for a window
+// first connected one - the same order the toolkit would arrive at for a window
 // that has not been moved anywhere yet.
 func primaryMonitor() (widthMm, widthPx int, ok bool) {
 	out, err := exec.Command("xrandr", "--query").Output()

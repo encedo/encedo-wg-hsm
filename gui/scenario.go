@@ -27,7 +27,7 @@ var scenario = []step{
 	{2000, "connecting", func(f *fakeSession) { f.connectWith("passphrase") }},
 	{6000, "the active peer stops answering, and failover moves", (*fakeSession).triggerFailover},
 	{6000, "the session is running out", func(f *fakeSession) { f.expireIn(4 * time.Minute) }},
-	{4000, "and it ends — no renewal, by design", func(f *fakeSession) { f.expireNow() }},
+	{4000, "and it ends - no renewal, by design", func(f *fakeSession) { f.expireNow() }},
 	{3500, "reconnecting after the end", func(f *fakeSession) { f.connectWith("passphrase") }},
 	{5000, "the module is pulled out", func(f *fakeSession) { f.setModulePresent(false) }},
 }

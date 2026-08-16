@@ -12,7 +12,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
-// cmdWipe removes every WG:* record from the device (§10.3).
+// cmdWipe removes every WG:* record from the device (section 10.3).
 //
 // The interface key is a private key that exists nowhere else, so deleting it
 // destroys the identity: the other end of the tunnel will have to be given a new
@@ -68,7 +68,7 @@ Flags:
 	// Show the target before destroying it.
 	fmt.Fprintln(os.Stderr, "The following keys will be deleted:")
 	for _, e := range ifs {
-		fmt.Fprintf(os.Stderr, "  %s  %-28s  identity key — private, not recoverable\n", e.KID, e.Label)
+		fmt.Fprintf(os.Stderr, "  %s  %-28s  identity key - private, not recoverable\n", e.KID, e.Label)
 	}
 	for _, e := range peers {
 		fmt.Fprintf(os.Stderr, "  %s  %-28s  peer public key\n", e.KID, e.Label)

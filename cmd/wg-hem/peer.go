@@ -96,7 +96,7 @@ func peerAdd(args []string) error {
 
 	// Check that the interface record can still hold the reference before the
 	// key is imported. Finding out afterwards would leave an imported key that
-	// no configuration mentions — invisible, and indistinguishable from one an
+	// no configuration mentions - invisible, and indistinguishable from one an
 	// attacker planted.
 	probe := tree.Iface
 	probe.PeerRefs = append(append([]descr.PeerRef{}, probe.PeerRefs...), descr.MakePeerRef(p.PubKey))
@@ -152,7 +152,7 @@ func peerAdd(args []string) error {
 		p.Label, p.Endpoint.String(), len(tree.Peers))
 	if *psk == "generate" {
 		fmt.Printf("psk=%s\n", base64.StdEncoding.EncodeToString(pskBytes))
-		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once — the stored copy is wrapped and cannot be read back.")
+		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once - the stored copy is wrapped and cannot be read back.")
 	}
 	return nil
 }
@@ -189,7 +189,7 @@ func peerRemove(args []string) error {
 		return failf(exitUsage, "no peer with that public key is in the configuration")
 	}
 	if len(tree.Peers) == 1 {
-		return failf(exitUsage, "%q is the only peer; a configuration with none would have nothing to connect to — use `wg-hem wipe` instead",
+		return failf(exitUsage, "%q is the only peer; a configuration with none would have nothing to connect to - use `wg-hem wipe` instead",
 			tree.Peers[0].Label)
 	}
 	gone := tree.Peers[idx]

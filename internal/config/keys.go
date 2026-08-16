@@ -10,8 +10,8 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 )
 
-// A key identifier is a hash of the key it names — `KID = SHA-1(pubkey)[0:16]`,
-// §3 — and that one fact decides where public keys may come from.
+// A key identifier is a hash of the key it names - `KID = SHA-1(pubkey)[0:16]`,
+// section 3 - and that one fact decides where public keys may come from.
 //
 // The device can be asked, which costs a `keymgmt:get` token and one call per
 // key. Or somebody who already asked can pass them along, which costs nothing
@@ -19,9 +19,9 @@ import (
 // key is checked against the identifier it claims, and producing a different key
 // with the same identifier is a second-preimage attack on SHA-1.
 //
-// So the privileged component reads the *identifiers* itself — freshly, because
+// So the privileged component reads the *identifiers* itself - freshly, because
 // the MAC authenticates a tree without saying which version of it is current,
-// and an old tree replayed would verify perfectly well — and takes the keys from
+// and an old tree replayed would verify perfectly well - and takes the keys from
 // whoever already has them.
 
 // keyring resolves a key identifier to the public key it names.
@@ -62,8 +62,8 @@ func fromSupplied(keys map[string][]byte) keyring {
 // resolve gets a key and checks that it is the key that identifier names.
 //
 // The check runs on both paths, not only the supplied one. On the device path it
-// catches an appliance that derives identifiers differently from this client —
-// which would otherwise surface as a MAC failure with no explanation — and on
+// catches an appliance that derives identifiers differently from this client -
+// which would otherwise surface as a MAC failure with no explanation - and on
 // the supplied path it is what makes supplying them safe at all.
 func resolve(ctx context.Context, ring keyring, kid string) ([mac.PubKeyLen]byte, error) {
 	var out [mac.PubKeyLen]byte

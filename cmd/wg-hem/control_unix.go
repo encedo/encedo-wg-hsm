@@ -32,7 +32,7 @@ func defaultSocket() string {
 // listenOn opens the socket the window will find, and settles who may reach it.
 //
 // A leftover socket from a process that is gone is not a reason to refuse to
-// start — after a crash there is always one, and somebody having to delete a
+// start - after a crash there is always one, and somebody having to delete a
 // file they have never heard of is not a recovery procedure. One that something
 // is still listening on is a different matter, and is refused.
 //
@@ -59,7 +59,7 @@ func listenOn(path, group string) (net.Listener, error) {
 	}
 
 	// The service runs as its own user and the people using it do not. Without a
-	// group they share, a socket the service owns is a socket nobody can reach —
+	// group they share, a socket the service owns is a socket nobody can reach -
 	// which is what happened: the window said the component was not answering,
 	// and the component was answering to nobody.
 	if group != "" {

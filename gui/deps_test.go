@@ -39,7 +39,7 @@ func TestTheWindowStaysUnprivileged(t *testing.T) {
 			if dep == bad || strings.HasPrefix(dep, bad+"/") {
 				t.Errorf("the window depends on %s.\n"+
 					"That is the privileged half. What it needed belongs behind the socket,\n"+
-					"or in a package light enough for both sides — internal/session and\n"+
+					"or in a package light enough for both sides - internal/session and\n"+
 					"internal/ipc are that, by the same rule enforced there.", dep)
 			}
 		}

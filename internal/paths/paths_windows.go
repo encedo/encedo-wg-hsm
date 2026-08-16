@@ -11,7 +11,7 @@ import (
 //
 // %ProgramData% is what /var/run means on Windows: data a service owns, written
 // by administrators and readable by everyone. The Unix path the other platforms
-// use would not have failed — Go would have rooted it on whichever drive
+// use would not have failed - Go would have rooted it on whichever drive
 // happened to be current and made C:\var\run\wireguard, self-consistent and in a
 // place no administrator would think to look.
 var RunDir = programDataDir()

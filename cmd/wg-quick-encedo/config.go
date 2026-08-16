@@ -101,7 +101,7 @@ func ParseConfig(path string) (*Config, error) {
 		case inInterface:
 			switch key {
 			case "PrivateKey":
-				return nil, fmt.Errorf("PrivateKey must not be present in config — use HEM_KID instead")
+				return nil, fmt.Errorf("PrivateKey must not be present in config - use HEM_KID instead")
 			case "Address":
 				prefix, err := netip.ParsePrefix(value)
 				if err != nil {

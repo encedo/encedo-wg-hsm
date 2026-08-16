@@ -14,7 +14,7 @@ import (
 
 // placePeer puts a peer's record into the device and returns its KID.
 //
-// A key identifier is a function of the key — SHA-1(pubkey)[:16] — so whether a
+// A key identifier is a function of the key - SHA-1(pubkey)[:16] - so whether a
 // peer is already in the repository is knowable before any write. That matters
 // because one public key has exactly one record: the device refuses a second
 // import of the same key, and a record already there may belong to another
@@ -22,7 +22,7 @@ import (
 //
 // So: import when the key is new, adopt when the record already says what this
 // configuration wants, and refuse otherwise rather than overwrite. Overwriting
-// would silently invalidate the MAC of whatever other identity references it —
+// would silently invalidate the MAC of whatever other identity references it -
 // a failure that would surface on someone else's machine, at their next startup.
 func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 	p peerSpec, want [descr.Size]byte, adopt bool) (kid string, adopted bool, err error) {
@@ -38,12 +38,12 @@ func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 		// An identifier the device cannot resolve comes back as 406, not 404:
 		// the firmware answers "not acceptable" where the status line would
 		// suggest a permission problem. That it tracks existence rather than
-		// permission was measured — the same key read with the same scope gives
+		// permission was measured - the same key read with the same scope gives
 		// 200 while it is in the repository and 406 once it has been deleted.
 		if he, ok := err.(*hem.HemError); ok && (he.Status == 404 || he.Status == 406) {
 			return importPeer(ctx, client, auth, p, want)
 		}
-		// Anything else — no permission to look, a device in a bad state — is
+		// Anything else - no permission to look, a device in a bad state - is
 		// not evidence that the key is absent, and importing on a guess is how
 		// half-written configurations happen. Import remains the authority in
 		// either case: the device refuses a second import of the same public key.

@@ -304,7 +304,7 @@ func TestWipeNeedsTheTypedConfirmation(t *testing.T) {
 	}
 }
 
-// Wiping has to work on a configuration that does not verify — that is one of
+// Wiping has to work on a configuration that does not verify - that is one of
 // the states an operator most needs to clear.
 func TestWipeWorksOnATamperedTree(t *testing.T) {
 	f, srv := newFakeHEM(t)

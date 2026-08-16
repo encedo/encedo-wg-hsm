@@ -4,7 +4,7 @@
 // It is small, and the smallness is the design. The component decides for
 // itself: it reads the configuration out of the device, verifies its MAC, and
 // makes its own calls at every handshake. So it is not told what to do step by
-// step — it is told which identity, which peer, and given a token to act with.
+// step - it is told which identity, which peer, and given a token to act with.
 // Four verbs and a stream of events cover it. See docs/ARCHITECTURE-GUI.md.
 //
 // What crosses is a scoped, expiring token and nothing else. Not the passphrase,
@@ -34,7 +34,7 @@ type Op string
 
 const (
 	// OpStart brings a tunnel up: which identity, which peer, and a token to
-	// act with. Refused when one is already running — one window, one tunnel.
+	// act with. Refused when one is already running - one window, one tunnel.
 	OpStart Op = "start"
 
 	// OpStop takes it down and leaves the component idle.
@@ -72,7 +72,7 @@ const (
 // Descr is the record length, and it is here because of how badly the mismatch
 // presents. A 128-byte window against a 64-byte component does not fail to
 // start: the record length is inside the configuration MAC, so it fails at
-// verification — which is what a tampered configuration looks like. Refusing by
+// verification - which is what a tampered configuration looks like. Refusing by
 // name at the handshake is the difference between "these two builds disagree"
 // and a security warning about nothing.
 type Build struct {
@@ -97,7 +97,7 @@ func (b Build) Matches(other Build) bool {
 // Token is the one secret here and it is meant to be: scoped to a single
 // interface key and expiring on its own, it is what the component acts with and
 // the reason it needs nothing else. There is no passphrase, no pre-shared key
-// and no configuration — it reads that itself.
+// and no configuration - it reads that itself.
 //
 // There is no field for skipping TLS verification, and there must never be. A
 // person typing a flag about their own session is one thing; a message telling a
@@ -122,15 +122,15 @@ type Request struct {
 	// They are here so that `keymgmt:get` does not have to be, and the handover
 	// is one token rather than a bundle. Supplying them is safe for a reason
 	// unrelated to trusting whoever supplied them: `KID = SHA-1(pubkey)[0:16]`
-	// (§3), so a key is checked against the identifier it claims, and offering a
+	// (section 3), so a key is checked against the identifier it claims, and offering a
 	// different one is a second-preimage attack rather than a substitution.
 	//
 	// What is *not* supplied is the records. The component reads those itself,
 	// freshly, because a MAC authenticates a tree without saying which version
-	// of it is current — an old configuration replayed would verify perfectly
+	// of it is current - an old configuration replayed would verify perfectly
 	// well, and a fresh search is the only thing that notices.
 	//
-	// Public information, all of it: §8 treats records and public keys as such.
+	// Public information, all of it: section 8 treats records and public keys as such.
 	PubKeys map[string]string `json:"pubkeys,omitempty"`
 }
 
@@ -169,7 +169,7 @@ type Reply struct {
 	Build *Build `json:"build,omitempty"`
 
 	// Who is answered on whoami: the caller as the component identified them,
-	// in whatever terms the platform gave — a uid on Linux, a SID on Windows.
+	// in whatever terms the platform gave - a uid on Linux, a SID on Windows.
 	Who string `json:"who,omitempty"`
 }
 
@@ -181,7 +181,7 @@ type Event struct {
 
 	// Addrs is what the interface was given, in CIDR form. The window shows it
 	// because it is the one thing about a tunnel a person is asked for by
-	// somebody else — "what is your address on the VPN" — and reading it out of
+	// somebody else - "what is your address on the VPN" - and reading it out of
 	// `ip addr` means knowing the interface name first.
 	Addrs []string `json:"addrs,omitempty"`
 
@@ -200,7 +200,7 @@ type Event struct {
 	// twenty-seven minutes, in the direction that strands somebody.
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
 
-	// Notice carries something worth telling the user that is not an error —
+	// Notice carries something worth telling the user that is not an error -
 	// failover having moved to another peer, most of all.
 	Notice string `json:"notice,omitempty"`
 }
@@ -225,7 +225,7 @@ func DecodeMsg(b []byte) (Msg, error) {
 // Validate rejects a request the component should not act on. It runs there, not
 // in the window: a caller asking nicely is not a control, and a component that
 // trusts whatever reaches its socket is only as safe as the socket's permissions
-// — which are the actual control, and are set elsewhere.
+// - which are the actual control, and are set elsewhere.
 func (r Request) Validate() error {
 	switch r.Op {
 	case OpStart:

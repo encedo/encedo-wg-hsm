@@ -45,7 +45,7 @@ func testPeer(label string, keyByte byte, endpoint string, allowed ...string) co
 }
 
 // A range the interface routes and the incoming peer does not claim becomes a
-// black hole. §6.4 keeps the routes on purpose, so the least this can do is say
+// black hole. section 6.4 keeps the routes on purpose, so the least this can do is say
 // which ones are now going nowhere.
 func TestWarnsAboutRangesTheNewPeerDoesNotClaim(t *testing.T) {
 	from := testPeer("hq", 1, "203.0.113.1:51820", "10.0.0.0/24", "192.168.0.0/16")
@@ -240,7 +240,7 @@ func TestDNSServersAreRendered(t *testing.T) {
 // and nothing can observe it.
 //
 // Waiting the failover timeout and then declaring the peer dead would be worse
-// than not looking at all — it would take a working tunnel down on the strength
+// than not looking at all - it would take a working tunnel down on the strength
 // of a question that was never asked.
 func TestABlindTunnelDoesNotFailOver(t *testing.T) {
 	tree := treeWith(t, testPeer("hq", 1, "203.0.113.1:51820", "0.0.0.0/0"))

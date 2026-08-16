@@ -15,9 +15,9 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
-// cmdVerify is the "has anyone touched the configuration" diagnostic (§10.3).
-// It performs exactly what `up` performs before it brings an interface up —
-// find, resolve, authenticate — and then prints what it found instead of acting
+// cmdVerify is the "has anyone touched the configuration" diagnostic (section 10.3).
+// It performs exactly what `up` performs before it brings an interface up -
+// find, resolve, authenticate - and then prints what it found instead of acting
 // on it, so the check can be run at any time without disturbing a live tunnel.
 func cmdVerify(args []string) error {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
@@ -57,7 +57,7 @@ Flags:
 // disagree: `peer update` re-signs the tree without touching a running
 // interface, so an authentic tree and a stale interface look alike from the MAC
 // alone. It lives here rather than in `status` because answering it needs the
-// tree, and reading the tree is this command's job — `status` reports what is
+// tree, and reading the tree is this command's job - `status` reports what is
 // running and asks nobody for anything.
 func reportRunningPeer(tree *config.Tree) {
 	names, err := session.Running()
@@ -92,7 +92,7 @@ func treeHasPeer(tree *config.Tree, kid string) bool {
 }
 
 // dumpTree writes the parsed configuration to stdout in a stable, greppable
-// form. Human commentary belongs on stderr (§10.4), so this is only the data.
+// form. Human commentary belongs on stderr (section 10.4), so this is only the data.
 func dumpTree(t *config.Tree) {
 	fmt.Printf("interface.kid %s\n", t.IfKID)
 	fmt.Printf("interface.label %s\n", t.IfLabel)

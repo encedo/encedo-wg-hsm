@@ -145,7 +145,7 @@ func TestCanonicalIgnoresReferenceOrder(t *testing.T) {
 	}
 
 	// A different reference order is a different interface record, so the
-	// message does change — the priority is authenticated.
+	// message does change - the priority is authenticated.
 	m3, err := Canonical(ifPub, reversed, []PeerRecord{a, b})
 	if err != nil {
 		t.Fatalf("Canonical: %v", err)
@@ -190,10 +190,10 @@ func TestMaxPeersMatchesDeviceLimit(t *testing.T) {
 	// size. The spec quotes the figures for 128-byte records.
 	if descr.Size == 128 {
 		if MaxPeers != 11 {
-			t.Errorf("MaxPeers = %d, want 11 (spec §4)", MaxPeers)
+			t.Errorf("MaxPeers = %d, want 11 (spec section 4)", MaxPeers)
 		}
 		if fixedLen+MaxPeers*perPeer != 1933 {
-			t.Errorf("a full tree is %d bytes, spec §4 says 1933", fixedLen+MaxPeers*perPeer)
+			t.Errorf("a full tree is %d bytes, spec section 4 says 1933", fixedLen+MaxPeers*perPeer)
 		}
 	}
 	if fixedLen+MaxPeers*perPeer > deviceMsgLimit {

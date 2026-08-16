@@ -18,7 +18,7 @@ func deadAuth(dev Device) *Auth {
 }
 
 // The SDK caches the key derived from the passphrase, and a second prompt would
-// mean that cache had stopped working — four scopes into provisioning, that is
+// mean that cache had stopped working - four scopes into provisioning, that is
 // four passphrase prompts for one session.
 func TestThePassphraseIsAskedForOnce(t *testing.T) {
 	asked := 0
@@ -50,7 +50,7 @@ func TestThePassphraseBufferIsZeroed(t *testing.T) {
 }
 
 // A window that has not been given a way to ask is a bug in the window, and it
-// must not present as a device or network fault — those send somebody looking at
+// must not present as a device or network fault - those send somebody looking at
 // their appliance.
 func TestNoWayToAskIsAnAuthenticationFault(t *testing.T) {
 	a := deadAuth(Device{})

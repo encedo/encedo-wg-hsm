@@ -11,7 +11,7 @@ import (
 )
 
 // FailoverTimeout is how long a freshly configured peer has to complete a
-// handshake before it is treated as not answering (§6.4).
+// handshake before it is treated as not answering (section 6.4).
 //
 // WireGuard retransmits its first handshake message every 5 s, so fifteen
 // seconds is three attempts. It is long enough that a slow path is not mistaken
@@ -31,8 +31,8 @@ var handshakePoll = 500 * time.Millisecond
 // FailoverTimeout to pass without one, or for the tunnel to end.
 //
 // The wait is only for the first handshake after a peer is configured. A peer
-// that answers and later stops is v2's problem — automatic failover with a
-// health check — and pretending otherwise here would mean guessing at the
+// that answers and later stops is v2's problem - automatic failover with a
+// health check - and pretending otherwise here would mean guessing at the
 // difference between a quiet tunnel and a dead one.
 func awaitHandshake(ifname string, ending <-chan struct{}) (handshook bool) {
 	deadline := time.After(FailoverTimeout)
@@ -62,11 +62,11 @@ func awaitHandshake(ifname string, ending <-chan struct{}) (handshook bool) {
 }
 
 // WalkPeers answers failover without asking anybody, by walking the stored order
-// (§6.4 v2). It is what a component with nobody in front of it passes as
+// (section 6.4 v2). It is what a component with nobody in front of it passes as
 // SelectNext.
 //
-// The stored order *is* the priority — §3.1 says so of PEER_REF, and it is
-// covered by the configuration MAC — so there is nothing to decide here beyond
+// The stored order *is* the priority - section 3.1 says so of PEER_REF, and it is
+// covered by the configuration MAC - so there is nothing to decide here beyond
 // keeping track of what has already been tried. The interactive prompt exists
 // because a terminal had a human in front of it, not because failover needs one.
 //
@@ -103,14 +103,14 @@ func WalkPeers() func(tree *config.Tree, failed *config.Peer) (*config.Peer, err
 // allowedIPsDiffer reports ranges that the interface routes but the peer about
 // to take over does not claim, or "" when there are none.
 //
-// §6.4 replaces the peer and leaves the routing alone: the routes are in the
+// section 6.4 replaces the peer and leaves the routing alone: the routes are in the
 // table and traffic is using them, so withdrawing them mid-flight is the more
 // dangerous of the two mistakes. The cheaper one is a range that now routes into
 // the interface and finds no peer willing to carry it, and that is worth naming
 // rather than leaving to be discovered as packet loss.
 //
 // It returns the sentence rather than printing it, because where a warning goes
-// is not the tunnel's business — a terminal has stderr and a window has neither.
+// is not the tunnel's business - a terminal has stderr and a window has neither.
 func allowedIPsDiffer(from, to *config.Peer) string {
 	claimed := make(map[string]bool, len(to.AllowedIPs))
 	for _, a := range to.AllowedIPs {
