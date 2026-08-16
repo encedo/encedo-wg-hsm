@@ -159,6 +159,25 @@ jobs:
                 done
                 ;;
               Windows)
+                # The icon and version resource, compiled into the window.
+                #
+                # Windows reads the icon for Explorer, the task bar and a Start
+                # menu shortcut out of the executable, never from the running
+                # program - which is why the tray icon was right and the other
+                # three were generic. The version goes in with it, so the file
+                # can say what it is without being run.
+                #
+                # -platform-specific writes resource_windows_<arch>.syso, which
+                # is the naming Go already applies GOOS and GOARCH rules to, so
+                # the right one is linked and the rest are ignored. Generated
+                # rather than committed: it carries the stamp, which changes
+                # every commit.
+                ( cd .. && go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
+                    -icon gui/packaging/icon.ico \
+                    -product-version "$VERSION (descr ${variant:+64}${variant:-128} B)" \
+                    -platform-specific \
+                    -o gui/resource.syso \
+                    gui/packaging/versioninfo.json )
                 # Whatever the runner is, natively: cgo means no cross-building,
                 # so the ARM64 runner produces the ARM64 window and the x64 one
                 # produces x64. runner.arch is the only thing that distinguishes
@@ -304,6 +323,10 @@ jobs:
             cp "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" "$stage/encedo-wg-gui.exe"
             cp "$work/x/wintun/bin/$goarch/wintun.dll"                 "$stage/wintun.dll"
             cp ../packaging/windows/install.ps1                        "$stage/"
+            # The icon as a file as well as a resource: the installer points the
+            # notification registration at it, and Windows wants an image there
+            # rather than an executable.
+            cp packaging/icon.ico                                      "$stage/"
             cp ../packaging/windows/uninstall.ps1                      "$stage/"
             cp ../LICENSE                                              "$stage/LICENSE.txt"
             cp "$work/x/wintun/LICENSE.txt"                            "$stage/WINTUN-LICENSE.txt"

@@ -34,6 +34,15 @@ if (Get-Service -Name $service -ErrorAction SilentlyContinue) {
 
 if (Test-Path $menu) { Remove-Item -Force $menu; Write-Host 'Shortcut removed.' }
 
+# The name notifications were sent under. Left behind it would point at an icon
+# that no longer exists, which is how a notification comes to have a blank
+# square where a mark was.
+$aumid = 'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg'
+if (Test-Path $aumid) {
+    Remove-Item -Path $aumid -Recurse -Force
+    Write-Host 'Notification name removed.'
+}
+
 if (Test-Path $target) {
     # Retried once: Windows can hold a file open for a moment after the process
     # using it exits, and failing here would leave the caller with a service

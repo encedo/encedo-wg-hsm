@@ -25,7 +25,7 @@ $service = 'encedo-wg'
 # installed: the 64-byte and 128-byte builds differ by a suffix, they cannot read
 # each other's configuration, and the failure reads as a corrupt tree rather than
 # as a mismatched binary.
-$files = @('wg-hem.exe', 'encedo-wg-gui.exe', 'wintun.dll')
+$files = @('wg-hem.exe', 'encedo-wg-gui.exe', 'wintun.dll', 'icon.ico')
 
 foreach ($f in $files) {
     if (-not (Test-Path (Join-Path $source $f))) {
@@ -119,6 +119,24 @@ $link.TargetPath = Join-Path $target 'encedo-wg-gui.exe'
 $link.WorkingDirectory = $target
 $link.Description = 'A WireGuard tunnel whose private key never leaves the module'
 $link.Save()
+
+# What a toast notification calls this program.
+#
+# Windows names the sender of a notification after its AppUserModelID, and with
+# nothing registered for ours it showed the identifier itself: a person got
+# "com.encedo.wg" telling them they were connected. The identifier cannot simply
+# be made prettier - it is also the key the window's settings are stored under,
+# and changing it would orphan them - so the name is registered beside it.
+#
+# Under HKLM rather than HKCU on purpose: this script runs elevated, so HKCU here
+# is the administrator's hive and not the hive of whoever will actually see the
+# notification.
+$aumid = 'HKLM:\SOFTWARE\Classes\AppUserModelId\com.encedo.wg'
+New-Item -Path $aumid -Force | Out-Null
+New-ItemProperty -Path $aumid -Name DisplayName -PropertyType String -Force `
+    -Value 'encedo-wg' | Out-Null
+New-ItemProperty -Path $aumid -Name IconUri -PropertyType String -Force `
+    -Value (Join-Path $target 'icon.ico') | Out-Null
 
 Write-Host @"
 

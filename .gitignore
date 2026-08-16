@@ -16,3 +16,8 @@
 /gui/gui.exe
 dist-deb/
 dist-gui/
+
+# Generated into gui/ by goversioninfo during the Windows build: the icon and
+# version resource Windows reads from the file itself. Regenerated every build
+# from packaging/icon.ico and the stamp, so it is not worth keeping.
+gui/*.syso
