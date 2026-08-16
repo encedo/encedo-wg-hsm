@@ -153,6 +153,12 @@ type ui struct {
 }
 
 func main() {
+	// Before the flags are read, because the first thing that might want to
+	// print is the parser refusing one. On Windows this window has no console
+	// of its own - see console_windows.go, and the installer that read an empty
+	// version string because of it.
+	attachConsole()
+
 	// -scenario plays the life of a session end to end so somebody can watch it
 	// once rather than learn which debug button produces which state.
 	auto := flag.Bool("scenario", false, "play a scripted session instead of waiting for input")

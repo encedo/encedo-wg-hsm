@@ -40,6 +40,20 @@ $hemVersion = (& (Join-Path $source 'wg-hem.exe') version) -join ''
 $guiVersion = (& (Join-Path $source 'encedo-wg-gui.exe') -version) -join ''
 $hemStamp = ($hemVersion -replace '^wg-hem\s+', '')
 $guiStamp = ($guiVersion -replace '^encedo-wg-gui\s+', '')
+# Said separately, because "it printed nothing" and "it printed something else"
+# are different faults and the second reads as the first when the column is
+# blank. A window built for the GUI subsystem has no console to print to, which
+# is exactly how this failed once: the halves matched and the comparison could
+# not see it.
+if (-not $hemStamp) { throw "wg-hem.exe printed no version. Is it the right file?" }
+if (-not $guiStamp) {
+    throw @"
+encedo-wg-gui.exe printed no version.
+It is linked for the GUI subsystem and has to attach to this console to print at
+all, so a build from before that was fixed cannot report its version and this
+installer cannot check the pair. Take a newer build.
+"@
+}
 if ($hemStamp -ne $guiStamp) {
     throw @"
 These two halves will refuse to drive each other:
