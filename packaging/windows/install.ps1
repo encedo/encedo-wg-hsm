@@ -5,7 +5,7 @@
 #
 # The Linux counterpart is a .deb, and this is deliberately the same shape: it
 # places files, registers a service that starts on demand, and adds one entry to
-# the menu. It does not start a tunnel. Nothing here brings one up at boot — the
+# the menu. It does not start a tunnel. Nothing here brings one up at boot: the
 # service exists so that a person opening the window does not have to be an
 # administrator, not so that a tunnel exists without one.
 #
@@ -29,7 +29,7 @@ $files = @('wg-hem.exe', 'encedo-wg-gui.exe', 'wintun.dll')
 
 foreach ($f in $files) {
     if (-not (Test-Path (Join-Path $source $f))) {
-        throw "$f is missing from $source — unpack the whole bundle before running this"
+        throw "$f is missing from $source. Unpack the whole bundle before running this."
     }
 }
 
@@ -68,7 +68,7 @@ Write-Host "Placed in $target"
 & (Join-Path $target 'wg-hem.exe') service start
 
 # The shortcut takes no arguments. The window drives a real appliance when asked
-# for nothing, which is the whole reason that default was turned round — a Start
+# for nothing, which is the whole reason that default was turned round. A Start
 # menu entry that launched the scripted stand-in would be a menu entry that lies.
 $menu = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\encedo-wg.lnk'
 $shell = New-Object -ComObject WScript.Shell

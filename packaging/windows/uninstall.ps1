@@ -53,6 +53,6 @@ Done.
 
 Left behind on purpose: nothing this program wrote to %ProgramData%\WireGuard,
 which is where a running interface leaves its state, and the window's own
-settings under HKCU. Neither is a secret — no key material is written anywhere
-by either half — and both are what somebody reinstalling would want kept.
+settings under HKCU. Neither is a secret (no key material is written anywhere
+by either half), and both are what somebody reinstalling would want kept.
 "@

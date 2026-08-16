@@ -64,6 +64,26 @@ jobs:
           WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./package-windows.sh
 
+      # PowerShell 5.1 reads a .ps1 without a byte-order mark as ANSI, not UTF-8.
+      # An em dash then arrives as three CP-1252 characters, the last of which is
+      # a right double quotation mark, and inside a double-quoted string that
+      # closes the string. install.ps1 shipped that way once: it parsed as far as
+      # the first dash and then produced four errors, none of which mentioned
+      # encoding.
+      #
+      # A BOM would also fix it and is the conventional answer. This is the
+      # sturdier one: a BOM can be stripped by an editor, a merge or a tool that
+      # means well, and nothing would say so until somebody ran the installer.
+      - name: PowerShell must be plain ASCII
+        run: |
+          bad="$(LC_ALL=C grep -rln '[^ -~\t]' --include='*.ps1' . || true)"
+          if [ -n "$bad" ]; then
+            echo "These scripts contain characters PowerShell 5.1 will misread:"
+            echo "$bad"
+            LC_ALL=C grep -rn '[^ -~\t]' --include='*.ps1' .
+            exit 1
+          fi
+
       - name: gofmt
         run: |
           unformatted="$(gofmt -l cmd/ internal/)"
