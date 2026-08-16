@@ -256,6 +256,42 @@ For a signed installer the same verified file goes in unchanged, and it is the
 one thing in the payload that must **not** be signed by us — see the note above,
 and `package-windows.sh`, which says it at greater length.
 
+### Defender calls the component a trojan, and signing is the answer
+
+On 2026-08-16, immediately after a successful install, Windows Defender
+quarantined `C:\Program Files\Encedo WG\wg-hem.exe` as
+`Trojan:Win32/Bearfoos.A!ml`.
+
+The suffix is the whole diagnosis. `!ml` means a machine-learning model decided
+this, not a signature: Defender is saying the file is statistically unusual, not
+that it recognises it. Bearfoos is the generic name Microsoft gives such
+findings, and it lands on new Go and Rust binaries often enough that several
+well-known projects carry an issue about this exact string.
+
+Why this one in particular, and it is worth being honest about: an unsigned
+executable, newly built, with no prevalence anywhere, that registers a service
+running as LocalSystem, creates a virtual network adapter and opens a named
+pipe. Read without provenance, that is a fair description of malware. Note that
+it flagged the component and not the window - the component is the half that
+does all of it.
+
+What is not a contributing cause here, and is the usual one elsewhere: the
+binary is not compressed. build.sh does not pack, so there is no UPX layer for a
+model to react to.
+
+**The fix is the signature**, which moves the signing work from something to do
+eventually to something that blocks distribution. An Authenticode signature, and
+Trusted Signing's reputation with Microsoft in particular, is the documented
+remedy rather than a hopeful one. Until then, a false positive can be submitted
+at `https://www.microsoft.com/en-us/wdsi/filesubmission`, which clears it from
+the cloud model but only for the exact file submitted - so every new build earns
+the alert again. That is not a workflow, which is the point.
+
+Worth doing anyway before believing any of the above: put the file through
+VirusTotal. A handful of engines out of seventy is what a false positive looks
+like; a broad consensus would mean something else entirely and this document
+would be wrong.
+
 ### Signing: what has to exist before the workflow can sign
 
 The steps are written and switched off. `gui.yml` signs nothing until the
