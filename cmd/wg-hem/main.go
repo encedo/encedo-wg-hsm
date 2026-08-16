@@ -62,6 +62,8 @@ func main() {
 	switch os.Args[1] {
 	case "provision":
 		err = cmdProvision(os.Args[2:])
+	case "import":
+		err = cmdImport(os.Args[2:])
 	case "up":
 		err = cmdUp(os.Args[2:])
 	case "down":
@@ -117,6 +119,7 @@ func usage() {
 Usage:`, version.Version)
 	fmt.Fprint(os.Stderr, `
   wg-hem provision [flags]    write a configuration into the HEM
+  wg-hem import <file.conf>   the same, from an ordinary WireGuard client file
   wg-hem up [flags]           bring the tunnel up from the stored configuration
   wg-hem down [flags]         stop a running interface
   wg-hem status [flags]       report on a running interface

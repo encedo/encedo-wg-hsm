@@ -157,6 +157,18 @@ jobs:
                 # refuse each other unless their stamps agree, and two workflows
                 # producing them is how the stamps come to differ. From the
                 # repository root, because gui/ is its own module.
+                #
+                # The patched upstream tree first. The component imports
+                # wireguard-go and go.mod resolves that to ./wireguard-go, which
+                # only build.sh produces - and the first version of this asked
+                # for it in the packaging step, which runs after this one. The
+                # build failed with "replacement directory ./wireguard-go does
+                # not exist" while the step that would have created it sat two
+                # steps below. The Windows branch had it in the right place; the
+                # two are now the same.
+                if [ ! -d ../wireguard-go/device ]; then
+                  ( cd .. && WG_PREPARE_ONLY=1 sh build.sh )
+                fi
                 case "$variant" in
                   "")        cli_tags="" ;;
                   -descr64)  cli_tags="descr64" ;;
@@ -381,11 +393,8 @@ jobs:
         shell: bash
         run: |
           set -eu
-          # The patched upstream tree, which the component needs and which only
-          # build.sh produces.
-          if [ ! -d wireguard-go/device ]; then
-            WG_PREPARE_ONLY=1 sh build.sh
-          fi
+          # No prepare here: the build step above has already laid down the
+          # patched upstream tree, because that is where the component is built.
           for variant in "" "-descr64"; do
             sh packaging/linux/build-deb.sh amd64 "$variant"
           done

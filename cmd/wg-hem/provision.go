@@ -31,6 +31,18 @@ type stringList []string
 func (s *stringList) String() string     { return strings.Join(*s, " ") }
 func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 
+// provisionedKey is where a run leaves the interface public key it created, for
+// a caller in this package that needs it as a value rather than as a line on
+// stdout. `import` is that caller: it pairs the key with the address so an
+// administrator has both together, and reading it back off stdout would mean
+// parsing our own output.
+//
+// A package variable rather than a return value because cmdProvision is a
+// command - its signature is the one every command here has, and bending that
+// for one caller would be worse than this. Set on success and never read by
+// anything that did not just call it.
+var provisionedKey string
+
 func cmdProvision(args []string) (retErr error) {
 	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -327,7 +339,8 @@ Flags:
 	fmt.Fprintf(os.Stderr, "Configuration written and verified (%d peer(s)).\n", len(peers))
 	fmt.Fprintln(os.Stderr, "Nothing was written to disk; `wg-hem up` needs only the HEM.")
 
-	fmt.Println(base64.StdEncoding.EncodeToString(ifPub[:]))
+	provisionedKey = base64.StdEncoding.EncodeToString(ifPub[:])
+	fmt.Println(provisionedKey)
 	if *psk == "generate" {
 		fmt.Printf("psk=%s\n", base64.StdEncoding.EncodeToString(pskBytes))
 		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once - the stored copy is wrapped and cannot be read back.")
