@@ -186,7 +186,10 @@ if hsmSession != nil {
 wg-hsm/
   build.sh                        <- checkout wireguard-go + overlay patches + build dist/
   go.mod                          <- module github.com/encedo/encedo-wg-hsm
-  README.md                       <- technical documentation
+  README.md                       <- short front page: what it is, install, links
+  docs/                           <- the technical documentation the README used
+                                     to hold: INSTALL, USAGE, ARCHITECTURE,
+                                     RELEASING, plus the GUI and Windows notes
   PRODUCT.md                      <- marketing summary
   CLAUDE.md                       <- this file
 

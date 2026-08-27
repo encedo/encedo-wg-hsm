@@ -161,7 +161,7 @@ privileged thing this client does on Linux — creating the interface, its
 addresses, its routes, its MTU — wants one capability, `cap_net_admin`, and not
 root. `/dev/net/tun` is world-writable already. What is left is `/var/run/wireguard`,
 which is root-owned, and a tmpfiles rule settles that. So on Linux the answer is
-`setcap` plus a directory, which the README has documented for the config-file
+`setcap` plus a directory, which `docs/INSTALL.md` documents for the config-file
 client since before any of this: no helper process, no elevation, nothing new to
 write.
 
@@ -528,8 +528,9 @@ temporary accommodation for current hardware, not a product characteristic, and
 it should not outlive the firmware that needs it. It reaches further than it
 looks: `descr64` and the `-descr64` suffix in `build.sh`, the two-way matrix in
 the CI workflow, `size_descr64.go`, the record size reported by `wg-hem version`,
-and the passages in `README.md`, `CLAUDE.md` and `UPSTREAM.md` that explain why a
-tree written by one build cannot be read by the other. Removing half of that
+the `-descr64` stage the MSI is built from in `gui.yml`, and the passages in
+`docs/INSTALL.md`, `CLAUDE.md` and `UPSTREAM.md` that explain why a tree written
+by one build cannot be read by the other. Removing half of that
 leaves a build flag that no longer does anything and documentation describing a
 choice nobody has. The customer-facing page already says nothing about record
 sizes, deliberately — until this is done, the repository and that page disagree.

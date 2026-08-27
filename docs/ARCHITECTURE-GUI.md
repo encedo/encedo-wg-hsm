@@ -233,7 +233,7 @@ the command-line client. An earlier draft of this document moved them out, on
 the grounds that two entry points writing one directory under different owners
 would be a fight. That was tidiness reasoning and it was wrong twice over. The
 directory is *designed* to be shared — a group is what it is for, and the
-tmpfiles rule the README has always carried is how a client without root writes
+tmpfiles rule `INSTALL.md` carries is how a client without root writes
 there at all. And moving out would cost something real: `wg show` finds a tunnel
 by looking exactly there, so a tunnel this service runs would become invisible to
 the standard tool, which is likely to be installed and is the first thing anybody
