@@ -104,6 +104,14 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 	}
 	ifKID, err := pickIdentity(ids, s.ChooseIdentity)
 	if err != nil {
+		// Declining to choose is not a failure, and drawing it as one would
+		// tell somebody their module is broken because they pressed Cancel.
+		// Back to Ready with a sentence and no error attached, which is what
+		// keeps the notice from being painted red.
+		if errors.Is(err, errNoProfileChosen) {
+			s.emit(Event{State: Ready, HEM: s.hemURL, Notice: humanError(err)})
+			return err
+		}
 		return s.failed(err)
 	}
 
@@ -290,8 +298,11 @@ func pickIdentity(ids []config.Identity, choose func([]config.Identity) (string,
 	case len(ids) == 1:
 		return ids[0].KID, nil
 	case choose == nil:
+		// The window supplies a chooser, so reaching this is not a person
+		// meeting a limitation - it is a caller with nobody to ask, which on
+		// this side means a test or a session built before the window was.
 		return "", session.Fail(session.KindDevice,
-			"this module holds %d identities and this window cannot yet offer the choice", len(ids))
+			"this module holds %d identities and nothing here can ask which to use", len(ids))
 	}
 	return choose(ids)
 }

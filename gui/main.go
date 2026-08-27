@@ -7,6 +7,7 @@ import (
 	_ "embed"
 
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"image/color"
@@ -242,6 +243,8 @@ func main() {
 		u.sess = ls
 	}
 	u.build()
+	// After build, because asking which profile to use needs a window to ask in.
+	u.installChoosers()
 	// Now that there is a window to show, start answering the launches that ask
 	// for it. Through fyne.Do: the request arrives on the listener's goroutine.
 	if ln != nil {
@@ -476,7 +479,11 @@ func (u *ui) onAction() {
 		// not said.
 		go func() {
 			if err := u.sess.Connect(context.Background(), pass); err != nil {
-				fyne.Do(func() { u.setNotice(humanError(err), true) })
+				// Cancelling the profile question ends the attempt without
+				// anything having gone wrong, so it is said plainly rather
+				// than in the colour reserved for things that failed.
+				bad := !errors.Is(err, errNoProfileChosen)
+				fyne.Do(func() { u.setNotice(humanError(err), bad) })
 			}
 		}()
 	case Connected:
@@ -863,6 +870,11 @@ func dash(s string) string {
 // itself, and passing those through keeps the sentence somebody wrote for the
 // occasion.
 func humanError(err error) string {
+	// Before the switch, because this one is not a kind of failure: it is the
+	// answer "not now" to a question the window asked.
+	if errors.Is(err, errNoProfileChosen) {
+		return "No profile chosen. Connect again to pick one."
+	}
 	switch session.KindOf(err) {
 	case session.KindAuth:
 		return "That passphrase was not accepted - check it and try again."
