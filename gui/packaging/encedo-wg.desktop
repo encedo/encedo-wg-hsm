@@ -15,7 +15,9 @@ Keywords=VPN;WireGuard;Encedo;HEM;
 # placeholder beside a tray icon that is correct, which is exactly as unfinished
 # as it looks.
 #
-# The value is measured, not guessed. GLFW takes both parts of WM_CLASS from the
-# window title when nothing sets them, and the window is titled encedo-wg, so it
-# announces ("encedo-wg", "encedo-wg"). Changing the title changes this.
-StartupWMClass=encedo-wg
+# GLFW takes both parts of WM_CLASS from the window title when nothing sets
+# them, so this has to be whatever gui/main.go calls windowTitle - today
+# "Encedo WG". Changing the title changes this, and changing one without the
+# other breaks the match silently: everything still runs, and only the icon in
+# the dash is wrong.
+StartupWMClass=Encedo WG

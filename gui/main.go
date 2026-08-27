@@ -55,13 +55,22 @@ const legacyHEM = "https://192.168.7.1"
 // are kept.
 const appID = "com.encedo.wg"
 
-// wmClass is what the window announces itself as, and what a desktop entry has
-// to name in StartupWMClass for the two to be recognised as the same thing.
-// Measured rather than assumed: GLFW takes both parts of WM_CLASS from the
-// window title when nothing else sets them, so a window titled encedo-wg
-// announces ("encedo-wg", "encedo-wg"). It follows windowTitle, which is why
-// they are one constant apart.
-const windowTitle = "encedo-wg"
+// windowTitle is the name a person sees: in the title bar, in the task bar, in
+// the alt-tab list, and on every notification this program sends.
+//
+// It is the product name and not the package name. encedo-wg stays as the
+// service, the package and the binary - identifiers for a machine to match on -
+// but a window sitting beside Firefox and Files should not be the only one
+// announcing itself in lower case with a hyphen.
+//
+// It is also what the window announces as WM_CLASS, and that is load-bearing.
+// GLFW takes both parts of WM_CLASS from the window title when nothing else
+// sets them, so this title announces ("Encedo WG", "Encedo WG") - and a desktop
+// entry has to name the same string in StartupWMClass or GNOME cannot tell the
+// launcher and the window are one application: an entry with an icon, a window
+// without one, and a placeholder in the dash beside a correct tray icon.
+// packaging keeps the matching value, and the two move together or not at all.
+const windowTitle = "Encedo WG"
 
 // The window used to carry a number of its own, 0.9, on the grounds that the two
 // halves are built differently - the command-line client is static and
@@ -639,9 +648,9 @@ func (u *ui) render(e Event) {
 	if e.State != prev.State {
 		switch e.State {
 		case Connected:
-			u.app.SendNotification(fyne.NewNotification("encedo-wg", "Connected."))
+			u.app.SendNotification(fyne.NewNotification(windowTitle, "Connected."))
 		case Ended:
-			u.app.SendNotification(fyne.NewNotification("encedo-wg", "Disconnected."))
+			u.app.SendNotification(fyne.NewNotification(windowTitle, "Disconnected."))
 		}
 	}
 

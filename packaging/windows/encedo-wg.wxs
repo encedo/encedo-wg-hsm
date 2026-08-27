@@ -48,7 +48,7 @@
 
     <MajorUpgrade
         AllowSameVersionUpgrades="yes"
-        DowngradeErrorMessage="A newer version of encedo-wg is already installed." />
+        DowngradeErrorMessage="A newer version of Encedo WG is already installed." />
 
     <MediaTemplate EmbedCab="yes" />
 
@@ -63,7 +63,7 @@
     </StandardDirectory>
     <StandardDirectory Id="ProgramMenuFolder" />
 
-    <Feature Id="Main" Title="encedo-wg" Level="1">
+    <Feature Id="Main" Title="Encedo WG" Level="1">
       <ComponentGroupRef Id="Files" />
       <ComponentRef Id="Shortcut" />
       <ComponentRef Id="Stamp" />
@@ -88,7 +88,7 @@
             Id="ServiceInstall"
             Name="encedo-wg"
             DisplayName="Encedo WireGuard tunnels for a graphical client"
-            Description="Runs tunnels on behalf of the encedo-wg window. Holds no credential and starts nothing on its own."
+            Description="Runs tunnels on behalf of the Encedo WG window. Holds no credential and starts nothing on its own."
             Type="ownProcess"
             Start="demand"
             ErrorControl="normal"
