@@ -41,6 +41,12 @@ type liveSession struct {
 	conn   net.Conn
 	closed bool
 	last   Event
+
+	// ifKID is the identity the running tunnel acts as. Kept because renewing
+	// the session means minting another token for that same key, and the scope
+	// names it: keymgmt:use:<kid> is one key's worth of permission and means
+	// nothing without knowing which.
+	ifKID string
 }
 
 func newLiveSession(hemURL, socket string) *liveSession {
@@ -155,6 +161,7 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 
 	s.mu.Lock()
 	s.conn = conn
+	s.ifKID = ifKID
 	s.mu.Unlock()
 
 	go s.consume(conn)
@@ -178,12 +185,12 @@ func publicKeys(tree *config.Tree) map[string]string {
 // connection ends - which is also when the tunnel does.
 func (s *liveSession) consume(conn net.Conn) {
 	// Whatever ends this connection ends the tunnel with it, so the session goes
-	// back to being one that can be started again - and the presence watcher,
-	// which stands aside while a tunnel is up, starts answering once more.
+	// back to being one that can be started again.
 	defer func() {
 		s.mu.Lock()
 		if s.conn == conn {
 			s.conn = nil
+			s.ifKID = ""
 		}
 		s.mu.Unlock()
 		s.emit(Event{State: Ready, HEM: s.hemURL})
@@ -523,4 +530,56 @@ func importFailure(err error, c provision.Cleanup) error {
 		return fmt.Errorf("%w\n\nNothing was left behind: the key it created was removed.", err)
 	}
 	return err
+}
+
+// Renew replaces the token a running tunnel acts with, without dropping it.
+//
+// This is not the token refresh recorded as a deliberate non-goal. That one
+// would have needed the passphrase to outlive the authentication step, so that
+// something could re-authorise on its own; here a person types it again, which
+// is the whole difference. Nothing is kept, nothing renews itself, and a
+// session that nobody renews still ends.
+//
+// The component has been able to do this since it was written - ipc.OpRefresh,
+// and Tunnel.Refresh swapping the token into the live HSM session - and its
+// author left a note saying why: renewal is a human act and the human is at the
+// window. This is the window finally asking.
+func (s *liveSession) Renew(ctx context.Context, passphrase []byte) error {
+	defer session.Zero(passphrase)
+
+	s.mu.Lock()
+	conn, kid := s.conn, s.ifKID
+	s.mu.Unlock()
+	if conn == nil {
+		return session.Fail(session.KindDevice, "there is no tunnel to renew")
+	}
+	if kid == "" {
+		return session.Fail(session.KindDevice, "this session does not know which identity it is running as")
+	}
+
+	s.emit(Event{State: Connected, HEM: s.hemURL, Notice: "Renewing the session..."})
+
+	dev := session.Device{
+		URL:        s.hemURL,
+		ExpSecs:    int(sessionLength.Seconds()),
+		Passphrase: func() ([]byte, error) { return passphrase, nil },
+		Notify:     func(msg string) { s.emit(Event{State: Connected, HEM: s.hemURL, Notice: msg}) },
+	}
+	_, auth, err := dev.Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer auth.Wipe()
+
+	tok, err := auth.Token(ctx, "keymgmt:use:"+kid)
+	if err != nil {
+		return err
+	}
+	if err := ipc.WriteMsg(conn, ipc.Request{Op: ipc.OpRefresh, Token: tok}); err != nil {
+		return session.Classify(err, session.KindNetwork, "asking the component to take the new token")
+	}
+	// The new expiry arrives the way every other fact about the tunnel does -
+	// the component reads it off the token and reports it - so nothing is
+	// computed here from the length that was asked for.
+	return nil
 }

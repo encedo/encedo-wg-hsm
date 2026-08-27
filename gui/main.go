@@ -144,6 +144,7 @@ type ui struct {
 	notice     string
 	noticeBad  bool
 	warned     bool
+	renewOpen  bool
 
 	pass      *widget.Entry
 	action    *widget.Button
@@ -708,14 +709,89 @@ func (u *ui) renderCountdown(e Event) {
 	if left > 0 && left <= warnBefore && !u.warned {
 		u.warned = true
 		// The countdown above already says how long; this says the part it
-		// cannot, which is that nothing will renew it.
-		u.setNotice("Reconnect before it ends - the session does not renew itself", false)
-		u.app.SendNotification(fyne.NewNotification("encedo-wg",
+		// cannot, which is what to do about it. The passphrase field and the
+		// button appear with it - see compose - because the answer is the same
+		// act as connecting and asking for it twice would be asking twice.
+		u.setNotice("The session is ending. Renew it, or the tunnel closes.", false)
+		u.app.SendNotification(fyne.NewNotification(windowTitle,
 			"The tunnel will disconnect in "+fmtLeft(left)+"."))
+		u.askToRenew()
 	}
 	if left > warnBefore {
 		u.warned = false
 	}
+}
+
+// onRenew extends a session that is running out, without the tunnel going down.
+//
+// It asks for the passphrase rather than taking a click, and that is the point
+// rather than an inconvenience. A session has an end because an authorised one
+// is a window in which anything on this host can use the key through it; a
+// button that extends it unattended would remove the end while appearing to
+// keep it.
+// askToRenew is a dialogue and not a row on the main screen, and that was
+// measured rather than preferred: the connected screen is already the tallest
+// this window gets, a button alone put it forty points past a height it cannot
+// grow past, and a passphrase field beside it ninety. It also puts renewal
+// where the other two things needing an answer already are.
+//
+// Declining is a real answer, and once. The notice stays on the screen, so
+// somebody who was in the middle of something is not asked again by a window
+// that has already taken their focus once.
+func (u *ui) askToRenew() {
+	if u.renewOpen {
+		return
+	}
+	u.renewOpen = true
+	u.present()
+
+	pass := widget.NewPasswordEntry()
+	pass.SetPlaceHolder("HEM passphrase")
+
+	body := container.NewVBox(
+		widget.NewLabel("This session is about to end and the tunnel will close.\n"+
+			"Type the passphrase to authorise another one - the tunnel stays up."),
+		pass,
+	)
+	d := dialog.NewCustomConfirm("Stay connected?", "Stay connected", "Let it end", body,
+		func(ok bool) {
+			u.renewOpen = false
+			if !ok {
+				return
+			}
+			u.renew([]byte(pass.Text))
+			pass.SetText("")
+		}, u.win)
+	d.Resize(fyne.NewSize(windowWidth-dialogInset, 200*uiScale))
+	d.Show()
+}
+
+// renew spends the passphrase on another token and hands it to the component.
+//
+// It asks for the passphrase rather than taking a click, and that is the point
+// rather than an inconvenience. A session has an end because an authorised one
+// is a window in which anything on this host can use the key through it; a
+// button that extended it unattended would remove the end while appearing to
+// keep it.
+func (u *ui) renew(pass []byte) {
+	if len(pass) == 0 {
+		u.setNotice("No passphrase given, so the session was not renewed.", false)
+		return
+	}
+	// Off this goroutine, for the reason connecting is: the passphrase costs
+	// 600,000 rounds of PBKDF2 before anything reaches the network.
+	go func() {
+		if err := u.sess.Renew(context.Background(), pass); err != nil {
+			fyne.Do(func() { u.setNotice(humanError(err), true) })
+			return
+		}
+		fyne.Do(func() {
+			// The new expiry arrives from the component, like every other fact
+			// about the tunnel. All this does is stop showing the warning.
+			u.warned = false
+			u.setNotice("Session renewed.", false)
+		})
+	}()
 }
 
 // installCloseIntercept makes the architecture visible at the one moment it

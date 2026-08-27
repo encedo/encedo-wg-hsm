@@ -95,6 +95,16 @@ type Session interface {
 	// Disconnect brings the tunnel down and leaves the session usable.
 	Disconnect() error
 
+	// Renew replaces the token a running tunnel acts with, so a session can be
+	// extended without the tunnel going down.
+	//
+	// It takes a passphrase because that is the entire difference between this
+	// and the token refresh recorded as a deliberate non-goal: that one would
+	// have needed the passphrase to outlive the authentication step so that
+	// something could re-authorise unattended. Here a person authorises again.
+	// A session nobody renews still ends.
+	Renew(ctx context.Context, passphrase []byte) error
+
 	// Import writes a configuration into the module and returns what the far
 	// end has to be told. It does not start a tunnel, and it needs nothing
 	// privileged: provisioning talks to the module over its own API and touches

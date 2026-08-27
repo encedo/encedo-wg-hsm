@@ -294,3 +294,13 @@ func (f *fakeSession) Import(ctx context.Context, passphrase []byte, p provision
 	}
 	return res, nil
 }
+
+// Renew pushes the scripted session's expiry out, so the renewal screen can be
+// walked through without a module. On the compressed clock the stand-in runs,
+// that is a minute rather than eight hours.
+func (f *fakeSession) Renew(ctx context.Context, passphrase []byte) error {
+	defer session.Zero(passphrase)
+
+	f.expireIn(fakeSessionLen)
+	return nil
+}
