@@ -57,7 +57,14 @@ jobs:
         #
         # Add the entry back when somebody has a reason beyond tidiness; the
         # Build step below already handles either architecture.
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # ubuntu-24.04-arm builds the Linux window and the .deb for arm64.
+        # The window needs cgo, so its architecture is the runner's and cannot
+        # be cross-compiled the way the command-line client is: until GitHub
+        # offered free arm64 Linux runners to public repositories there was no
+        # way to produce one here, and an arm64 package came from reinstall.sh
+        # on the machine that wanted it. There is now, and the dev machine is
+        # arm64, so the package it needs should not be the one nobody builds.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -149,8 +156,14 @@ jobs:
           for variant in "" "-descr64"; do
             case "${{ runner.os }}" in
               Linux)
-                GOARCH=amd64 build "$variant" "" \
-                  -o "../dist-gui/encedo-wg-gui-linux-amd64$variant" .
+                # The runner's own architecture, because cgo builds for the
+                # machine it runs on. Two Linux jobs, one per architecture.
+                case "${{ runner.arch }}" in
+                  X64)   goarch=amd64 ;;
+                  ARM64) goarch=arm64 ;;
+                esac
+                GOARCH="$goarch" build "$variant" "" \
+                  -o "../dist-gui/encedo-wg-gui-linux-$goarch$variant" .
 
                 # The component beside the window, for the same reason it is
                 # built beside it on Windows: build-deb.sh needs both, they
@@ -178,9 +191,9 @@ jobs:
                   "")        cli_tags="" ;;
                   -descr64)  cli_tags="descr64" ;;
                 esac
-                ( cd .. && CGO_ENABLED=0 GOARCH=amd64 go build ${cli_tags:+-tags "$cli_tags"} \
+                ( cd .. && CGO_ENABLED=0 GOARCH="$goarch" go build ${cli_tags:+-tags "$cli_tags"} \
                     -ldflags "$STAMP" \
-                    -o "dist/wg-hem-linux-amd64$variant" ./cmd/wg-hem )
+                    -o "dist/wg-hem-linux-$goarch$variant" ./cmd/wg-hem )
                 ;;
               macOS)
                 for arch in arm64 amd64; do
@@ -389,19 +402,22 @@ jobs:
       # while Windows had an installer. build-deb.sh refuses a mismatched pair
       # itself, so this is also a check on the two builds above.
       #
-      # amd64 only. The window needs cgo, so the architecture is whatever the
-      # runner is, and an arm64 package still comes from reinstall.sh on the
-      # machine that wants it - the same trade as the ARM64 window, and for the
-      # same reason.
+      # One package per architecture, from the job that built that architecture:
+      # the window is cgo and cannot be cross-compiled, so a .deb is only ever
+      # built where its own halves were.
       - name: Package
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -eu
+          case "${{ runner.arch }}" in
+            X64)   goarch=amd64 ;;
+            ARM64) goarch=arm64 ;;
+          esac
           # No prepare here: the build step above has already laid down the
           # patched upstream tree, because that is where the component is built.
           for variant in "" "-descr64"; do
-            sh packaging/linux/build-deb.sh amd64 "$variant"
+            sh packaging/linux/build-deb.sh "$goarch" "$variant"
           done
           ls -l dist-deb/
 
@@ -409,7 +425,10 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: encedo-wg-deb
+          # The architecture is in the name for the reason it is in the window's:
+          # two Linux jobs would otherwise both upload as "encedo-wg-deb" and the
+          # second would be refused.
+          name: encedo-wg-deb-${{ runner.arch }}
           path: dist-deb/
           retention-days: 7
 

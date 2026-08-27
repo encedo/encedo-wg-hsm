@@ -39,8 +39,10 @@ module, and start `encedo-wg` from the desktop menu. The package brings the
 service, the tmpfiles entry and the polkit rule that lets the tunnel set DNS.
 
 ```bash
-sudo apt install ./encedo-wg_<version>_amd64.deb
+sudo apt install ./encedo-wg_<version>_<arch>.deb
 ```
+
+Packages are built for both `amd64` and `arm64`.
 
 **Either, from a file you already have.** If there is an ordinary WireGuard
 configuration on the machine, bring it across — the private key in it is
