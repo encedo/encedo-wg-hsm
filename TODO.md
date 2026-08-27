@@ -489,11 +489,21 @@ through `fmt.Println`, so nothing but `os.Args` can drive it. Splitting it into
 precondition for everything below and for the wizard above. The cost is
 `provision_test.go`, which drives `cmdProvision(args)` and would follow the seam.
 
-**Server-side output.** `provision` prints the client public key; assembling the
-matching server peer entry — `PublicKey`, `AllowedIPs`, `PresharedKey` — is left
-to a human, and it is the only step in the whole flow where a typo goes
-undetected. All three values are known to the process at the moment it prints.
-Open question, unanswered: `[Peer]` block, JSON, `wg set` command, or several.
+**Server-side output — done, 2026-08.** The open question was which form; the
+answer was both of the ones a server is actually administered in. `provision`
+and `import` print a `[Peer]` block for `wg0.conf` and a `wg set` command for an
+interface already running, from `internal/handoff`.
+
+Two decisions inside it are worth not re-opening. The server's `AllowedIPs` for
+this client is **not** the client's own prefix: a client configured `10.1.1.5/24`
+holds one address on a network of 254, and copying that across claims the whole
+range for one peer, so every address is narrowed to its host. And a generated
+pre-shared key goes in the `[Peer]` block but never onto the `wg set` line — a
+command line is the process list and the shell history — so the command names a
+file and leaves filling it to a person.
+
+Still open, and now the only part of this thread that is: the same block in the
+window, with a button that copies it.
 
 **Invite / enrolment channel.** How an administrator gets provisioning parameters
 to a user and the public key back. Sketch: parameters in a URL fragment (never
