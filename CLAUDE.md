@@ -368,6 +368,27 @@ foreground because a daemon that restarts cannot re-authenticate).
 
 ---
 
+## Rules the CI enforces
+
+- **Every tracked `.go`, `.sh`, `.ps1`, `.yml` and `.yaml` file is plain ASCII.**
+  Tab, carriage return and printable ASCII, nothing else. It is not a style
+  preference: these strings reach a Windows console, and a console on a Polish
+  install is not UTF-8 - the same dash that printed as garbage in `wg-hem`'s
+  output stopped `install.ps1` parsing at all, with four errors that never
+  mentioned encoding. Write `-` and `...`, not the typographic forms. Markdown
+  is not covered and does not need to be. Check before pushing:
+
+  ```sh
+  for f in $(git ls-files '*.go' '*.sh' '*.ps1' '*.yml' '*.yaml'); do
+    [ -n "$(LC_ALL=C tr -d '\11\15\40-\176' < "$f")" ] && echo "$f"
+  done
+  ```
+
+- **`hem-sdk-go` is pushed before this repository.** It is a submodule, so a
+  parent commit naming an unpushed SDK commit dies in checkout on every runner.
+
+---
+
 ## Important technical facts
 
 - **An unknown key id comes back as HTTP 406, not 404.** `GET /api/keymgmt/get/<kid>`

@@ -320,7 +320,7 @@ func (u *ui) build() {
 	// into without a module, and nothing to be gained from importing over a
 	// tunnel that is running. Low emphasis, because it is done once and
 	// connecting is done daily.
-	u.importBtn = widget.NewButton("Import a .conf file…", u.onImport)
+	u.importBtn = widget.NewButton("Import a .conf file...", u.onImport)
 	u.importBtn.Importance = widget.LowImportance
 
 	// The debug panel drives the fake into states that are awkward to reach on

@@ -165,7 +165,7 @@ func identityLine(id config.Identity, instead string) string {
 	if label == "" {
 		label = "(unnamed)"
 	}
-	return fmt.Sprintf("%s  —  %s", label, addrSummary(id.Addrs))
+	return fmt.Sprintf("%s  -  %s", label, addrSummary(id.Addrs))
 }
 
 // labelRunes is how much of a label survives. A name long enough to push the
@@ -191,12 +191,16 @@ func addrSummary(addrs []netip.Prefix) string {
 
 // truncate keeps a string to n runes, marking where it was cut. Runes and not
 // bytes: a label may be in any script somebody names a laptop in.
+//
+// Three dots and not an ellipsis: every string here reaches a Windows console,
+// and a console on a Polish install is not UTF-8. CI refuses the whole tree
+// anything outside printable ASCII for that reason - see ci.yml.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	return string(r[:n-1]) + "..."
 }
 
 // shortKID is enough of a key identifier to tell two apart without filling a
@@ -205,7 +209,7 @@ func shortKID(kid string) string {
 	if len(kid) <= 8 {
 		return kid
 	}
-	return kid[:8] + "…"
+	return kid[:8] + "..."
 }
 
 // installChoosers gives a live session the window's way of asking.
