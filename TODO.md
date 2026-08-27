@@ -423,26 +423,40 @@ is a separate certificate, a separate subscription and a first-time process wort
 budgeting days for on its own. Worth knowing while the Windows one is still being
 chosen.
 
-**A migration tool.** Read an existing `wg0.conf`, carry over everything that can
-be carried, and return the new public key; the administrator changes one line on
-the server and the migration is done. The shape is right and the one-line claim
-holds: the client's address does not change, so `AllowedIPs` on the server stays,
-and the pre-shared key can be carried too (`provision --psk -` wraps it), so
-`PresharedKey` stays as well. Only `PublicKey` changes.
+**A migration tool — done on the command line, 2026-08.** `wg-hem import
+<file.conf>` reads an existing client configuration, carries the addresses, DNS,
+MTU and peer, generates the identity inside the module and prints the new public
+key beside the address. The administrator changes one line on the server and the
+migration is done: the client's address does not change, so `AllowedIPs` on the
+server stays, and only `PublicKey` changes.
 
-*What cannot be carried is the part that matters.* `PrivateKey` is left behind by
-design — that is the entire point, and the new identity is generated inside the
-module. But `PostUp`, `PreUp`, `PostDown`, `PreDown`, `Table` and `FwMark` have no
-TLV representation and never will: the record format has seven tags and none of
-them is a script. A configuration with an `iptables` rule in `PostUp` will come up
-after migration looking healthy while the rule is simply gone. **These must be
-listed and acknowledged, not dropped quietly** — a silent behaviour change found a
-week later costs more trust than a refusal on the day.
+One correction to what this entry used to claim: **the pre-shared key is not
+carried.** `import` refuses `PresharedKey` outright (`cmd/wg-hem/import.go:310`)
+on the same grounds as the private key — one that has been in a file is already
+out — and points at `-psk generate`. So the server's `PresharedKey` line changes
+too, alongside `PublicKey`, and the one-line claim is really a two-line claim
+whenever the original file had a PSK.
 
-*Give it a diff, not a wizard.* Original file on one side, what will be stored on
-the other, and beneath them the list of what could not be carried and why. A black
-box invites suspicion at exactly the moment a migration tool needs to be believed;
-`verify` can then show what actually landed in the module for comparison.
+What is left of this entry is the presentation, and it belongs to the window:
+see *give it a diff, not a wizard* below. The graphical client does not know
+`import` exists yet.
+
+*What cannot be carried is the part that matters — settled by refusing.*
+`PrivateKey` is left behind by design; that is the entire point. `PostUp`,
+`PreUp`, `PostDown`, `PreDown`, `Table`, `SaveConfig` and `FwMark` have no TLV
+representation and never will: the record format has seven tags and none of them
+is a script. The requirement this entry set — listed and acknowledged, not
+dropped quietly — was met in the strongest available form: `import` **refuses the
+file** and names the directive (`cmd/wg-hem/import.go:279`), rather than
+importing a configuration that would come up looking healthy with its `iptables`
+rule simply gone.
+
+*Give it a diff, not a wizard — open, and owed by the window.* Original file on
+one side, what will be stored on the other, and beneath them the list of what
+could not be carried and why. A black box invites suspicion at exactly the moment
+a migration tool needs to be believed; `verify` can then show what actually landed
+in the module for comparison. On the command line `-dry-run` prints the equivalent
+`provision` invocation, which is the same idea in the medium available there.
 
 *Cutover is reversible until the swap.* The old file and old key keep working
 until the administrator changes the line, so provisioning early and switching
@@ -454,16 +468,19 @@ of one interface makes the routing ambiguous.
 
 Deliberately set aside, not forgotten. The thread: a service provider wants to
 deploy keys for many users, and today `provision` serves one person at a
-terminal. Nothing here is started.
+terminal. One entry below — extracting the tunnel — was done anyway, because the
+graphical client needed the same seam; the rest is untouched.
 
-**Extract the tunnel from the CLI shell.** Started, and the groundwork is done.
-The tunnel no longer reads a terminal to choose a peer after a failover, no
-longer writes to stderr, and no longer speaks in exit codes: all three are
-injected or named in `internal/session`, which is also where the state file now
-lives. What is left is the move itself — `tunnel`, `awaitHandshake` and the UAPI
-builders out of `cmd/wg-hem` — and it is mechanical, because the couplings that
-would have made it a redesign are gone. This is what the graphical client needs
-before it can drop its fake.
+**Extract the tunnel from the CLI shell — done.** The tunnel stopped reading a
+terminal to choose a peer after a failover, stopped writing to stderr and stopped
+speaking in exit codes; then the move itself followed. `tunnel`, `awaitHandshake`,
+the failover walk and the UAPI builders now live in `internal/tunnel/`, and the
+graphical client drives them instead of its fake.
+
+Where it stays. `internal/tunnel/` is the right home and not an accident of this
+refactor: anything that later drives this client from outside — see the separate
+integration note kept out of this repository — attaches at that seam. The tunnel
+layer does not go back into `cmd/`.
 
 **Extract the provisioner core from the CLI shell.** `cmdProvision` interleaves
 flag parsing, validation and device work in one function and returns its result
@@ -542,8 +559,15 @@ VPN brands are avoided too — categories and implementations make the same poin
 without implying a relationship with anyone. The trademark notice in the footer
 follows the same reasoning as the entry in *Not yet written*.
 
-Source: `docs/landing-page.html`, self-contained — one file, no external
-requests, and it renders in both light and dark.
+*Where it lives, settled 2026-08-27.* The page is published at
+**wg.encedo.com** and that is the only copy. It is self-contained — one file, no
+external requests, and it renders in both light and dark. A copy used to sit in
+`docs/landing-page.html`; it has been removed. Two copies of one page always
+drift, and this pair drifted in five days: the copy in the repository was still
+advertising Linux only, Windows as never run, and "Encedo EPA or PPA" where the
+published page had long said "Encedo HEM". A stale sales page inside a public
+repository is worse than no page at all, and the repository is not where the site
+is edited. Do not re-add it.
 
 ## Deliberate non-goals
 
