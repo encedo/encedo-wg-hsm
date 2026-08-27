@@ -22,11 +22,16 @@ type Device struct {
 	Mobile  bool
 	ExpSecs int
 
-	// Insecure skips TLS verification, and stays because the command-line
-	// client has always had it: a person typing a flag about their own session
-	// is entitled to. It must never become something a request can ask for -
-	// see docs/ARCHITECTURE-GUI.md - because a message telling a privileged
-	// process to stop checking certificates is not the same act at all.
+	// Insecure keeps TLS and drops only the check on the certificate: expired,
+	// self-signed, or issued for another name are all then accepted. The
+	// connection is still encrypted; what is given up is knowing who is at the
+	// other end of it.
+	//
+	// Not for ordinary use. A provisioned device presents a certificate that
+	// verifies normally, so needing this means either a device whose
+	// certificate has not been installed yet or a stand-in for one. It stays on
+	// the command line and is deliberately absent from the protocol the
+	// privileged component speaks - see internal/ipc.
 	Insecure bool
 
 	// Passphrase is asked for the secret, at most once per session: the SDK
