@@ -106,17 +106,18 @@ Flags:
 		return err
 	}
 
+	// provision has already printed the block to paste, so this adds only what
+	// is true of a migration and not of a first provisioning: there is an entry
+	// on the server already, the old key in the file is now dead, and nothing
+	// works until somebody changes that one line.
+	fmt.Fprintln(os.Stderr, "Imported from "+path+".")
+	fmt.Fprintln(os.Stderr, "The peer entry above replaces the one this person already has: same")
+	fmt.Fprintln(os.Stderr, "address, new PublicKey. Until the server is changed the tunnel will not")
+	fmt.Fprintln(os.Stderr, "come up - the old private key stayed in the file and is not the one in")
+	fmt.Fprintln(os.Stderr, "the module.")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "Imported. Give these two lines to whoever runs the server:")
-	fmt.Fprintln(os.Stderr)
-	for _, a := range conf.Addresses {
-		fmt.Fprintf(os.Stderr, "  address    %s\n", a)
-	}
-	fmt.Fprintf(os.Stderr, "  public-key %s\n", provisionedKey)
-	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "They match the address to this person's existing peer entry and replace")
-	fmt.Fprintln(os.Stderr, "its PublicKey with the one above. Until they do, the tunnel will not come")
-	fmt.Fprintln(os.Stderr, "up: the old private key stayed in the file and is not the one in the module.")
+	fmt.Fprintln(os.Stderr, "The file itself is untouched. Delete it once the tunnel works: the key")
+	fmt.Fprintln(os.Stderr, "in it still opens whatever it opened before this ran.")
 	return nil
 }
 

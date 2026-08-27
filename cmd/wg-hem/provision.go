@@ -16,6 +16,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
+	"github.com/encedo/encedo-wg-hsm/internal/handoff"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
@@ -345,7 +346,47 @@ Flags:
 		fmt.Printf("psk=%s\n", base64.StdEncoding.EncodeToString(pskBytes))
 		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once - the stored copy is wrapped and cannot be read back.")
 	}
+
+	// What the far end has to be told, ready to paste. Stderr, like everything
+	// else that is for a person: stdout stays the key and nothing but the key,
+	// so `wg-hem provision ... | ssh admin@server` keeps working.
+	//
+	// The pre-shared key appears here only when this run generated it. One
+	// supplied over stdin is already the far end's, and one stored earlier
+	// cannot be read back out of the module.
+	server := handoff.Peer{
+		PublicKey: provisionedKey,
+		Addresses: addrs,
+		Label:     *label,
+	}
+	if *psk == "generate" {
+		server.PresharedKey = base64.StdEncoding.EncodeToString(pskBytes)
+	}
+	printHandoff(server)
 	return nil
+}
+
+// printHandoff writes the block an administrator pastes, in both the forms a
+// server is administered in.
+//
+// It says which value changes before showing either, because the reader is
+// usually editing an entry that already exists rather than adding one: this
+// person had a tunnel a minute ago, and exactly one line of it is now wrong.
+func printHandoff(p handoff.Peer) {
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Send this to whoever runs the server. The PublicKey is the only value")
+	fmt.Fprintln(os.Stderr, "that changes; the address is what identifies which peer to change it on.")
+	fmt.Fprintln(os.Stderr)
+	for _, line := range strings.Split(strings.TrimRight(p.ConfBlock(), "\n"), "\n") {
+		fmt.Fprintf(os.Stderr, "  %s\n", line)
+	}
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Or, on a running interface, without restarting it:")
+	fmt.Fprintln(os.Stderr)
+	for _, line := range strings.Split(strings.TrimRight(p.SetCommand(""), "\n"), "\n") {
+		fmt.Fprintf(os.Stderr, "  %s\n", line)
+	}
+	fmt.Fprintln(os.Stderr)
 }
 
 // deleteKey removes a key this run created and then had to abandon. It asks for
