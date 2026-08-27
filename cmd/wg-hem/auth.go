@@ -62,6 +62,8 @@ func kindFor(code int) session.Kind {
 		return session.KindAuth
 	case exitIntegrit:
 		return session.KindIntegrity
+	case exitUsage:
+		return session.KindUsage
 	default:
 		return session.KindDevice
 	}
@@ -75,6 +77,8 @@ func exitFor(k session.Kind) int {
 		return exitAuth
 	case session.KindIntegrity:
 		return exitIntegrit
+	case session.KindUsage:
+		return exitUsage
 	default:
 		return exitDevice
 	}

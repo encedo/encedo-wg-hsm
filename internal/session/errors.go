@@ -24,6 +24,7 @@ const (
 	KindNetwork               // it could not be reached at all
 	KindAuth                  // it would not accept the credential
 	KindIntegrity             // what came back does not authenticate
+	KindUsage                 // what was asked for does not make sense
 )
 
 func (k Kind) String() string {
@@ -34,6 +35,8 @@ func (k Kind) String() string {
 		return "authentication"
 	case KindIntegrity:
 		return "integrity"
+	case KindUsage:
+		return "usage"
 	default:
 		return "device"
 	}

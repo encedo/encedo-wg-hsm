@@ -14,6 +14,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	"github.com/encedo/encedo-wg-hsm/internal/provision"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
@@ -66,7 +67,7 @@ func peerAdd(args []string) error {
 	if *spec == "" {
 		return failf(exitUsage, "--peer is required")
 	}
-	p, err := parsePeerSpec(*spec)
+	p, err := provision.ParsePeerSpec(*spec)
 	if err != nil {
 		return failf(exitUsage, "--peer: %w", err)
 	}
@@ -109,11 +110,11 @@ func peerAdd(args []string) error {
 	if err != nil {
 		return err
 	}
-	wrapped, err := wrapPSK(ctx, client, useTok, tree.IfKID, descr.KID(p.PubKey), pskBytes)
+	wrapped, err := provision.WrapPSK(ctx, client, useTok, tree.IfKID, descr.KID(p.PubKey), pskBytes)
 	if err != nil {
 		return err
 	}
-	rec, err := p.record(wrapped)
+	rec, err := p.Record(wrapped)
 	if err != nil {
 		return failf(exitUsage, "peer %s: %w", p.Label, err)
 	}
@@ -122,12 +123,13 @@ func peerAdd(args []string) error {
 		return failf(exitUsage, "peer %s: %w", p.Label, err)
 	}
 
-	kid, adopted, err := placePeer(ctx, client, auth, p, enc, *adopt)
+	kid, adopted, err := provision.PlacePeer(ctx, client, auth, p, enc, *adopt,
+		func(msg string) { fmt.Fprintln(os.Stderr, msg) })
 	if err != nil {
 		return err
 	}
 	if adopted {
-		stored, err := readPeerRecord(ctx, client, auth, kid)
+		stored, err := provision.ReadPeerRecord(ctx, client, auth, kid)
 		if err != nil {
 			return err
 		}
@@ -229,7 +231,7 @@ func peerUpdate(args []string) error {
 	if *spec == "" {
 		return failf(exitUsage, "--peer is required")
 	}
-	p, err := parsePeerSpec(*spec)
+	p, err := provision.ParsePeerSpec(*spec)
 	if err != nil {
 		return failf(exitUsage, "--peer: %w", err)
 	}
@@ -269,12 +271,12 @@ func peerUpdate(args []string) error {
 	case *psk == "clear":
 		wrapped = nil
 	case pskBytes != nil:
-		if wrapped, err = wrapPSK(ctx, client, useTok, tree.IfKID, tree.Peers[idx].KID, pskBytes); err != nil {
+		if wrapped, err = provision.WrapPSK(ctx, client, useTok, tree.IfKID, tree.Peers[idx].KID, pskBytes); err != nil {
 			return err
 		}
 	}
 
-	rec, err := p.record(wrapped)
+	rec, err := p.Record(wrapped)
 	if err != nil {
 		return failf(exitUsage, "peer %s: %w", p.Label, err)
 	}
@@ -354,28 +356,6 @@ func reseal(ctx context.Context, client *hem.Client, auth *session.Auth, tree *c
 	tree.Iface = rec
 	tree.IfRaw = signed
 	return nil
-}
-
-// wrapPSK wraps a pre-shared key under the interface key's self-ECDH, bound to
-// the peer whose record will carry it, or returns nil when there is nothing to
-// wrap. Each peer gets its own wrap of the same key: the ciphertexts differ, and
-// none of them unwraps anywhere else.
-func wrapPSK(ctx context.Context, client *hem.Client, useTok, ifKID, peerKID string, psk []byte) ([]byte, error) {
-	if psk == nil {
-		return nil, nil
-	}
-	wrapped, err := client.CipherWrap(ctx, useTok, ifKID, psk, hem.CryptoOpts{
-		Alg:    config.WrapAlg,
-		ExtKID: ifKID,
-		Ctx:    config.PSKContext(peerKID),
-	})
-	if err != nil {
-		return nil, classify(err, exitDevice, "wrapping the pre-shared key")
-	}
-	if len(wrapped) != descr.PSKWrappedLen {
-		return nil, failf(exitDevice, "wrapped PSK is %d bytes, expected %d", len(wrapped), descr.PSKWrappedLen)
-	}
-	return wrapped, nil
 }
 
 func decodePubKey(s string) ([]byte, error) {

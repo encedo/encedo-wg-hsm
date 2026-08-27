@@ -1,10 +1,9 @@
-package main
+package provision
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 
 	hem "github.com/encedo/hem-sdk-go"
 
@@ -12,7 +11,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
-// placePeer puts a peer's record into the device and returns its KID.
+// PlacePeer puts a peer's record into the device and returns its KID.
 //
 // A key identifier is a function of the key - SHA-1(pubkey)[:16] - so whether a
 // peer is already in the repository is knowable before any write. That matters
@@ -24,8 +23,8 @@ import (
 // configuration wants, and refuse otherwise rather than overwrite. Overwriting
 // would silently invalidate the MAC of whatever other identity references it -
 // a failure that would surface on someone else's machine, at their next startup.
-func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
-	p peerSpec, want [descr.Size]byte, adopt bool) (kid string, adopted bool, err error) {
+func PlacePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
+	p PeerSpec, want [descr.Size]byte, adopt bool, notify func(string)) (kid string, adopted bool, err error) {
 
 	kid = descr.KID(p.PubKey)
 
@@ -47,24 +46,24 @@ func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 		// not evidence that the key is absent, and importing on a guess is how
 		// half-written configurations happen. Import remains the authority in
 		// either case: the device refuses a second import of the same public key.
-		return "", false, classify(err, exitDevice, "checking whether peer %s is already in the device", kid)
+		return "", false, session.Classify(err, session.KindDevice, "checking whether peer %s is already in the device", kid)
 	}
 	if !bytes.Equal(existing.PubKey, p.PubKey) {
-		return "", false, failf(exitDevice,
+		return "", false, session.Fail(session.KindDevice,
 			"key %s holds a different public key than the one given; identifiers are derived from the key, so this should not happen", kid)
 	}
 
 	// The key is there. Whether its record is usable is the question.
-	current, err := readPeerRecord(ctx, client, auth, kid)
+	current, err := ReadPeerRecord(ctx, client, auth, kid)
 	if err != nil {
 		return "", false, err
 	}
 	if current == nil {
-		return "", false, failf(exitUsage,
+		return "", false, session.Fail(session.KindUsage,
 			"key %s is in the device but carries no %s record; it belongs to something other than this client", kid, descr.MagicPeer)
 	}
 	if *current == want {
-		fmt.Fprintf(os.Stderr, "Peer %q is already in the device with these settings; reusing it.\n", p.Label)
+		notify(fmt.Sprintf("Peer %q is already in the device with these settings; reusing it.", p.Label))
 		return kid, true, nil
 	}
 
@@ -72,7 +71,7 @@ func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 	// other identity that references it, and cannot be duplicated because the
 	// identifier is the key's.
 	if !adopt {
-		return "", false, failf(exitUsage,
+		return "", false, session.Fail(session.KindUsage,
 			"peer %s is already in the device with different settings (%s).\n"+
 				"One public key has one record, shared by every identity that references it, so changing it here would invalidate their configurations.\n"+
 				"Pass --adopt to take the stored settings as they are, or use `wg-hem peer update` if this configuration owns the record.",
@@ -81,22 +80,22 @@ func placePeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 
 	decoded, err := descr.DecodePeer(current[:])
 	if err != nil {
-		return "", false, failf(exitDevice, "peer record %s: %w", kid, err)
+		return "", false, session.Fail(session.KindDevice, "peer record %s: %w", kid, err)
 	}
 	if len(decoded.PSKWrapped) > 0 {
 		// The wrap is keyed by the owning identity's self-ECDH, so this record's
 		// pre-shared key cannot be unwrapped by the identity adopting it.
-		return "", false, failf(exitUsage,
+		return "", false, session.Fail(session.KindUsage,
 			"peer %s carries a pre-shared key wrapped for another identity, which this one cannot unwrap.\n"+
 				"A pre-shared key cannot be shared between identities: it would have to be wrapped twice, and one record holds one wrap.",
 			kid)
 	}
-	fmt.Fprintf(os.Stderr, "Adopting peer %q as stored: %s\n", p.Label, decoded.Endpoint.String())
+	notify(fmt.Sprintf("Adopting peer %q as stored: %s", p.Label, decoded.Endpoint.String()))
 	return kid, true, nil
 }
 
 func importPeer(ctx context.Context, client *hem.Client, auth *session.Auth,
-	p peerSpec, want [descr.Size]byte) (string, bool, error) {
+	p PeerSpec, want [descr.Size]byte) (string, bool, error) {
 
 	impTok, err := auth.Token(ctx, "keymgmt:imp")
 	if err != nil {
@@ -104,19 +103,19 @@ func importPeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 	}
 	kid, err := client.ImportKey(ctx, impTok, p.Label, keyType, p.PubKey, want[:], "")
 	if err != nil {
-		return "", false, classify(err, exitDevice, "importing peer %s", p.Label)
+		return "", false, session.Classify(err, session.KindDevice, "importing peer %s", p.Label)
 	}
 	if expect := descr.KID(p.PubKey); kid != expect {
-		return "", false, failf(exitDevice,
+		return "", false, session.Fail(session.KindDevice,
 			"the device gave peer %s the identifier %s, but this client derives %s; references would not resolve",
 			p.Label, kid, expect)
 	}
 	return kid, false, nil
 }
 
-// readPeerRecord fetches a key's stored record, or nil when it holds none that
+// ReadPeerRecord fetches a key's stored record, or nil when it holds none that
 // belongs to this client.
-func readPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) (*[descr.Size]byte, error) {
+func ReadPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) (*[descr.Size]byte, error) {
 	pattern := []byte(descr.MagicPeer)
 	token := ""
 	for offset := 0; ; {
@@ -128,7 +127,7 @@ func readPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth,
 				}
 				continue
 			}
-			return nil, classify(err, exitDevice, "searching for peer records")
+			return nil, session.Classify(err, session.KindDevice, "searching for peer records")
 		}
 		for _, e := range page {
 			if e.KID != kid {
@@ -136,7 +135,7 @@ func readPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth,
 			}
 			rec, err := descr.Normalize(e.Descr)
 			if err != nil {
-				return nil, failf(exitDevice, "peer record %s: %w", kid, err)
+				return nil, session.Fail(session.KindDevice, "peer record %s: %w", kid, err)
 			}
 			return &rec, nil
 		}

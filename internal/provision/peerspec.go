@@ -1,4 +1,4 @@
-package main
+package provision
 
 import (
 	"encoding/base64"
@@ -11,14 +11,21 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 )
 
-// peerSpec is one --peer flag: a comma-separated list of key=value pairs.
+// pubKeyLen is the length of a Curve25519 public key.
+const pubKeyLen = 32
+
+// keyType is what the device calls the curve.
+const keyType = "CURVE25519"
+
+// PeerSpec is one peer as a caller describes it - on the command line, one
+// --peer flag: a comma-separated list of key=value pairs.
 //
 //	pubkey=BASE64,endpoint=vpn.acme.com:51820,allowed-ips=0.0.0.0/0[,keepalive=25][,label=NAME]
 //
 // allowed-ips may be repeated to give a peer several ranges. Nothing here is
 // secret - a peer's public key, endpoint and routes are all public - so unlike
 // the PSK these may travel on the command line.
-type peerSpec struct {
+type PeerSpec struct {
 	PubKey     []byte
 	Label      string
 	Endpoint   descr.Endpoint
@@ -26,8 +33,9 @@ type peerSpec struct {
 	Keepalive  uint8
 }
 
-func parsePeerSpec(s string) (peerSpec, error) {
-	var p peerSpec
+// ParsePeerSpec reads one peer specification.
+func ParsePeerSpec(s string) (PeerSpec, error) {
+	var p PeerSpec
 	if strings.TrimSpace(s) == "" {
 		return p, fmt.Errorf("empty --peer")
 	}
@@ -123,9 +131,9 @@ func parseEndpoint(s string) (descr.Endpoint, error) {
 	return descr.Endpoint{Host: host, Port: uint16(port)}, nil
 }
 
-// record builds the peer's stored form. wrappedPSK is nil when the peer has no
+// Record builds the peer's stored form. wrappedPSK is nil when the peer has no
 // pre-shared key.
-func (p peerSpec) record(wrappedPSK []byte) (descr.Peer, error) {
+func (p PeerSpec) Record(wrappedPSK []byte) (descr.Peer, error) {
 	rec := descr.Peer{
 		Endpoint:   p.Endpoint,
 		AllowedIPs: p.AllowedIPs,

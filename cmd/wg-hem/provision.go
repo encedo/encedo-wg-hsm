@@ -12,12 +12,10 @@ import (
 	"os"
 	"strings"
 
-	hem "github.com/encedo/hem-sdk-go"
-
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/handoff"
-	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	"github.com/encedo/encedo-wg-hsm/internal/provision"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
@@ -44,7 +42,7 @@ func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 // anything that did not just call it.
 var provisionedKey string
 
-func cmdProvision(args []string) (retErr error) {
+func cmdProvision(args []string) error {
 	fs := flag.NewFlagSet("provision", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
@@ -84,6 +82,11 @@ Flags:
 	}
 
 	// -- validate everything before touching the device -----------------------
+	//
+	// Parsing is the command's own work: these are flags, and what a flag means
+	// is a property of the command line rather than of provisioning. What the
+	// values then have to satisfy is provision.Params.Validate, which Run calls
+	// again - the caller may be a window that never saw a flag.
 
 	if len(addresses) == 0 {
 		return failf(exitUsage, "at least one -address is required")
@@ -107,29 +110,13 @@ Flags:
 	if len(peerFlags) == 0 {
 		return failf(exitUsage, "at least one -peer is required")
 	}
-	if len(peerFlags) > mac.MaxPeers {
-		return failf(exitUsage, "%d peers, but the device's message limit allows %d in one authenticated tree",
-			len(peerFlags), mac.MaxPeers)
-	}
-	var peers []peerSpec
-	seenKeys := map[string]bool{}
+	var peers []provision.PeerSpec
 	for i, spec := range peerFlags {
-		p, err := parsePeerSpec(spec)
+		p, err := provision.ParsePeerSpec(spec)
 		if err != nil {
 			return failf(exitUsage, "-peer #%d: %w", i+1, err)
 		}
-		fp := string(p.PubKey)
-		if seenKeys[fp] {
-			return failf(exitUsage, "-peer #%d: duplicate public key", i+1)
-		}
-		seenKeys[fp] = true
 		peers = append(peers, p)
-	}
-	if *mtu < 0 || *mtu > 65535 {
-		return failf(exitUsage, "-mtu out of range")
-	}
-	if *listenPort < 0 || *listenPort > 65535 {
-		return failf(exitUsage, "-listen-port out of range")
 	}
 
 	pskBytes, err := readPSK(*psk)
@@ -138,16 +125,23 @@ Flags:
 	}
 	defer zero(pskBytes)
 
-	// Encoding every record now, before the device is touched, so an
-	// over-budget peer cannot leave a half-written configuration behind.
-	for i, p := range peers {
-		probe := pskBytes
-		if probe != nil {
-			probe = make([]byte, descr.PSKWrappedLen)
-		}
-		if _, err := p.record(probe); err != nil {
-			return failf(exitUsage, "-peer #%d (%s): %w", i+1, p.Label, err)
-		}
+	params := provision.Params{
+		Addrs:        addrs,
+		DNS:          dns,
+		MTU:          *mtu,
+		ListenPort:   *listenPort,
+		Label:        *label,
+		Peers:        peers,
+		KID:          *kid,
+		PSK:          pskBytes,
+		PSKGenerated: *psk == "generate",
+		Adopt:        *adoptPeers,
+	}
+	// Validated before the device is reached, so a wrong flag costs nothing and
+	// asks nobody for a passphrase. Run checks again; that is not redundant, it
+	// is the check being where the writing is rather than where the flags were.
+	if err := params.Validate(); err != nil {
+		return exitFrom(err)
 	}
 
 	url := *hemURL
@@ -174,196 +168,59 @@ Flags:
 	}
 	defer auth.Wipe()
 
-	ifKID := *kid
-	createdIdentity := false
-	importedPeers := 0
-	recordWritten := false
-	// A key this run created, which no record yet names, is litter only this run
-	// can identify: `wipe` searches by the WG: prefix and a bare key carries
-	// none. So it goes back out the way it came in. The condition is narrow on
-	// purpose - an adopted key belongs to the caller, and once the interface
-	// record is written the tree may be a working configuration, so a failure
-	// after that point is not licence to delete anything.
-	defer func() {
-		if retErr == nil {
-			return
-		}
-		fmt.Fprintln(os.Stderr)
-
-		removed := false
-		if createdIdentity && !recordWritten {
-			if err := deleteKey(ctx, client, auth, ifKID); err != nil {
-				fmt.Fprintf(os.Stderr, "Provisioning did not finish, and the identity key it created (%s)\n"+
-					"could not be removed: %v\n"+
-					"It carries no %s record, so `wg-hem wipe` cannot find it; delete it by key id.\n",
-					ifKID, err, descr.MagicInterface)
-			} else {
-				fmt.Fprintf(os.Stderr, "Provisioning did not finish; the identity key it created (%s) was removed.\n", ifKID)
-				removed = true
-			}
-		} else {
-			fmt.Fprintln(os.Stderr, "Provisioning did not finish.")
-		}
-
-		// Peers are named only when some were actually imported: suggesting a
-		// wipe for peers that were never written sends the caller looking for
-		// something that is not there.
-		if importedPeers > 0 {
-			fmt.Fprintf(os.Stderr, "%d peer key(s) were imported before it failed; clear them with:\n", importedPeers)
-			fmt.Fprintf(os.Stderr, "  wg-hem wipe --peers-only --hem %s\n", url)
-		}
-		if !removed && ifKID != "" {
-			fmt.Fprintln(os.Stderr, "Re-run reusing the identity key with:")
-			fmt.Fprintf(os.Stderr, "  wg-hem provision --kid %s ...\n", ifKID)
-		}
-	}()
-
-	if ifKID == "" {
-		tok, err := auth.Token(ctx, "keymgmt:gen")
-		if err != nil {
-			return err
-		}
-		ifKID, err = client.CreateKey(ctx, tok, *label, keyType, nil, "")
-		if err != nil {
-			return classify(err, exitDevice, "creating the identity key")
-		}
-		createdIdentity = true
-		fmt.Fprintf(os.Stderr, "Identity key created: %s\n", ifKID)
-	} else {
-		fmt.Fprintf(os.Stderr, "Reusing identity key %s\n", ifKID)
-	}
-
-	useTok, err := auth.Token(ctx, "keymgmt:use:"+ifKID)
+	res, cleanup, err := provision.Run(ctx, client, auth, params,
+		func(msg string) { fmt.Fprintln(os.Stderr, msg) })
 	if err != nil {
-		return err
-	}
-	ifKey, err := client.GetPubKey(ctx, useTok, ifKID)
-	if err != nil {
-		return classify(err, exitDevice, "reading the identity public key")
-	}
-	if ifKey.Type != "" && !strings.Contains(ifKey.Type, keyType) {
-		return failf(exitUsage, "key %s is of type %s, expected %s", ifKID, ifKey.Type, keyType)
-	}
-	if len(ifKey.PubKey) != pubKeyLen {
-		return failf(exitDevice, "identity public key is %d bytes, expected %d", len(ifKey.PubKey), pubKeyLen)
-	}
-	var ifPub [pubKeyLen]byte
-	copy(ifPub[:], ifKey.PubKey)
-
-	ifRec := descr.Interface{
-		Addrs:      addrs,
-		MTU:        uint16(*mtu),
-		DNS:        dns,
-		ListenPort: uint16(*listenPort),
-		HasMAC:     true,
-	}
-	var peerRecords []mac.PeerRecord
-	for _, p := range peers {
-		// The pre-shared key is wrapped once per peer, under a key that exists
-		// only inside the device - the interface key's ECDH against itself,
-		// bound to this peer. Wrapping under ECDH(interface, peer) would instead
-		// hand the key-encryption key to whoever holds the peer's private key.
-		wrapped, err := wrapPSK(ctx, client, useTok, ifKID, descr.KID(p.PubKey), pskBytes)
-		if err != nil {
-			return err
-		}
-		rec, err := p.record(wrapped)
-		if err != nil {
-			return failf(exitUsage, "peer %s: %w", p.Label, err)
-		}
-		enc, err := rec.Encode()
-		if err != nil {
-			return failf(exitUsage, "peer %s: %w", p.Label, err)
-		}
-		_, adopted, err := placePeer(ctx, client, auth, p, enc, *adoptPeers)
-		if err != nil {
-			return err
-		}
-		if adopted {
-			// The stored record is what the tree must authenticate, not the one
-			// the flags described.
-			stored, err := readPeerRecord(ctx, client, auth, descr.KID(p.PubKey))
-			if err != nil {
-				return err
-			}
-			enc = *stored
-		}
-		// Reference order is failover priority, so it follows the flag order.
-		ifRec.PeerRefs = append(ifRec.PeerRefs, descr.MakePeerRef(p.PubKey))
-
-		var pr mac.PeerRecord
-		copy(pr.PubKey[:], p.PubKey)
-		pr.Descr = enc
-		peerRecords = append(peerRecords, pr)
-		if !adopted {
-			importedPeers++
-			fmt.Fprintf(os.Stderr, "Peer imported: %s (%s)\n", p.Label, p.Endpoint.String())
-		}
+		reportCleanup(cleanup, url)
+		return exitFrom(err)
 	}
 
-	// The MAC is computed over the record as it will be stored, with the MAC
-	// tag present and zeroed, so signing and verifying see the same bytes.
-	unsigned, err := ifRec.Encode()
-	if err != nil {
-		return failf(exitUsage, "interface record: %w", err)
-	}
-	sum, err := mac.Sign(ctx, client, useTok, ifKID, ifPub, unsigned, peerRecords)
-	if err != nil {
-		return classify(err, exitDevice, "authenticating the configuration")
-	}
-	ifRec.MAC = sum
-	signed, err := ifRec.Encode()
-	if err != nil {
-		return failf(exitUsage, "interface record: %w", err)
-	}
-
-	updTok, err := auth.Token(ctx, "keymgmt:upd")
-	if err != nil {
-		return err
-	}
-	// The label goes with it. The reference suite always sends both, and a
-	// device may reject an update carrying only a description.
-	if err := client.UpdateKey(ctx, updTok, ifKID, *label, signed[:]); err != nil {
-		return classify(err, exitDevice, "writing the interface record")
-	}
-	// From here the key is named by a record, so a later failure leaves
-	// something `wipe` can find - and something that may already be a working
-	// configuration. Either way it is no longer this run's to remove.
-	recordWritten = true
-
-	// Read it back and verify, so provisioning fails here rather than at the
-	// first startup on the machine that will actually use it.
-	if err := mac.Verify(ctx, client, useTok, ifKID, ifPub, signed, peerRecords); err != nil {
-		return failf(exitIntegrit, "the configuration just written does not verify: %w", err)
-	}
-
-	fmt.Fprintf(os.Stderr, "Configuration written and verified (%d peer(s)).\n", len(peers))
+	fmt.Fprintf(os.Stderr, "Configuration written and verified (%d peer(s)).\n", res.PeerCount)
 	fmt.Fprintln(os.Stderr, "Nothing was written to disk; `wg-hem up` needs only the HEM.")
 
-	provisionedKey = base64.StdEncoding.EncodeToString(ifPub[:])
+	provisionedKey = res.PublicKey
 	fmt.Println(provisionedKey)
-	if *psk == "generate" {
-		fmt.Printf("psk=%s\n", base64.StdEncoding.EncodeToString(pskBytes))
+	if res.PSK != "" {
+		fmt.Printf("psk=%s\n", res.PSK)
 		fmt.Fprintln(os.Stderr, "The pre-shared key above is shown once - the stored copy is wrapped and cannot be read back.")
 	}
 
 	// What the far end has to be told, ready to paste. Stderr, like everything
 	// else that is for a person: stdout stays the key and nothing but the key,
 	// so `wg-hem provision ... | ssh admin@server` keeps working.
-	//
-	// The pre-shared key appears here only when this run generated it. One
-	// supplied over stdin is already the far end's, and one stored earlier
-	// cannot be read back out of the module.
-	server := handoff.Peer{
-		PublicKey: provisionedKey,
-		Addresses: addrs,
-		Label:     *label,
-	}
-	if *psk == "generate" {
-		server.PresharedKey = base64.StdEncoding.EncodeToString(pskBytes)
-	}
-	printHandoff(server)
+	printHandoff(res.Server)
 	return nil
+}
+
+// reportCleanup says what a failed run left in the device, and what to type
+// next. The facts come back from provision.Run; the sentences are the command's,
+// because they name flags and a window would have neither.
+func reportCleanup(c provision.Cleanup, url string) {
+	fmt.Fprintln(os.Stderr)
+
+	switch {
+	case c.RemovalErr != nil:
+		fmt.Fprintf(os.Stderr, "Provisioning did not finish, and the identity key it created (%s)\n"+
+			"could not be removed: %v\n"+
+			"It carries no %s record, so `wg-hem wipe` cannot find it; delete it by key id.\n",
+			c.IdentityKID, c.RemovalErr, descr.MagicInterface)
+	case c.IdentityRemoved:
+		fmt.Fprintf(os.Stderr, "Provisioning did not finish; the identity key it created (%s) was removed.\n", c.IdentityKID)
+	default:
+		fmt.Fprintln(os.Stderr, "Provisioning did not finish.")
+	}
+
+	// Peers are named only when some were actually imported: suggesting a wipe
+	// for peers that were never written sends the caller looking for something
+	// that is not there.
+	if c.ImportedPeers > 0 {
+		fmt.Fprintf(os.Stderr, "%d peer key(s) were imported before it failed; clear them with:\n", c.ImportedPeers)
+		fmt.Fprintf(os.Stderr, "  wg-hem wipe --peers-only --hem %s\n", url)
+	}
+	if !c.IdentityRemoved && c.IdentityKID != "" {
+		fmt.Fprintln(os.Stderr, "Re-run reusing the identity key with:")
+		fmt.Fprintf(os.Stderr, "  wg-hem provision --kid %s ...\n", c.IdentityKID)
+	}
 }
 
 // printHandoff writes the block an administrator pastes, in both the forms a
@@ -387,17 +244,6 @@ func printHandoff(p handoff.Peer) {
 		fmt.Fprintf(os.Stderr, "  %s\n", line)
 	}
 	fmt.Fprintln(os.Stderr)
-}
-
-// deleteKey removes a key this run created and then had to abandon. It asks for
-// its own token: provisioning holds scopes for generating, reading and updating,
-// and a device that grants those does not thereby grant deletion.
-func deleteKey(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) error {
-	tok, err := auth.Token(ctx, "keymgmt:del")
-	if err != nil {
-		return err
-	}
-	return client.DeleteKey(ctx, tok, kid)
 }
 
 // readPSK resolves the -psk flag. A pre-shared key is a secret, so it is never
