@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -152,5 +154,70 @@ func TestAMissingComponentSaysSo(t *testing.T) {
 	// here either - what matters is that it is legible and not a panic.
 	if err.Error() == "" {
 		t.Error("the failure had nothing to say")
+	}
+}
+
+// A module pulled out from under a running tunnel used to go unnoticed until
+// the next rekey - up to two minutes of a window drawing "connected" over an
+// interface that can no longer complete a handshake. watch stopped asking the
+// device anything at all once a tunnel was up, on the grounds that the answer
+// was then obvious. It is not obvious to anybody.
+func TestPullingTheModuleEndsTheTunnel(t *testing.T) {
+	// A port nothing listens on, so every probe fails at once and offline.
+	s := newLiveSession("https://127.0.0.1:1", "/nowhere")
+	defer s.Close()
+
+	// A tunnel, as far as this session is concerned: the component's end of a
+	// connection, with somebody reading it so the stop request has somewhere to
+	// go.
+	ours, theirs := net.Pipe()
+	go func() {
+		buf := make([]byte, 256)
+		for {
+			if _, err := theirs.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	defer ours.Close()
+	defer theirs.Close()
+
+	s.mu.Lock()
+	s.conn = ours
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go s.watch(ctx)
+
+	deadline := time.After(15 * time.Second)
+	for {
+		select {
+		case e := <-s.events:
+			if e.State == Disconnecting {
+				if !strings.Contains(e.Notice, "module") {
+					t.Errorf("the tunnel was closed without saying why: %q", e.Notice)
+				}
+				return
+			}
+			// Anything that redraws the window as an idle one would be wrong:
+			// there is a tunnel up, and "no module" is the screen somebody sees
+			// before they have connected at all.
+			if e.State == NoModule {
+				t.Fatalf("a missing module under a live tunnel drew the idle screen")
+			}
+		case <-deadline:
+			t.Fatal("the module went away and the tunnel stayed up")
+		}
+	}
+}
+
+// One failed probe must not take a working tunnel down. The device can sit
+// inside the tunnel's own AllowedIPs, where a route going in or out costs a
+// round trip, and a tunnel torn down over one timeout is a worse fault than the
+// one being fixed.
+func TestOneMissedProbeDoesNotEndTheTunnel(t *testing.T) {
+	if presenceMisses < 2 {
+		t.Fatalf("presenceMisses is %d: a single blip would close a working tunnel", presenceMisses)
 	}
 }

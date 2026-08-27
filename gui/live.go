@@ -330,7 +330,9 @@ func pickPeer(peers []config.Peer, choose func([]config.Peer) (string, error)) (
 var sessionLength = 8 * time.Hour
 
 // watch says whether the module is there, so the window can offer a button that
-// will work rather than one that explains itself afterwards.
+// will work rather than one that explains itself afterwards - and, while a
+// tunnel is up, so that pulling the module out ends the tunnel rather than
+// leaving one that carries nothing.
 //
 // `GET /api/system/version` needs no authorisation, which is what makes this
 // possible at all: presence is answered without asking anybody for anything. It
@@ -345,8 +347,41 @@ func (s *liveSession) watch(ctx context.Context) {
 
 	present := false
 	why := ""
+	misses := 0
 	for {
 		now, reason := s.probe(ctx)
+
+		// A module pulled out from under a running tunnel is the case this
+		// whole loop was not covering. The tunnel notices on its own only at
+		// the next rekey - up to two minutes later - and until then it draws
+		// "connected" over an interface that can no longer complete a
+		// handshake.
+		//
+		// Not on the first miss. The device may be inside the tunnel's own
+		// AllowedIPs, where a route going in or out can cost a round trip, and
+		// tearing a working tunnel down over one timeout would be a worse fault
+		// than the one being fixed. Two consecutive misses is about six seconds
+		// - twenty times better than waiting for the rekey, and it survives a
+		// blip. It is the same shape as the tunnel's own ECDH retry policy,
+		// which gives the device three attempts before giving up on it.
+		if s.tunnelUp() {
+			if now {
+				misses = 0
+			} else if misses++; misses >= presenceMisses {
+				misses = 0
+				s.emit(Event{State: Disconnecting, HEM: s.hemURL,
+					Notice: "The module is gone - closing the tunnel."})
+				_ = s.Disconnect()
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+			continue
+		}
+		misses = 0
+
 		// The reason is followed as well as the answer: a device that stays
 		// away for a new reason - it answered, now the certificate is refused -
 		// is a change worth redrawing for, and the old text would otherwise sit
@@ -367,14 +402,26 @@ func (s *liveSession) watch(ctx context.Context) {
 	}
 }
 
-// probe asks the device whether it is there, and stops asking while a tunnel is
-// up: the answer is then either obvious or being carried over the tunnel itself.
+// tunnelUp says whether the component is holding a tunnel for this session.
+func (s *liveSession) tunnelUp() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn != nil && !s.closed
+}
+
+// probe asks the device whether it is there.
+//
+// It used to stop asking once a tunnel was up, on the grounds that the answer
+// was then obvious or was being carried over the tunnel itself. Neither was
+// true of the case that matters: a module unplugged mid-session is not obvious
+// to anybody, and the tunnel carries on drawing a live connection until its
+// next rekey discovers there is nothing to rekey against.
 func (s *liveSession) probe(ctx context.Context) (bool, string) {
 	s.mu.Lock()
-	busy := s.conn != nil || s.closed
+	closed := s.closed
 	url := s.hemURL
 	s.mu.Unlock()
-	if busy {
+	if closed {
 		return true, ""
 	}
 
@@ -406,6 +453,10 @@ func (s *liveSession) setHEM(url string) {
 const (
 	presencePoll    = 3 * time.Second
 	presenceTimeout = 2 * time.Second
+
+	// presenceMisses is how many polls in a row have to fail before a running
+	// tunnel is taken down. See watch.
+	presenceMisses = 2
 )
 
 // Import writes a configuration into the module. See Session.Import.
