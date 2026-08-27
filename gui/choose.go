@@ -49,22 +49,15 @@ func (u *ui) chooseIdentity(ids []config.Identity) (string, error) {
 		// can see.
 		u.present()
 
-		var chosen string
-		list := widget.NewRadioGroup(identityChoices(ids), func(s string) { chosen = s })
-		list.Required = true
-
-		body := container.NewVBox(
-			widget.NewLabel("This module holds more than one configuration.\nWhich one should this tunnel use?"),
-			list,
-		)
+		body, chosen := identityChooser(ids)
 
 		d := dialog.NewCustomConfirm("Choose a profile", "Use this one", "Cancel", body,
 			func(ok bool) {
-				if !ok || chosen == "" {
+				if !ok || chosen() == "" {
 					answer <- ""
 					return
 				}
-				answer <- kidFor(ids, chosen)
+				answer <- kidFor(ids, chosen())
 			}, u.win)
 		d.Show()
 	})
@@ -76,6 +69,41 @@ func (u *ui) chooseIdentity(ids []config.Identity) (string, error) {
 	return kid, nil
 }
 
+// identityChooser builds what the dialogue shows, and a way to read back what
+// was picked.
+//
+// Separate from showing it so the thing can be measured. The window is a fixed
+// size by choice, and a dialogue is drawn inside it: content wider than the
+// window is not scrolled or wrapped, it is simply cut off, and the half of a
+// line that survives is the half that says "wg-hem identity" on every entry.
+// The addresses - the part that tells two profiles apart - are at the end.
+// TestIdentityChooserFits is what stops that happening silently.
+//
+// The list is scrolled rather than stacked, because the number of identities is
+// somebody else's decision. Three fit; a module with eight would otherwise push
+// the buttons off the bottom of a window that cannot grow.
+func identityChooser(ids []config.Identity) (fyne.CanvasObject, func() string) {
+	var chosen string
+	list := widget.NewRadioGroup(identityChoices(ids), func(s string) { chosen = s })
+	list.Required = true
+
+	scroll := container.NewVScroll(list)
+	scroll.SetMinSize(fyne.NewSize(0, chooserListHeight))
+
+	body := container.NewBorder(
+		widget.NewLabel("This module holds more than one configuration.\nWhich one should this tunnel use?"),
+		nil, nil, nil,
+		scroll,
+	)
+	return body, func() string { return chosen }
+}
+
+// chooserListHeight is how much of the list is on screen before it scrolls. It
+// is three rows: enough that the common case - a second configuration imported
+// beside the first - never scrolls at all, and small enough that the dialogue
+// fits a window which does not resize.
+const chooserListHeight = 3 * 34 * uiScale
+
 // identityChoices renders one line per identity, in the order the device
 // reported them.
 //
@@ -85,16 +113,25 @@ func (u *ui) chooseIdentity(ids []config.Identity) (string, error) {
 // with two imported configurations has two of them, and that is the common case
 // rather than a corner. The addresses usually separate them; when they do not,
 // the key identifier does, and it is the only thing here guaranteed to.
+//
+// A duplicate has its label replaced by that identifier rather than extended
+// with it. Appending was the obvious thing and it did not fit - measured at
+// 430 points against a window of 420, and a line too wide is not wrapped or
+// scrolled but cut, taking the addresses with it. Substituting keeps the line
+// the length it already was, and loses only a label that had told nobody
+// anything: every entry it appears on says the same word.
 func identityChoices(ids []config.Identity) []string {
 	out := make([]string, 0, len(ids))
-	seen := make(map[string]bool, len(ids))
+	count := make(map[string]int, len(ids))
 	for _, id := range ids {
-		s := identityLine(id)
-		if seen[s] {
-			s = fmt.Sprintf("%s  ·  %s", s, shortKID(id.KID))
+		count[identityLine(id, "")]++
+	}
+	for _, id := range ids {
+		line := identityLine(id, "")
+		if count[line] > 1 {
+			line = identityLine(id, shortKID(id.KID))
 		}
-		seen[s] = true
-		out = append(out, s)
+		out = append(out, line)
 	}
 	return out
 }
@@ -110,26 +147,47 @@ func kidFor(ids []config.Identity, line string) string {
 }
 
 // identityLine is one identity as a person recognises it: what it was called,
-// and where it puts them.
-func identityLine(id config.Identity) string {
-	label := strings.TrimSpace(id.Label)
+// and where it puts them. instead, when not empty, stands in for the label.
+func identityLine(id config.Identity, instead string) string {
+	label := instead
+	if label == "" {
+		label = truncate(strings.TrimSpace(id.Label), labelRunes)
+	}
 	if label == "" {
 		label = "(unnamed)"
 	}
 	return fmt.Sprintf("%s  —  %s", label, addrSummary(id.Addrs))
 }
 
+// labelRunes is how much of a label survives. A name long enough to push the
+// addresses off the end costs more than it carries.
+const labelRunes = 18
+
 // addrSummary is the addresses a record claims. Decoded locally, with nothing
 // vouching for it, and shown for recognition only - see config.Identity.Addrs.
+//
+// One address, and a count of the rest. An identity with a v4 and a v6 address
+// is one machine in one place, and spelling out both doubles the length of the
+// line to say so twice.
 func addrSummary(addrs []netip.Prefix) string {
-	if len(addrs) == 0 {
+	switch len(addrs) {
+	case 0:
 		return "unreadable record"
+	case 1:
+		return addrs[0].String()
+	default:
+		return fmt.Sprintf("%s  +%d", addrs[0], len(addrs)-1)
 	}
-	parts := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		parts = append(parts, a.String())
+}
+
+// truncate keeps a string to n runes, marking where it was cut. Runes and not
+// bytes: a label may be in any script somebody names a laptop in.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
 	}
-	return strings.Join(parts, ", ")
+	return string(r[:n-1]) + "…"
 }
 
 // shortKID is enough of a key identifier to tell two apart without filling a

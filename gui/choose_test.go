@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"fyne.io/fyne/v2/test"
+
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 )
 
@@ -90,3 +92,73 @@ func TestNoProfileChosenReadsAsAChoice(t *testing.T) {
 		t.Errorf("the cancel message does not say what to do next: %q", msg)
 	}
 }
+
+// The window does not resize, and a dialogue is drawn inside it. Content wider
+// than the window is cut off rather than wrapped or scrolled, and what gets cut
+// is the end of every line - which is exactly where the addresses are, the only
+// part that tells two profiles apart. So this measures.
+//
+// The case is the worst realistic one: several identities carrying the label
+// provision writes by default, so the lines are identical and each has to be
+// disambiguated by a key identifier, with two addresses apiece.
+func TestIdentityChooserFits(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	ids := []config.Identity{
+		ident(t, "aaaa1111bbbb2222", "wg-hem identity", "10.99.0.7/32", "fd00::7/128"),
+		ident(t, "cccc3333dddd4444", "wg-hem identity", "10.99.0.7/32", "fd00::7/128"),
+		ident(t, "eeee5555ffff6666", "wg-hem identity", "10.99.0.7/32", "fd00::7/128"),
+	}
+
+	body, _ := identityChooser(ids)
+	w := test.NewWindow(body)
+	defer w.Close()
+
+	// Not the whole window: a dialogue is inset in it and draws a border of its
+	// own, so the content has less room than the window is wide. Measuring
+	// against the full width passes a line that is still cut in practice.
+	need := body.MinSize()
+	if room := float32(windowWidth) - dialogInset; need.Width > room {
+		t.Errorf("the chooser needs %.1f of width and a dialogue in this window has about %.1f - the addresses will be cut off",
+			need.Width, room)
+	}
+	// A dialogue is inset in the window and carries a title bar and a row of
+	// buttons of its own, so it cannot have the whole height to itself.
+	if room := float32(compactHeight) - dialogChrome; need.Height > room {
+		t.Errorf("the chooser needs %.1f of height and a dialogue in this window has about %.1f",
+			need.Height, room)
+	}
+}
+
+// However many identities a module holds, the dialogue is the same size: the
+// list scrolls instead of growing. A module with eight profiles must not push
+// the buttons off the bottom of a window that cannot grow to meet them.
+func TestIdentityChooserDoesNotGrowWithTheList(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	small, _ := identityChooser([]config.Identity{
+		ident(t, "aaaa1111", "one", "10.0.0.1/32"),
+		ident(t, "bbbb2222", "two", "10.0.0.2/32"),
+	})
+	var many []config.Identity
+	for _, kid := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+		many = append(many, ident(t, kid+"0000000", "profile "+kid, "10.0.0.1/32"))
+	}
+	big, _ := identityChooser(many)
+
+	if big.MinSize().Height > small.MinSize().Height {
+		t.Errorf("eight identities make the dialogue %.1f tall against %.1f for two - it grows with the list",
+			big.MinSize().Height, small.MinSize().Height)
+	}
+}
+
+// dialogInset and dialogChrome are what a dialogue costs inside this window:
+// padding either side, and a title bar plus a row of buttons above and below.
+// Approximate on purpose - the point is to measure against less than the whole
+// window rather than to predict the toolkit to the point.
+const (
+	dialogInset  = 40 * uiScale
+	dialogChrome = 120 * uiScale
+)
