@@ -148,6 +148,7 @@ type ui struct {
 	pass      *widget.Entry
 	action    *widget.Button
 	actionBox fyne.CanvasObject
+	importBtn *widget.Button
 	advBox    *widget.Check
 	adv       *fyne.Container
 	advText   *widget.Label
@@ -312,6 +313,15 @@ func (u *ui) build() {
 	u.action = widget.NewButton("Connect", u.onAction)
 	u.actionBox = outlined(u.action)
 
+	// Offered on Ready and nowhere else. It is the first thing the person this
+	// client is for needs - they have a tunnel already, and a file describing
+	// it - and it is useless in every other state: there is nothing to import
+	// into without a module, and nothing to be gained from importing over a
+	// tunnel that is running. Low emphasis, because it is done once and
+	// connecting is done daily.
+	u.importBtn = widget.NewButton("Import a .conf file…", u.onImport)
+	u.importBtn.Importance = widget.LowImportance
+
 	// The debug panel drives the fake into states that are awkward to reach on
 	// real hardware - a peer going quiet, a token running out - which is the
 	// point of having a fake at all.
@@ -388,7 +398,11 @@ func (u *ui) compose(e Event) {
 	// what this window is for, the other is a way in to what it is hiding.
 	// A rule between them says so, and gives the button its own ground rather
 	// than leaving it stacked against a checkbox.
-	foot = append(foot, u.actionBox, u.advRule, u.advBox)
+	foot = append(foot, u.actionBox)
+	if e.State == Ready {
+		foot = append(foot, u.importBtn)
+	}
+	foot = append(foot, u.advRule, u.advBox)
 	if u.advBox.Checked {
 		foot = append(foot, u.adv)
 	}

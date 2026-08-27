@@ -153,12 +153,3 @@ func TestIdentityChooserDoesNotGrowWithTheList(t *testing.T) {
 			big.MinSize().Height, small.MinSize().Height)
 	}
 }
-
-// dialogInset and dialogChrome are what a dialogue costs inside this window:
-// padding either side, and a title bar plus a row of buttons above and below.
-// Approximate on purpose - the point is to measure against less than the whole
-// window rather than to predict the toolkit to the point.
-const (
-	dialogInset  = 40 * uiScale
-	dialogChrome = 120 * uiScale
-)

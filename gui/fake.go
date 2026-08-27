@@ -5,6 +5,10 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/encedo/encedo-wg-hsm/internal/handoff"
+	"github.com/encedo/encedo-wg-hsm/internal/provision"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
 // fakeSession stands in for the tunnel while the flow is being worked out. It
@@ -266,4 +270,27 @@ func (f *fakeSession) send(e Event) {
 	case f.events <- e:
 	default:
 	}
+}
+
+// Import pretends to write a configuration, so the import screens can be
+// walked through without a module.
+//
+// It returns a result built from what it was given, which is enough to drive
+// the last screen and to see the block a person would be sent. What it does not
+// do is claim anything was stored: the window says "(stand-in)" throughout, for
+// the same reason it does over a tunnel that is not there.
+func (f *fakeSession) Import(ctx context.Context, passphrase []byte, p provision.Params) (provision.Result, error) {
+	defer session.Zero(passphrase)
+
+	res := provision.Result{
+		IfKID:     "0123456789abcdef0123456789abcdef",
+		PublicKey: "0000stand-in-public-key-not-a-real-one0000=",
+		PeerCount: len(p.Peers),
+	}
+	res.Server = handoff.Peer{
+		PublicKey: res.PublicKey,
+		Addresses: p.Addrs,
+		Label:     p.Label,
+	}
+	return res, nil
 }

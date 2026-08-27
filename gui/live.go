@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/ipc"
+	"github.com/encedo/encedo-wg-hsm/internal/provision"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
@@ -405,3 +407,69 @@ const (
 	presencePoll    = 3 * time.Second
 	presenceTimeout = 2 * time.Second
 )
+
+// Import writes a configuration into the module. See Session.Import.
+//
+// A separate authorisation from Connect's, and deliberately so: this asks for
+// keymgmt:gen, imp, upd and search, none of which a running tunnel needs, and
+// the token is wiped when the write is done rather than living as long as a
+// session. Somebody importing a profile is not somebody starting a tunnel, and
+// the module is asked for exactly what each of those is.
+func (s *liveSession) Import(ctx context.Context, passphrase []byte, p provision.Params) (provision.Result, error) {
+	defer session.Zero(passphrase)
+
+	dev := session.Device{
+		URL: s.hemURL,
+		// Long enough to write a configuration and no longer. Provisioning is
+		// a handful of round trips; the eight hours a tunnel asks for would be
+		// eight hours of a token that can create and delete keys.
+		ExpSecs:    int(importSessionLength.Seconds()),
+		Passphrase: func() ([]byte, error) { return passphrase, nil },
+		Notify:     func(msg string) { s.emit(Event{State: s.state(), HEM: s.hemURL, Notice: msg}) },
+	}
+
+	client, auth, err := dev.Connect(ctx)
+	if err != nil {
+		return provision.Result{}, err
+	}
+	defer auth.Wipe()
+
+	res, cleanup, err := provision.Run(ctx, client, auth, p,
+		func(msg string) { s.emit(Event{State: s.state(), HEM: s.hemURL, Notice: msg}) })
+	if err != nil {
+		return provision.Result{}, importFailure(err, cleanup)
+	}
+	return res, nil
+}
+
+// importSessionLength is how long the token that writes a configuration lives.
+var importSessionLength = 5 * time.Minute
+
+// state is what the window is showing right now, so a progress line does not
+// also change the screen underneath it.
+func (s *liveSession) state() State {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.last.State
+}
+
+// importFailure adds what was left in the module to the reason it failed.
+//
+// The command line prints these as instructions naming flags. A window has no
+// flags, so it says the same facts as a sentence - and says them at all, because
+// a failed import that leaves a key behind and does not mention it is how a
+// module ends up with keys nobody can account for.
+func importFailure(err error, c provision.Cleanup) error {
+	switch {
+	case c.RemovalErr != nil:
+		return fmt.Errorf("%w\n\nThe key it created (%s) could not be removed either: %v. "+
+			"It carries no configuration record, so it has to be deleted by key id.",
+			err, c.IdentityKID, c.RemovalErr)
+	case c.IdentityRemoved && c.ImportedPeers > 0:
+		return fmt.Errorf("%w\n\nThe identity key it created was removed, but %d peer key(s) "+
+			"were written before it failed and are still there.", err, c.ImportedPeers)
+	case c.IdentityRemoved:
+		return fmt.Errorf("%w\n\nNothing was left behind: the key it created was removed.", err)
+	}
+	return err
+}

@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"time"
+
+	"github.com/encedo/encedo-wg-hsm/internal/provision"
 )
 
 // State is what the window shows. The module being present is a state of its
@@ -92,6 +94,16 @@ type Session interface {
 
 	// Disconnect brings the tunnel down and leaves the session usable.
 	Disconnect() error
+
+	// Import writes a configuration into the module and returns what the far
+	// end has to be told. It does not start a tunnel, and it needs nothing
+	// privileged: provisioning talks to the module over its own API and touches
+	// no interface, no route and no file.
+	//
+	// The passphrase is passed and spent here, the same way Connect spends one,
+	// because this is a separate authorisation - different scopes, and a token
+	// that has no business outliving the write it was asked for.
+	Import(ctx context.Context, passphrase []byte, p provision.Params) (provision.Result, error)
 
 	// Events emits a snapshot whenever anything changes. Closed by Close.
 	Events() <-chan Event

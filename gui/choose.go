@@ -98,6 +98,15 @@ func identityChooser(ids []config.Identity) (fyne.CanvasObject, func() string) {
 	return body, func() string { return chosen }
 }
 
+// dialogInset and dialogChrome are what a dialogue costs inside this window:
+// padding either side, and a title bar plus a row of buttons above and below.
+// Approximate on purpose - the point is to size and measure against less than
+// the whole window rather than to predict the toolkit to the point.
+const (
+	dialogInset  = 40 * uiScale
+	dialogChrome = 120 * uiScale
+)
+
 // chooserListHeight is how much of the list is on screen before it scrolls. It
 // is three rows: enough that the common case - a second configuration imported
 // beside the first - never scrolls at all, and small enough that the dialogue
