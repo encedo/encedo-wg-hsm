@@ -59,8 +59,8 @@ func cmdProvision(args []string) error {
 	psk := fs.String("psk", "", "'-' reads a base64 pre-shared key from stdin; 'generate' makes one locally")
 	adoptPeers := fs.Bool("adopt", false, "reuse a peer already in the device even if its stored settings differ from the flags")
 	mobile := fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase")
-	insecure := fs.Bool("insecure", false, "skip TLS verification (self-signed PPA certificate)")
-	expHours := fs.Int("session", 1, "token lifetime in hours")
+	insecure := fs.Bool("insecure", false, "skip TLS verification (a device whose certificate is not provisioned yet, or a test rig)")
+	expHours := fs.Int("session", defaultSessionHours, "token lifetime in hours")
 
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: wg-hem provision [flags]

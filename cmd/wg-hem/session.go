@@ -31,8 +31,8 @@ func addDeviceFlags(fs *flag.FlagSet) *deviceFlags {
 		hem:      fs.String("hem", "", "HEM base URL (default "+defaultHEM+", or $WG_HEM_URL)"),
 		broker:   fs.String("broker", "", "notification broker URL (default is the SDK's)"),
 		mobile:   fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase"),
-		insecure: fs.Bool("insecure", false, "skip TLS verification (self-signed HEM certificate)"),
-		expHours: fs.Int("session", 1, "token lifetime in hours"),
+		insecure: fs.Bool("insecure", false, "skip TLS verification (a device whose certificate is not provisioned yet, or a test rig)"),
+		expHours: fs.Int("session", defaultSessionHours, "token lifetime in hours"),
 		identity: fs.String("identity", "", "which interface key to use, by KID or a unique prefix (only asked when the device holds several)"),
 	}
 }
@@ -169,3 +169,15 @@ func identityKIDs(ids []config.Identity) []string {
 	}
 	return kids
 }
+
+// defaultSessionHours is how long a token is asked for when nobody says.
+//
+// Eight, because that is a working day, and because the window has asked for
+// eight since it was written - a person who runs `wg-hem up` and a person who
+// clicks Connect are doing the same thing and should not get a tunnel that
+// lasts a different length of time. It was one hour here for as long as this
+// was only a command somebody watched in a terminal.
+//
+// It is a maximum, not a promise: the device may cap it lower, and -session
+// still overrides it in either direction.
+const defaultSessionHours = 8
