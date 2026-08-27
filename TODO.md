@@ -482,12 +482,20 @@ refactor: anything that later drives this client from outside — see the separa
 integration note kept out of this repository — attaches at that seam. The tunnel
 layer does not go back into `cmd/`.
 
-**Extract the provisioner core from the CLI shell.** `cmdProvision` interleaves
-flag parsing, validation and device work in one function and returns its result
-through `fmt.Println`, so nothing but `os.Args` can drive it. Splitting it into
-`Params → Run(...) (Result, error)` with the CLI as a thin adapter is a
-precondition for everything below and for the wizard above. The cost is
-`provision_test.go`, which drives `cmdProvision(args)` and would follow the seam.
+**Extract the provisioner core from the CLI shell — done, 2026-08-27.** It is
+`internal/provision`: `Params → Run(...) (Result, Cleanup, error)`, with
+`cmdProvision` as the thin adapter that parses flags and prints. `peerspec.go`
+and `adopt.go` moved with it, and `wrapPSK` came from `peer.go`. Refusals carry
+a `session.Kind` instead of an exit code, which is what let the window use the
+same code; `session.KindUsage` was added for the one kind that had only ever
+existed as the number 1.
+
+The feared cost did not arrive: `provision_test.go` drives `cmdProvision(args)`
+and was left untouched, which is what makes it evidence that the move changed
+nothing rather than a casualty of it.
+
+What this unblocks is now the interactive wizard above, and it is the last thing
+standing between here and that entry.
 
 **Server-side output — done, 2026-08.** The open question was which form; the
 answer was both of the ones a server is actually administered in. `provision`
@@ -502,8 +510,8 @@ pre-shared key goes in the `[Peer]` block but never onto the `wg set` line — a
 command line is the process list and the shell history — so the command names a
 file and leaves filling it to a person.
 
-Still open, and now the only part of this thread that is: the same block in the
-window, with a button that copies it.
+Done in the window too, 2026-08-27: the last screen of an import shows the same
+block with a button that copies it.
 
 **Invite / enrolment channel.** How an administrator gets provisioning parameters
 to a user and the public key back. Sketch: parameters in a URL fragment (never
