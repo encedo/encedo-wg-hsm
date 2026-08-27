@@ -95,9 +95,14 @@ func Load(ctx context.Context, c *hem.Client, tok TokenFunc, choose ChooseFunc) 
 func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEntry, ring keyring) (*Tree, error) {
 	t := &Tree{IfKID: entry.KID, IfLabel: entry.Label}
 	var err error
+
+	// What the device actually returns, kept because it is the evidence for the
+	// one failure nobody diagnoses correctly on their own - see explainSizes.
+	seen := newSizes(len(entry.Descr))
+
 	t.IfRaw, err = descr.Normalize(entry.Descr)
 	if err != nil {
-		return nil, fmt.Errorf("interface record: %w", err)
+		return nil, fmt.Errorf("interface record: %w%s", err, seen.explain())
 	}
 	t.Iface, err = descr.DecodeInterface(t.IfRaw[:])
 	if err != nil {
@@ -148,8 +153,9 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 		}
 
 		p := Peer{KID: e.KID, Label: e.Label, PubKey: pub}
+		seen.add(len(e.Descr))
 		if p.Raw, err = descr.Normalize(e.Descr); err != nil {
-			return nil, fmt.Errorf("peer record %s: %w", e.KID, err)
+			return nil, fmt.Errorf("peer record %s: %w%s", e.KID, err, seen.explain())
 		}
 		if p.Peer, err = descr.DecodePeer(p.Raw[:]); err != nil {
 			return nil, fmt.Errorf("peer record %s: %w", e.KID, err)
@@ -163,9 +169,46 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 		return nil, err
 	}
 	if err := mac.Verify(ctx, c, useTok, t.IfKID, t.IfPubKey, t.IfRaw, records); err != nil {
+		// The one place where the cause can be named rather than guessed at.
+		// mac.Verify can only offer "if the appliance stores the other size";
+		// here the length the device actually returned is known, so the
+		// hypothetical becomes a fact.
+		if why := seen.explain(); why != "" {
+			return nil, fmt.Errorf("%w%s", err, why)
+		}
 		return nil, err
 	}
 	return t, nil
+}
+
+// sizes collects the lengths of the records a device returned in one load.
+//
+// A set rather than a single number, because a mixture means something
+// different from a consistent difference: every record the same length says
+// this is a device speaking one dialect and a build reading another, which is
+// worth explaining. Records of assorted lengths say something else entirely and
+// this has no business guessing what.
+type sizes struct {
+	first int
+	mixed bool
+}
+
+func newSizes(n int) *sizes { return &sizes{first: n} }
+
+func (s *sizes) add(n int) {
+	if n != s.first {
+		s.mixed = true
+	}
+}
+
+func (s *sizes) explain() string {
+	if s.mixed {
+		return ""
+	}
+	if why := descr.ExplainSize(s.first); why != "" {
+		return "\n" + why
+	}
+	return ""
 }
 
 // search pages through the device's key repository for one record type. It
