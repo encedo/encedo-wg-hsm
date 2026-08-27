@@ -39,7 +39,7 @@
     one as the same product rather than a second copy of it.
   -->
   <Package
-      Name="encedo-wg"
+      Name="Encedo WG"
       Manufacturer="Encedo"
       Version="$(var.Version)"
       UpgradeCode="8D2CAF8F-E5DA-45F2-86B9-454C06911BAC"
@@ -150,7 +150,7 @@
     <Component Id="Shortcut" Directory="ProgramMenuFolder" Guid="*">
       <Shortcut
           Id="StartMenuShortcut"
-          Name="encedo-wg"
+          Name="Encedo WG"
           Description="A WireGuard tunnel whose private key never leaves the module"
           Target="[INSTALLFOLDER]encedo-wg-gui.exe"
           WorkingDirectory="INSTALLFOLDER"

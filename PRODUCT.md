@@ -22,7 +22,7 @@ Every WireGuard deployment has a silent vulnerability: the private key sitting i
 | Config safe to store in git/CMDB | No | Yes |
 | Audit trail for key usage | None | HEM logs every ECDH |
 | Compatible with standard WG peers | — | Yes, fully |
-| Requires hardware | No | Encedo EPA or PPA |
+| Requires hardware | No | An Encedo HEM |
 
 ### Commercial VPN appliances (Cisco, Palo Alto, Fortinet)
 
@@ -40,7 +40,7 @@ PKCS#11 integration with WireGuard does not exist in any mainline implementation
 
 Cloud KMS protects keys from application-layer compromise but not from cloud provider access, subpoena, or insider threat. It also requires internet connectivity for every cryptographic operation, introduces latency on the handshake path, and creates a hard dependency on a third-party service for network connectivity — a circular dependency if your VPN is how you reach that cloud.
 
-Encedo EPA and PPA are on-premises or self-hosted. Your keys, your hardware, your network.
+The Encedo HEM is on-premises or self-hosted. Your keys, your hardware, your network.
 
 ---
 
@@ -48,7 +48,7 @@ Encedo EPA and PPA are on-premises or self-hosted. Your keys, your hardware, you
 
 ### Hardware-rooted trust without complexity
 
-The Encedo EPA (enterprise) and PPA (personal/portable) expose an identical REST API over TLS 1.3. Integration is a network call, not a driver, not a kernel module, not a PKCS#11 shim. The wg-hsm client is pure Go, cross-compiled to any Linux target.
+The Encedo HEM ships in two models - EPA and PPA - which expose one identical REST API over TLS 1.3, so nothing here is written against either in particular. Integration is a network call, not a driver, not a kernel module, not a PKCS#11 shim. The wg-hsm client is pure Go, cross-compiled to any Linux target.
 
 ### Zero changes to your peers
 

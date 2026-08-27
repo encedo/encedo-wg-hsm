@@ -31,7 +31,7 @@ func addDeviceFlags(fs *flag.FlagSet) *deviceFlags {
 		hem:      fs.String("hem", "", "HEM base URL (default "+defaultHEM+", or $WG_HEM_URL)"),
 		broker:   fs.String("broker", "", "notification broker URL (default is the SDK's)"),
 		mobile:   fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase"),
-		insecure: fs.Bool("insecure", false, "skip TLS verification (self-signed PPA certificate)"),
+		insecure: fs.Bool("insecure", false, "skip TLS verification (self-signed HEM certificate)"),
 		expHours: fs.Int("session", 1, "token lifetime in hours"),
 		identity: fs.String("identity", "", "which interface key to use, by KID or a unique prefix (only asked when the device holds several)"),
 	}

@@ -12,7 +12,7 @@ git, a CMDB, or any backup system.
 ```ini
 [Interface]
 Address = 10.1.1.5/24
-HEM_URL = https://my.ence.do                 # Encedo EPA or PPA endpoint
+HEM_URL = https://my.ence.do                 # the Encedo HEM
 HEM_KID = <my-private-key-id>              # my private key ID in HEM
 
 [Peer]
@@ -171,9 +171,9 @@ That is enough to watch the tunnel rekey — roughly every two minutes, two call
 each — without putting key material in a log destined for a bug report.
 
 The device is reached at `https://my.ence.do` unless `--hem` or `$WG_HEM_URL`
-says otherwise, so a PPA needs no arguments at all. The default is a name and
-not the address behind it: the connection is TLS, and a certificate is issued
-for a name.
+says otherwise, so a module at its default address needs no arguments at all.
+That default is a name and not the address behind it: the connection is TLS, and
+a certificate is issued for a name.
 
 ---
 

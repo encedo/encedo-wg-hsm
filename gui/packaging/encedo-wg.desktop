@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=encedo-wg
+Name=Encedo WG
 GenericName=VPN client
 Comment=A WireGuard tunnel whose private key never leaves the module
 Exec=encedo-wg-gui

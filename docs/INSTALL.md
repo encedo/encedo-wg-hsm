@@ -181,7 +181,7 @@ Windows is meant to be used, see [WINDOWS.md](WINDOWS.md).
 
 ## HEM requirements
 
-- Encedo EPA or PPA reachable over TLS 1.3
+- An Encedo HEM reachable over TLS 1.3
 - Key of type `CURVE25519` with scope `keymgmt:use:<KID>` for the private key
 - Optionally: peer public keys imported into HEM, scope `keymgmt:get` for the
   lookup token
