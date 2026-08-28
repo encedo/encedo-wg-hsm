@@ -162,6 +162,12 @@ type ui struct {
 	advBox    *widget.Check
 	adv       *fyne.Container
 	advText   *widget.Label
+	// advRow is the toggle and the build on one line. They share a row because
+	// the build is not a control and does not deserve one of its own: the
+	// window is a fixed height, and a line spent on something nobody clicks is
+	// a line taken off something they read.
+	advRow    *fyne.Container
+	buildText *widget.Label
 }
 
 func main() {
@@ -359,6 +365,22 @@ func (u *ui) build() {
 	}
 	u.advBox = widget.NewCheck("Advanced", func(bool) { u.compose(u.latest) })
 
+	// Monospaced because it is an identifier and not prose, caption-sized and
+	// low importance because it is the quietest thing on the screen until the
+	// moment somebody needs it, and selectable because the moment they need it
+	// they are pasting it into a bug report.
+	u.buildText = widget.NewLabel(buildID(ipc.Current().Release))
+	u.buildText.TextStyle = fyne.TextStyle{Monospace: true}
+	u.buildText.SizeName = theme.SizeNameCaptionText
+	u.buildText.Importance = widget.LowImportance
+	u.buildText.Alignment = fyne.TextAlignTrailing
+	u.buildText.Selectable = true
+	// The toggle keeps the left, the build takes what is left over and sits
+	// against the right edge. Border rather than an HBox with a spacer: the
+	// build has to be trailing-aligned whatever the width, and a spacer would
+	// hand it a width of its own to be aligned inside.
+	u.advRow = container.NewBorder(nil, nil, u.advBox, nil, u.buildText)
+
 	// A rule between what the tunnel is and what you can do about it. Without
 	// one the two run together, and the eye has to work out from wording alone
 	// where reading stops and acting starts.
@@ -412,7 +434,7 @@ func (u *ui) compose(e Event) {
 	if e.State == Ready {
 		foot = append(foot, u.importBtn)
 	}
-	foot = append(foot, u.advRule, u.advBox)
+	foot = append(foot, u.advRule, u.advRow)
 	if u.advBox.Checked {
 		foot = append(foot, u.adv)
 	}
