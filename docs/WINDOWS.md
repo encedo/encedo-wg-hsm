@@ -292,52 +292,64 @@ VirusTotal. A handful of engines out of seventy is what a false positive looks
 like; a broad consensus would mean something else entirely and this document
 would be wrong.
 
-### Signing: what has to exist before the workflow can sign
+### Signing: what exists, as of 2026-09-16
 
-The steps are written and switched off. `gui.yml` signs nothing until the
-repository variables below are set, and every signing step is conditioned on the
-first of them — so an unconfigured checkout builds exactly as it does now rather
-than failing at a step nobody can satisfy yet.
+The Azure side is complete and was verified in the portal. Microsoft has since
+renamed the service from Trusted Signing to Artifact Signing; the variable names
+below predate that and were kept. Nothing here is a secret — an application id
+and a tenant id identify, they do not authorise — which is why the repository
+holds them as *variables*.
 
-**In Azure, in this order.** The first item is the long one and is not something
-a workflow can hurry.
+**In Azure**, under the RKV sp. z o.o. subscription:
 
-1. **Identity validation.** Microsoft checks that the organisation is who it
-   says it is. Validate as an Organization rather than an Individual: the
-   certificate's subject is what a person sees in the publisher line, and it
-   should be the company.
-2. **A Trusted Signing account**, in a region — the endpoint the workflow uses
-   has to be that region's, and a mismatch there fails at signing time with
-   something that reads like a permissions problem.
-3. **A certificate profile**, Public Trust, for software distributed publicly.
-   This is the template the short-lived certificates are minted from.
-4. **An app registration** for the workflow to be, with a **federated
-   credential** for GitHub OIDC — scoped to this repository and, better, to a
-   branch or an environment. No client secret: the point of OIDC here is that
-   there is no key to store, leak or rotate.
-5. **Two role assignments** on the account, and both are needed — one is not
-   enough and the missing one is the usual reason a first attempt fails:
-   - *Trusted Signing Identity Verifier*, to act on behalf of the account;
-   - *Trusted Signing Certificate Profile Signer*, to request a certificate
-     from the profile. This is the one that actually permits signing.
+1. **Identity validation** as an Organization, completed, valid until
+   2028-12-04. The certificate's subject is the company, which is what a person
+   sees in the publisher line. Renewal is a button that appears near expiry.
+2. **An Artifact Signing account**, `win11`, in North Europe. Not West Europe:
+   that region refuses new tenants (`RequestDisallowedByRegionAccessPolicy`),
+   and since the endpoint the workflow calls is the region's, a mismatch there
+   fails at signing time with something that reads like a permissions problem.
+3. **A certificate profile**, `SigningCode`, Public Trust. The three-day expiry
+   the portal shows is the current certificate's; it rotates by itself.
+4. **An app registration**, `gh-actions-wg-hem-signing`, with a **federated
+   credential** for GitHub Actions scoped to this repository and the environment
+   `release`, and no client secret. The OIDC subject Azure accepts is therefore
+   `repo:encedo/encedo-wg-hsm:environment:release`, exactly that.
+5. **The role assignment** *Artifact Signing Certificate Profile Signer* for that
+   application, on the account — the role that permits requesting a certificate
+   from the profile. An earlier version of this note listed *Identity Verifier*
+   as well; it was not assigned, and the first signed run is what shows whether
+   that was right.
 
-**In the repository**, as variables rather than secrets, because none of them is
-one — an application id and a tenant id identify, they do not authorise:
+**In the repository**, as variables:
 
     AZURE_CLIENT_ID            the app registration
     AZURE_TENANT_ID
     AZURE_SUBSCRIPTION_ID
-    TRUSTED_SIGNING_ENDPOINT   the region's, e.g. https://weu.codesigning.azure.net/
-    TRUSTED_SIGNING_ACCOUNT
-    TRUSTED_SIGNING_PROFILE
+    TRUSTED_SIGNING_ENDPOINT   https://neu.codesigning.azure.net/
+    TRUSTED_SIGNING_ACCOUNT    win11
+    TRUSTED_SIGNING_PROFILE    SigningCode
 
-Setting `AZURE_CLIENT_ID` is what turns the whole thing on.
+and an environment `release` with a required reviewer and deployment rules that
+list the `v*` tags. The sign job in `gui.yml` runs in that environment: a job
+that is not in it cannot sign, and a job that is waits for the reviewer. How
+the job is triggered and what it does is in [RELEASING.md](RELEASING.md).
+
+When a first attempt fails: `AADSTS700213` is the subject not matching — the
+job is outside the environment, or the environment or repository is named
+differently; a login that succeeds followed by a 403 at signing is the role not
+yet propagated (minutes) or a wrong endpoint, account or profile value; a run
+that fails before its first step is the ref missing from the environment's
+deployment rules. A SmartScreen warning on a correctly signed download is not a
+configuration error — reputation accrues to a new publisher over time, and
+nothing in the workflow changes that.
 
 ### Signing, assumed to be Azure Trusted Signing
 
 Decided in principle on 2026-08-15: both halves and the installer signed with
-Trusted Signing. Not started. Three things about it shape the pipeline rather
-than being details of it.
+Trusted Signing, since renamed Artifact Signing. Written on 2026-09-16 as a
+`sign` job in `gui.yml`; the first end-to-end run is what remains. Three things
+about it shape the pipeline rather than being details of it.
 
 *Order.* Sign `wg-hem.exe` and `encedo-wg-gui.exe` **before** the installer is
 built, then sign the installer. An installer embeds or compresses its payload,

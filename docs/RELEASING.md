@@ -2,8 +2,8 @@
 
 CI builds and verifies every push and publishes nothing. `ci.yml` covers both
 command-line clients in both record sizes; `gui.yml` builds the window on three
-runners, signs the Windows binaries, and produces the `.deb`, the bundle and the
-MSI.
+runners and produces the `.deb`, the bundle and the MSI. On a `v*` tag, or on
+request, a second job in `gui.yml` signs the Windows output — see below.
 
 ## The order, which matters more than it looks
 
@@ -31,26 +31,47 @@ how a half-upgraded machine announces itself rather than misbehaving quietly.
 
 ## Signing on Windows
 
-Signing runs in Actions through **Azure Trusted Signing**, authenticated by OIDC:
-there is no key to store, so nothing sensitive lives in the repository. It is
-switched on by six repository *variables* and no secrets at all —
+Signing runs in Actions through **Azure Artifact Signing** — the service
+Microsoft launched as Trusted Signing and renamed in 2026 — authenticated by
+OIDC: there is no key to store, so nothing sensitive lives in the repository.
+Six repository *variables* and no secrets say which account to use —
 `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
-`TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`.
-Every signing step is conditioned on the first of them, so a repository without
-them builds exactly as it does today rather than failing at a step nobody can
-satisfy.
+`TRUSTED_SIGNING_ENDPOINT`, `TRUSTED_SIGNING_ACCOUNT`, `TRUSTED_SIGNING_PROFILE`
+— and what stands behind them in Azure is in [WINDOWS.md](WINDOWS.md) under
+*Signing*.
 
-What has to exist in Azure before those mean anything is in
-[WINDOWS.md](WINDOWS.md) under *Signing*. The long pole is identity validation —
-Microsoft checking that the organisation is who it says it is — and no workflow
-can hurry it.
+It does not run on every push. The `sign` job in `gui.yml` runs after the build,
+only on a `v*` tag or a manual run with *sign* ticked, and only inside the
+`release` environment, which waits for a reviewer. Three things follow:
 
-> **Known gaps, both open.** The **MSI is not signed**: the signing step sits
-> before the bundle, and the installer is built afterwards with no signing step
-> of its own, so the file a person double-clicks first is from an unknown
-> publisher. And signing is not yet **gated to tags** — it should run only on a
-> tag, in a protected environment, and never on a pull request from a fork.
-> Until both are done, releasing is not finished. See `TODO.md`.
+- **The environment name is part of the credential.** Azure accepts the OIDC
+  token only when its subject is `repo:encedo/encedo-wg-hsm:environment:release`.
+  A job outside that environment, or an environment under another name, fails at
+  login with `AADSTS700213`.
+- **The environment decides which refs may sign.** Its deployment rules list the
+  `v*` tags; a manual run from a branch not on the list fails before its first
+  step. Add the branch for a test, remove it afterwards.
+- **A pull request never signs.** The job's condition names the two events that
+  may reach it, and `pull_request` is not one of them.
+
+What the job does, in the order above: signs every executable the build
+uploaded, the copies inside the staged bundles included; rebuilds the MSI from
+the signed stage with `packaging/windows/build-msi.sh`, the same script the
+build used; signs the MSI; verifies every signature with `signtool verify /pa /v`
+and refuses one without a timestamp; writes `SHA256SUMS`; and uploads
+`encedo-wg-windows-signed-X64`. The run log carries the signtool output, which
+makes it the record of what was signed and by whom.
+
+> **Still open.** `ci.yml` also runs on `v*` tags and publishes Windows bundles
+> cross-built on Linux, which cannot be signed there — so a tag yields a signed
+> set from `gui.yml` and an unsigned set from `ci.yml`, two downloads of one
+> program. Either the latter stop being published or they are built and signed
+> on Windows; until one of those is done, releasing is not finished. The build
+> job's own unsigned Windows upload is the same shape of thing, on a smaller
+> scale — it is what the sign job consumes, and it should not be what anyone
+> is handed. `install.ps1` and `uninstall.ps1` are not signed either; the MSI is
+> the installer, and signing the scripts is a follow-up if they stay in the
+> bundle.
 
 ## Building by hand
 
@@ -64,7 +85,7 @@ WG_HEM_DESCR=64 ./package-windows.sh
 sha256sum dist/*.zip dist/wg-* > dist/SHA256SUMS
 
 git tag -a v0.9.1 -m "0.9.1"    # tag the commit that was built
-git push origin v0.9.1
+git push origin v0.9.1          # starts the signed build; it then waits for a reviewer
 ```
 
 Do **not** sign `wintun.dll` — `package-windows.sh` explains why. It is

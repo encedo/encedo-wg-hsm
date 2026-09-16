@@ -18,17 +18,25 @@ name: GUI
 on:
   push:
     branches: [gui]
+    # A tag is a release, and a release is the one build that gets signed. The
+    # sign job at the end of this file is what a tag adds; the build itself is
+    # the same one every push gets.
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      sign:
+        description: >-
+          Sign the Windows build with the company certificate. The run waits
+          for a reviewer before anything is signed.
+        type: boolean
+        default: false
 
+# Read-only for the build. The one job that needs more - the sign job asks
+# GitHub for an OIDC token - says so itself, so the permission exists only where
+# it is spent.
 permissions:
   contents: read
-  # Trusted Signing authenticates through OIDC rather than a stored key: the job
-  # asks GitHub for a short-lived token and exchanges it for an Azure one, so
-  # nothing here holds a credential that could be read out of the repository.
-  # Harmless while signing is switched off - a token nobody requests is not
-  # issued.
-  id-token: write
 
 jobs:
   build:
@@ -288,48 +296,12 @@ jobs:
           done
           ls -l ../dist-gui
 
-      # Signing, and it is off until the Azure side exists.
-      #
-      # Turned on by setting three repository variables - no secret is involved,
-      # because there is no key to hold: AZURE_CLIENT_ID, AZURE_TENANT_ID and
-      # AZURE_SUBSCRIPTION_ID, plus TRUSTED_SIGNING_ENDPOINT,
-      # TRUSTED_SIGNING_ACCOUNT and TRUSTED_SIGNING_PROFILE. Every step below is
-      # conditioned on the first of them, so an unconfigured repository builds
-      # exactly as it does today rather than failing at a step nobody can
-      # satisfy yet.
-      #
-      # What has to exist in Azure before those mean anything is in
-      # docs/WINDOWS.md, under "Signing". The long pole is identity validation,
-      # which is Microsoft checking that the organisation is who it says it is
-      # and is not something a workflow can hurry.
-      - name: Sign in to Azure
-        if: runner.os == 'Windows' && vars.AZURE_CLIENT_ID != ''
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      # Before the bundle, deliberately. The bundle copies these files, so
-      # signing them here is what makes every copy signed; signing the bundle's
-      # copies instead would leave the loose binaries beside it unsigned, and two
-      # downloads of one program where only one is signed is worse than neither.
-      #
-      # The timestamp is not decoration. A Trusted Signing certificate lives
-      # about three days and is renewed daily, so a signature without one stops
-      # verifying within the week.
-      - name: Sign the binaries
-        if: runner.os == 'Windows' && vars.AZURE_CLIENT_ID != ''
-        uses: azure/trusted-signing-action@v0
-        with:
-          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
-          files-folder: ${{ github.workspace }}/dist-gui
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
+      # Not signed here, and this is where it once was. Signing needs an OIDC
+      # token that Azure exchanges only for a job running in the "release"
+      # environment, and that environment waits for a reviewer - so putting it
+      # on this job would put every push to the branch behind a person. The
+      # build stays unsigned and ungated; the sign job at the end of this file
+      # takes what this one uploads, on a tag or on request.
 
       # A bundle somebody can install, rather than four files and a paragraph.
       # Assembled here because this is the only job that holds both halves - the
@@ -432,51 +404,20 @@ jobs:
           path: dist-deb/
           retention-days: 7
 
-      # The installer: one file to download and double-click.
-      #
-      # Only the descr64 dialect gets one. The two record sizes cannot read each
-      # other's configuration, so a machine wants exactly one of them, and two
-      # installers sharing an UpgradeCode would silently replace each other while
-      # two with different ones would fight over the same directory. Today's
-      # firmware is 64-byte; when that stops being true this grows a second
-      # product rather than a second file.
-      #
-      # Built here rather than anywhere else because WiX needs Windows: it is
-      # .NET and starts on Linux, but the bind phase - where the MSI database is
-      # written - wants msi.dll. The authoring is checked on Linux up to that
-      # point, which catches everything except one bogus complaint about
-      # Directory/@Name.
+      # The installer: one file to download and double-click. A script rather
+      # than a step, because the sign job builds it a second time once the
+      # binaries carry a signature and the two must not drift. The script says
+      # why only the descr64 dialect gets one and why this has to be Windows.
       - name: Installer
         if: runner.os == 'Windows'
         shell: bash
-        working-directory: gui
         run: |
           set -eu
           case "${{ runner.arch }}" in
-            X64)   goarch=amd64; wixarch=x64   ;;
-            ARM64) goarch=arm64; wixarch=arm64 ;;
+            X64)   goarch=amd64 ;;
+            ARM64) goarch=arm64 ;;
           esac
-          stage="../dist-gui/encedo-wg-windows-$goarch-descr64"
-          VERSION="$(cd .. && sh scripts/version.sh)"
-
-          # MSI versions are numeric and only the first three fields decide an
-          # upgrade, so the release goes in those and the run number in the
-          # fourth. Without the run number every build of a release would look
-          # like the same version and an upgrade would decline to replace it.
-          release="${VERSION%%+*}"
-          msiversion="$release.${{ github.run_number }}"
-
-          dotnet tool install --global wix --version 5.0.2 >/dev/null
-          export PATH="$PATH:$HOME/.dotnet/tools"
-
-          wix build -arch "$wixarch" \
-            -d Version="$msiversion" \
-            -d Stamp="$VERSION (descr 64 B)" \
-            -d Payload="$(cd "$stage" && pwd)" \
-            ../packaging/windows/encedo-wg.wxs \
-            -o "../dist-gui/encedo-wg-$goarch.msi"
-
-          ls -l ../dist-gui/*.msi
+          packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
 
       # Windows 10 is one of the machines this ships to, and "will it start
       # there" is answered by the PE header rather than by where it was built.
@@ -524,3 +465,174 @@ jobs:
           name: encedo-wg-gui-${{ runner.os }}-${{ runner.arch }}
           path: dist-gui/
           retention-days: 7
+
+  # Signing, in a job of its own and behind a person.
+  #
+  # It could not stay in the build job, and the reason is the credential. There
+  # is no key: the job asks GitHub for an OIDC token, Azure exchanges it for the
+  # right to use the certificate, and the federated credential on the Azure side
+  # accepts that token only when its subject names this repository *and* the
+  # "release" environment. A job outside the environment gets a token Azure
+  # refuses - AADSTS700213, "no matching federated identity record". The
+  # environment in turn waits for a reviewer, so a job inside it waits too, which
+  # is right for a release and wrong for every push to the branch. Hence a job of
+  # its own: the build runs as it always has, this one runs on a tag or when
+  # asked, and the reviewer approves exactly one thing, the signing.
+  #
+  # A pull request never reaches this, from a fork or otherwise: the condition
+  # names the two events that may, and pull_request is not one of them. Anything
+  # looser would let a PR produce a file signed in the company's name.
+  #
+  # What it signs is what the build uploaded, in the order RELEASING.md gives:
+  # the executables first, every copy of them, then the installer is rebuilt
+  # from the signed copies and signed itself. An installer embeds its payload,
+  # so signing the one the build made would wrap a signature around unsigned
+  # binaries - exactly the case Defender looks inside for.
+  #
+  # Only the x64 build. There is no Windows ARM job to take from (the matrix
+  # above says why), and the signing action does not run on ARM runners either.
+  sign:
+    name: Sign for Windows
+    needs: build
+    # Spelled out rather than implied: a job with an `if` of its own loses the
+    # default success() check, so the build's result has to be named here or a
+    # red build could be signed.
+    if: >-
+      needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.sign))
+    runs-on: windows-latest
+    # The name is part of the credential. The federated credential in Azure
+    # matches the OIDC subject character for character, and the subject is
+    # repo:encedo/encedo-wg-hsm:environment:release. Rename this, or the
+    # repository, and every attempt fails at login with AADSTS700213.
+    environment: release
+    permissions:
+      contents: read
+      # The OIDC token. Requested here and nowhere else: nothing in the
+      # repository holds a credential, and no other job could spend one.
+      id-token: write
+
+    steps:
+      # The tree, for what the installer is built from: the WiX authoring, the
+      # version script and build-msi.sh. No submodule, since nothing is compiled
+      # here; build-msi.sh checks that the stamp this checkout computes is the
+      # one inside the binaries, so a checkout that described itself differently
+      # would stop there rather than ship a mismatched installer.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The build's Windows output, unsigned: four executables, the two staged
+      # bundles that copy them, and an installer this job replaces.
+      - name: Download the unsigned build
+        uses: actions/download-artifact@v4
+        with:
+          name: encedo-wg-gui-Windows-X64
+          path: dist-gui
+
+      # Exact versions for the two actions that handle the credential, where the
+      # rest of this file follows a major tag. These are the steps that can sign
+      # something in the company's name; what they run should change when
+      # somebody changes it here, not when a tag moves upstream.
+      #
+      # A client id and no secret is the OIDC flow: the action asks GitHub for
+      # the token and exchanges it. Do not add a secret to this.
+      - name: Sign in to Azure
+        uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Microsoft renamed the service from Trusted Signing to Artifact Signing
+      # in 2026 and the action with it; azure/trusted-signing-action is now a
+      # redirect to this one. The inputs kept their shape and the repository
+      # variables kept their names.
+      #
+      # Recursive, deliberately: the staged bundles hold copies of the loose
+      # executables, and the copies are what a person installs. Signing only the
+      # loose ones would ship two downloads of one program where only one is
+      # signed, which is worse than neither. wintun.dll is not touched - it is
+      # WireGuard LLC's, signed by them, and redistributed as it came.
+      #
+      # The timestamp is not decoration. An Artifact Signing certificate lives
+      # about three days and is renewed daily, so a signature without one stops
+      # verifying within the week; with one it outlives the certificate.
+      - name: Sign the executables
+        uses: Azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist-gui
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Again, from the same stage, now that what it embeds is signed. The same
+      # script and the same run number as the build job used, so the result
+      # differs from the unsigned installer in exactly the signatures.
+      - name: Rebuild the installer around the signed binaries
+        shell: bash
+        run: packaging/windows/build-msi.sh amd64 "${{ github.run_number }}"
+
+      - name: Sign the installer
+        uses: Azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist-gui
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Checked with the tool a Windows machine would use, not with the action's
+      # exit code. signtool verify /pa applies the ordinary Authenticode policy -
+      # the chain has to reach a root the machine trusts - and /v prints the
+      # chain and the timestamp, which makes this run's log the record of what
+      # was signed and by whom. Every executable and the installer, the copies
+      # inside the bundles included, and each has to carry a timestamp or it is
+      # a signature with a week to live.
+      - name: Every signature must verify and carry a timestamp
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "no signtool.exe in the Windows Kits on this runner" }
+          "using $($signtool.FullName)"
+          $files = @(Get-ChildItem dist-gui -Recurse -Include *.exe, *.msi)
+          if (-not ($files | Where-Object Extension -eq '.msi')) { throw "no installer to verify" }
+          $bad = 0
+          foreach ($f in $files) {
+            $out = & $signtool.FullName verify /pa /v $f.FullName 2>&1 | Out-String
+            $out
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "$($f.FullName): the signature does not verify"; $bad++
+            } elseif ($out -notmatch 'The signature is timestamped') {
+              Write-Error "$($f.FullName): signed but not timestamped"; $bad++
+            }
+          }
+          "$($files.Count) files verified, $bad bad"
+          if ($bad) { exit 1 }
+
+      # After signing, because signing changes the file. Over the loose files
+      # only: the bundles are directories, and a directory has no checksum.
+      - name: SHA256SUMS
+        shell: bash
+        run: |
+          set -eu
+          cd dist-gui && sha256sum *.exe *.msi | tee SHA256SUMS
+
+      # A name the unsigned upload cannot be mistaken for, and a longer life
+      # than the build's: this is what a release is made from, and a release is
+      # not always made the same afternoon.
+      - name: Upload the signed build
+        uses: actions/upload-artifact@v4
+        with:
+          name: encedo-wg-windows-signed-X64
+          path: dist-gui/
+          retention-days: 30
