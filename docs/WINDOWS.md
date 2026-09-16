@@ -294,6 +294,14 @@ would be wrong.
 
 ### Signing: what exists, as of 2026-09-16
 
+**Proven end to end on 2026-09-16**, run 35105123345 of the GUI workflow: the
+build, the reviewer gate, OIDC login, nine signatures (four loose executables,
+their four copies in the staged bundles, and the rebuilt MSI), and `signtool
+verify /pa /v` on every one of them — chain to *Microsoft Identity Verification
+Root Certificate Authority 2020*, subject *RKV spolka z ograniczona
+odpowiedzialnoscia*, each timestamped. The first attempt failed at login, and
+the cause is recorded below because the portal invites it.
+
 The Azure side is complete and was verified in the portal. Microsoft has since
 renamed the service from Trusted Signing to Artifact Signing; the variable names
 below predate that and were kept. Nothing here is a secret — an application id
@@ -318,8 +326,8 @@ holds them as *variables*.
 5. **The role assignment** *Artifact Signing Certificate Profile Signer* for that
    application, on the account — the role that permits requesting a certificate
    from the profile. An earlier version of this note listed *Identity Verifier*
-   as well; it was not assigned, and the first signed run is what shows whether
-   that was right.
+   as well; it was not assigned, and the first signed run showed it is not
+   needed for signing.
 
 **In the repository**, as variables:
 
@@ -337,7 +345,15 @@ the job is triggered and what it does is in [RELEASING.md](RELEASING.md).
 
 When a first attempt fails: `AADSTS700213` is the subject not matching — the
 job is outside the environment, or the environment or repository is named
-differently; a login that succeeds followed by a 403 at signing is the role not
+differently, **or the portal generated the subject**. The Entra portal's
+"GitHub Actions" credential form now demands numeric organisation and
+repository ids and builds the subject from them, as
+`repo:encedo@7176084/encedo-wg-hsm@1188321703:environment:release`, which is
+not what GitHub sends; that is exactly how the first run here failed. The
+fix is *Edit (optional)* under the subject field, or the *Other issuer*
+scenario, and the literal `repo:encedo/encedo-wg-hsm:environment:release`. The
+run log prints the subject GitHub presented, so the two can be compared
+character for character. A login that succeeds followed by a 403 at signing is the role not
 yet propagated (minutes) or a wrong endpoint, account or profile value; a run
 that fails before its first step is the ref missing from the environment's
 deployment rules. A SmartScreen warning on a correctly signed download is not a

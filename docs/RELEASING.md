@@ -40,6 +40,9 @@ Six repository *variables* and no secrets say which account to use —
 — and what stands behind them in Azure is in [WINDOWS.md](WINDOWS.md) under
 *Signing*.
 
+It works: first proven on 2026-09-16, and `docs/WINDOWS.md` has the run and
+the one trap in the Azure portal that cost the first attempt.
+
 It does not run on every push. The `sign` job in `gui.yml` runs after the build,
 only on a `v*` tag or a manual run with *sign* ticked, and only inside the
 `release` environment, which waits for a reviewer. Three things follow:
