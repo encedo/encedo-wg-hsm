@@ -89,4 +89,11 @@ wix build -arch "$wixarch" \
 	packaging/windows/encedo-wg.wxs \
 	-o "dist-gui/encedo-wg-$goarch.msi"
 
+# WiX writes debug symbols for the installer beside it. Nothing here reads
+# them, and an artifact is what a release is assembled from by hand - so a file
+# nobody wants is a file somebody uploads. Removed rather than suppressed with
+# a flag, because the flag's spelling has changed between WiX versions and rm
+# has not.
+rm -f "dist-gui/encedo-wg-$goarch.wixpdb"
+
 ls -l "dist-gui/encedo-wg-$goarch.msi"
