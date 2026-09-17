@@ -292,32 +292,70 @@ VirusTotal. A handful of engines out of seventy is what a false positive looks
 like; a broad consensus would mean something else entirely and this document
 would be wrong.
 
-### ARM64, from 2026-09-17: built natively rather than emulated
+### ARM64, from 2026-09-17: a native component and an emulated window
 
-Until now the ARM machine got an emulated x64 window and a native component,
-and that was defended here as the right way round: the window sits idle in a
-tray, the component is on the handshake path. The product supports the whole
-Windows 11 line, so both halves are now built for arm64 by a `windows-11-arm`
-job beside the x64 one, and there is an arm64 bundle and an arm64 installer.
+The ARM line is supported, and an arm64 installation is a **native component
+with an emulated x64 window**. That is not the design anyone set out to build;
+it is what the platform allows, measured on the day.
 
-**The runner still cannot do it unaided**, which is what defeated the first
-attempt on 2026-08-15 and has not changed: its image provisions i686 and x86_64
-mingw and nothing else, so `gcc` there is an x86-64 compiler running under
-emulation, and cgo handing it the arm64 assembly in `runtime/cgo` gets
+**What was tried.** A `windows-11-arm` job builds both halves natively. The
+runner cannot do it unaided and still cannot: its image provisions i686 and
+x86_64 mingw and nothing else, so `gcc` there is an x86-64 compiler under
+emulation and cgo handing it the arm64 assembly in `runtime/cgo` answers
 `no such instruction: stp x29,x30`. The job therefore installs llvm-mingw
-itself — one pinned archive, checksum verified, the same treatment `wintun.dll`
-gets and for a stronger reason, since this one compiles what we sign — and
-points `CC` and `CXX` at its `aarch64-w64-mingw32` drivers.
+itself - one pinned archive, checksum verified - and points `CC` and `CXX` at
+its `aarch64-w64-mingw32` drivers. That part works: the window and the
+component both compile, and an arm64 installer was produced and installed.
 
-**One thing a green build does not prove, and it should be tested on real ARM
-hardware before an arm64 installer is handed to anyone.** Fyne chooses its
-painter by architecture, so a windows/arm64 build asks for OpenGL ES through
-WGL and fails at window creation — `WGL: Failed to create OpenGL ES context` —
-wherever the driver has no `WGL_EXT_create_context_es2_profile`. That is
-fyne-io/fyne#6483, open upstream since 2026-08-17, with a fallback proposed in
-#6484 and not merged. The runner is headless and compiles it either way. If it
-does fail on hardware, the emulated x64 window still works and is the fallback
-that costs nothing.
+**What stopped it.** The installed arm64 window puts its icon in the tray and
+never opens. Run as a console build, it says:
+
+    Fyne error: window creation error
+      Cause: APIUnavailable: WGL: The driver does not appear to support OpenGL
+      At: fyne.io/fyne/v2@v2.8.0/internal/driver/glfw/driver.go:180
+
+Read that error carefully, because the obvious diagnosis is the wrong one. This
+is not `fyne-io/fyne#6483`, where an arm64 build asks for OpenGL ES through WGL
+and is refused - that failure names GLES and this one does not reach the
+question. GLFW fails while initialising WGL at all: a native arm64 process on
+this machine is offered no OpenGL of any kind. Microsoft's OpenCL and OpenGL
+Compatibility Pack, installed from the Store, changed nothing - it maps desktop
+OpenGL onto Direct3D, and the failure is earlier than the flavour.
+
+**What was measured, in the order it was measured**, on a Windows 11 ARM guest
+on a macOS host:
+
+| | Result |
+|---|---|
+| arm64 installer | installs |
+| arm64 window, native | tray icon, no window, the error above |
+| tray menu "Show" | nothing |
+| x64 window, emulated, same machine | opens and runs |
+| Compatibility Pack, then arm64 again | unchanged |
+
+The fourth row is what settles it. The machine can present an OpenGL context;
+it will not present one to a native arm64 process. A virtual machine is the
+likeliest place to meet a thin graphics stack, so this is not proof about
+Snapdragon hardware - but Windows on ARM ships no desktop OpenGL driver of its
+own, which is why the Compatibility Pack exists at all, and a toolkit that
+needs WGL is betting on the machine having one.
+
+**So the bundle is split by what each half needs.** The component is on the
+handshake path, does the ECDH for every rekey and creates the adapter: it is
+native arm64, and `wintun.dll` follows it. The window sits in a tray doing
+nothing until somebody clicks it: it is the x64 build, emulated, which the same
+machine runs without complaint. Both are built by the x64 job, because the
+component is `CGO_ENABLED=0` and cross-builds - so one job still holds both
+halves of every bundle, one checkout, one stamp, which is the rule the rest of
+the pipeline is built around.
+
+**The native window is still built** by the `windows-11-arm` job and uploaded
+under a name the signing job does not match. It ships nowhere: a signed copy of
+a window that cannot open is a file somebody would download, run and watch do
+nothing. It is kept because the toolchain it proves is real, and because it is
+what gets re-tested when something changes - a Fyne release that falls back to
+EGL and ANGLE, a driver, or real hardware. The console copy beside it is the
+one to run, since the shipped linkage has no console and prints nowhere.
 
 ### Signing: what exists, as of 2026-09-16
 

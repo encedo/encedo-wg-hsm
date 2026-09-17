@@ -345,6 +345,15 @@ jobs:
                   "")        cli_tags="" ;;
                   -descr64)  cli_tags="descr64" ;;
                 esac
+                # Both architectures from the x64 job, and this is what lets one
+                # job assemble both bundles. The component has no cgo, so its
+                # architecture is a variable rather than the runner's - unlike
+                # the window above, which is why the window is the half that
+                # needed a second runner at all.
+                case "${{ runner.arch }}" in
+                  X64)   cli_arches="amd64 arm64" ;;
+                  ARM64) cli_arches="arm64" ;;
+                esac
                 # From the repository root, not from here. gui/ is its own
                 # module with its own go.sum, and that go.sum has no entry for
                 # wireguard-go and must not gain one - deps_test.go exists to
@@ -352,9 +361,11 @@ jobs:
                 # inside gui/ resolves it against the wrong module and fails
                 # with six missing go.sum entries, which is the right answer to
                 # the wrong question.
-                ( cd .. && CGO_ENABLED=0 GOARCH=$goarch go build ${cli_tags:+-tags "$cli_tags"} \
-                    -ldflags "$STAMP" \
-                    -o "dist-gui/wg-hem-windows-$goarch$variant.exe" ./cmd/wg-hem )
+                for cli_arch in $cli_arches; do
+                  ( cd .. && CGO_ENABLED=0 GOARCH=$cli_arch go build ${cli_tags:+-tags "$cli_tags"} \
+                      -ldflags "$STAMP" \
+                      -o "dist-gui/wg-hem-windows-$cli_arch$variant.exe" ./cmd/wg-hem )
+                done
                 ;;
             esac
           done
@@ -367,46 +378,49 @@ jobs:
       # build stays unsigned and ungated; the sign job at the end of this file
       # takes what this one uploads, on a tag or on request.
 
-      # Temporary, and it ships nowhere. The window is linked -H=windowsgui, so
-      # it has no console and Fyne's startup errors go nowhere anybody can read
-      # them - which is exactly the state Windows 11 ARM left us in on
-      # 2026-09-17: the tray icon appears, the window does not, and redirecting
-      # stderr from PowerShell produced empty files.
-      #
-      # This is the same window linked as a console program, so that running it
-      # in a terminal prints whatever Fyne says. It goes to its own directory
-      # and its own artifact rather than into dist-gui, so that it cannot be
-      # mistaken for something to install and cannot be swept up by the signing
-      # job, which signs every .exe it finds. Delete both steps once the cause
-      # is known.
-      - name: A console build of the window, for diagnosis only
+      # The same window linked as a console program, so that running it in a
+      # terminal prints what Fyne says instead of failing in silence. That is
+      # how the arm64 window's failure was read at all on 2026-09-17, the
+      # windowsgui build having no console to print to and PowerShell
+      # redirection producing empty files, and it is how the next person will
+      # re-test when there is something new to test against.
+      - name: A console copy of the window, for reading its errors
         if: runner.os == 'Windows' && runner.arch == 'ARM64'
         working-directory: gui
         shell: bash
         run: |
           set -eu
-          mkdir -p ../dist-diag
           VERSION="$(cd .. && sh scripts/version.sh)"
           CGO_ENABLED=1 GOARCH=arm64 go build -tags descr64 \
             -ldflags "-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION" \
-            -o ../dist-diag/encedo-wg-gui-windows-arm64-console.exe .
-          ls -l ../dist-diag
-
-      - name: Upload the diagnostic build
-        if: runner.os == 'Windows' && runner.arch == 'ARM64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: encedo-wg-gui-ARM64-console-diagnostic
-          path: dist-diag/
-          retention-days: 7
+            -o ../dist-gui/encedo-wg-gui-windows-arm64-console.exe .
 
       # A bundle somebody can install, rather than four files and a paragraph.
       # Assembled here because this is the only job that holds both halves - the
       # window needs cgo and the component must carry the same stamp - and
       # because the driver has to come with them or the tunnel fails at the
       # moment it is created.
+      # Assembled by the x64 job for both architectures, which needs saying
+      # because the ARM job is right there and does not do it.
+      #
+      # An arm64 installation is a native component and an emulated x64 window,
+      # and that is measured rather than chosen. On Windows on ARM a native
+      # arm64 process gets no OpenGL through WGL - GLFW answers "APIUnavailable:
+      # WGL: The driver does not appear to support OpenGL" before any question
+      # of which GL flavour is wanted, and Microsoft's OpenCL and OpenGL
+      # Compatibility Pack did not change it. The same machine runs the
+      # emulated x64 window without complaint. So the window ships emulated,
+      # which costs nothing for something that sits in a tray, and the
+      # component - the half on the handshake path - is native, which is where
+      # it matters.
+      #
+      # That is also why this is one job rather than two. The component is
+      # CGO_ENABLED=0 and cross-builds, so the x64 job holds both components
+      # and the only window that works; the ARM job holds a window nothing can
+      # yet display. One job, one checkout, one stamp, which is the rule the
+      # rest of this file is built around.
       - name: Bundle
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         working-directory: gui
         run: |
@@ -415,11 +429,6 @@ jobs:
           # owned them. A second copy of a checksum is a second thing to forget.
           ver="$(sed -n 's/^WINTUN_VERSION="\(.*\)"$/\1/p' ../package-windows.sh)"
           sum="$(sed -n 's/^WINTUN_SHA256="\(.*\)"$/\1/p' ../package-windows.sh)"
-          case "${{ runner.arch }}" in
-            X64)   goarch=amd64 ;;
-            ARM64) goarch=arm64 ;;
-          esac
-
           # Relative, and under dist-gui, for one reason: this step is bash and
           # the next line is PowerShell, and the two do not agree on what a path
           # is. An absolute /tmp/... is a real place to git-bash, which maps it
@@ -438,23 +447,31 @@ jobs:
           # runner image; PowerShell 5 is.
           powershell -NoProfile -Command "Expand-Archive -Force '$work/wintun.zip' '$work/x'"
 
-          for variant in "" "-descr64"; do
-            stage="../dist-gui/encedo-wg-windows-$goarch$variant"
-            mkdir -p "$stage"
-            # Renamed to the plain names on the way in. The suffixes exist to
-            # keep dialects apart in a build directory; inside an installation
-            # they would only be something to get wrong.
-            cp "../dist-gui/wg-hem-windows-$goarch$variant.exe"        "$stage/wg-hem.exe"
-            cp "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" "$stage/encedo-wg-gui.exe"
-            cp "$work/x/wintun/bin/$goarch/wintun.dll"                 "$stage/wintun.dll"
-            cp ../packaging/windows/install.ps1                        "$stage/"
-            # The icon as a file as well as a resource: the installer points the
-            # notification registration at it, and Windows wants an image there
-            # rather than an executable.
-            cp packaging/icon.ico                                      "$stage/"
-            cp ../packaging/windows/uninstall.ps1                      "$stage/"
-            cp ../LICENSE                                              "$stage/LICENSE.txt"
-            cp "$work/x/wintun/LICENSE.txt"                            "$stage/WINTUN-LICENSE.txt"
+          for goarch in amd64 arm64; do
+            for variant in "" "-descr64"; do
+              stage="../dist-gui/encedo-wg-windows-$goarch$variant"
+              mkdir -p "$stage"
+              # Renamed to the plain names on the way in. The suffixes exist to
+              # keep dialects apart in a build directory; inside an installation
+              # they would only be something to get wrong.
+              #
+              # The component follows the bundle's architecture and the window
+              # does not: there is one window here, the x64 one, and on an arm64
+              # machine it runs emulated. The comment above this step says why.
+              # wintun.dll follows the component, since the component is what
+              # creates the adapter.
+              cp "../dist-gui/wg-hem-windows-$goarch$variant.exe"       "$stage/wg-hem.exe"
+              cp "../dist-gui/encedo-wg-gui-windows-amd64$variant.exe"  "$stage/encedo-wg-gui.exe"
+              cp "$work/x/wintun/bin/$goarch/wintun.dll"                "$stage/wintun.dll"
+              cp ../packaging/windows/install.ps1                        "$stage/"
+              # The icon as a file as well as a resource: the installer points the
+              # notification registration at it, and Windows wants an image there
+              # rather than an executable.
+              cp packaging/icon.ico                                      "$stage/"
+              cp ../packaging/windows/uninstall.ps1                      "$stage/"
+              cp ../LICENSE                                              "$stage/LICENSE.txt"
+              cp "$work/x/wintun/LICENSE.txt"                          "$stage/WINTUN-LICENSE.txt"
+            done
           done
 
           # Out of the way before the upload: it lives under dist-gui so that it
@@ -506,15 +523,13 @@ jobs:
       # binaries carry a signature and the two must not drift. The script says
       # why only the descr64 dialect gets one and why this has to be Windows.
       - name: Installer
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && runner.arch == 'X64'
         shell: bash
         run: |
           set -eu
-          case "${{ runner.arch }}" in
-            X64)   goarch=amd64 ;;
-            ARM64) goarch=arm64 ;;
-          esac
-          packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
+          for goarch in amd64 arm64; do
+            packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
+          done
 
       # Windows 10 is one of the machines this ships to, and "will it start
       # there" is answered by the PE header rather than by where it was built.
@@ -555,11 +570,30 @@ jobs:
         working-directory: gui
 
       - name: Upload
+        if: "!(runner.os == 'Windows' && runner.arch == 'ARM64')"
         uses: actions/upload-artifact@v4
         with:
-          # The architecture is in the name because two Windows jobs would
-          # otherwise both upload as "Windows" and the second would be refused.
+          # The architecture is in the name because two jobs of one operating
+          # system would otherwise upload under the same name and the second
+          # would be refused.
           name: encedo-wg-gui-${{ runner.os }}-${{ runner.arch }}
+          path: dist-gui/
+          retention-days: 7
+
+      # The ARM job's output, under a name the signing job's pattern does not
+      # match, and deliberately so. Nothing here ships: the window it contains
+      # cannot open on the platform it was built for, and a signed copy of it
+      # would be a file somebody downloads, runs and watches do nothing. It is
+      # kept because the toolchain it proves is real and because this is what
+      # gets re-tested when Windows on ARM, Fyne or a driver changes - the
+      # console copy beside it is the one to run.
+      #
+      # What ships for arm64 is assembled by the x64 job: see the Bundle step.
+      - name: Upload the native ARM64 window, which does not ship
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: encedo-wg-gui-experimental-Windows-ARM64
           path: dist-gui/
           retention-days: 7
 
@@ -623,11 +657,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Both Windows jobs' output, unsigned, merged into one directory: per
-      # architecture four executables, the two staged bundles that copy them,
-      # and an installer this job replaces. They cannot collide, because every
-      # file either carries its architecture in its name or is the VERSION
-      # file, which both jobs wrote and both wrote the same.
+      # The x64 job's output, unsigned, which is everything that ships for
+      # Windows: both architectures' components, the x64 window, the four
+      # staged bundles that copy them and the two installers this job replaces.
+      # The ARM job's artifact is deliberately not matched by this pattern -
+      # what it holds cannot open a window and must not be signed.
       - name: Download the unsigned builds
         uses: actions/download-artifact@v4
         with:
