@@ -367,6 +367,39 @@ jobs:
       # build stays unsigned and ungated; the sign job at the end of this file
       # takes what this one uploads, on a tag or on request.
 
+      # Temporary, and it ships nowhere. The window is linked -H=windowsgui, so
+      # it has no console and Fyne's startup errors go nowhere anybody can read
+      # them - which is exactly the state Windows 11 ARM left us in on
+      # 2026-09-17: the tray icon appears, the window does not, and redirecting
+      # stderr from PowerShell produced empty files.
+      #
+      # This is the same window linked as a console program, so that running it
+      # in a terminal prints whatever Fyne says. It goes to its own directory
+      # and its own artifact rather than into dist-gui, so that it cannot be
+      # mistaken for something to install and cannot be swept up by the signing
+      # job, which signs every .exe it finds. Delete both steps once the cause
+      # is known.
+      - name: A console build of the window, for diagnosis only
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        working-directory: gui
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p ../dist-diag
+          VERSION="$(cd .. && sh scripts/version.sh)"
+          CGO_ENABLED=1 GOARCH=arm64 go build -tags descr64 \
+            -ldflags "-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION" \
+            -o ../dist-diag/encedo-wg-gui-windows-arm64-console.exe .
+          ls -l ../dist-diag
+
+      - name: Upload the diagnostic build
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: encedo-wg-gui-ARM64-console-diagnostic
+          path: dist-diag/
+          retention-days: 7
+
       # A bundle somebody can install, rather than four files and a paragraph.
       # Assembled here because this is the only job that holds both halves - the
       # window needs cgo and the component must carry the same stamp - and
