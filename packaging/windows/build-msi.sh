@@ -40,20 +40,37 @@ stage="dist-gui/encedo-wg-windows-$goarch-descr64"
 [ -f "$stage/wg-hem.exe" ] || {
 	echo "no bundle at $stage - the Bundle step comes first" >&2; exit 1; }
 
-VERSION="$(sh scripts/version.sh)"
-
 # The stamp goes into the installer twice - ARPCOMMENTS, and a registry value
 # the two halves can be checked against - so it has to be the stamp the
-# binaries carry, not merely the one this checkout computes. The two agree by
-# construction when the installer is built beside the compiler; when it is
-# rebuilt in another job from downloaded binaries they agree only if that job
-# checked out the same commit in the same state, and this is where that is
-# checked rather than assumed. The component says its own stamp; the window
-# cannot be asked, but it was built from the same VERSION in the same step.
-said="$("$stage/wg-hem.exe" version)"
-[ "$said" = "wg-hem $VERSION (descr 64 B)" ] || {
-	echo "stamp mismatch: this checkout says '$VERSION', the component says '$said'" >&2
-	exit 1; }
+# binaries carry rather than the one this checkout computes for itself. The two
+# agree by construction when the installer is built beside the compiler, and
+# only by luck when the sign job rebuilds it from downloaded binaries after a
+# fresh checkout. So the build writes its answer down beside them and this
+# reads it, instead of asking git a second time and hoping.
+if [ -f dist-gui/VERSION ]; then
+	VERSION="$(cat dist-gui/VERSION)"
+else
+	# A build by hand, from this tree, with nothing downloaded.
+	VERSION="$(sh scripts/version.sh)"
+fi
+
+# Asked of the binary itself wherever that is possible, because a recorded
+# string says what the build believed and the executable says what it carries:
+# a window or a component that lost its ldflags has no stamp at all, and the two
+# halves would then refuse each other on somebody's machine rather than here.
+#
+# Not possible for one case, which is why this is conditional at all. The sign
+# job builds both installers on an x64 runner, and an arm64 executable does not
+# run there - Windows emulates x64 on ARM and not the reverse. For that one the
+# recorded stamp is the whole of what can be checked.
+host=amd64
+case "${PROCESSOR_ARCHITECTURE:-}" in ARM64) host=arm64 ;; esac
+if [ "$goarch" = "$host" ]; then
+	said="$("$stage/wg-hem.exe" version)"
+	[ "$said" = "wg-hem $VERSION (descr 64 B)" ] || {
+		echo "stamp mismatch: the build recorded '$VERSION', the component says '$said'" >&2
+		exit 1; }
+fi
 
 # MSI versions are numeric and only the first three fields decide an upgrade,
 # so the release goes in those and the build number in the fourth. Without the

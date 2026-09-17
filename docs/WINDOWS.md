@@ -292,6 +292,33 @@ VirusTotal. A handful of engines out of seventy is what a false positive looks
 like; a broad consensus would mean something else entirely and this document
 would be wrong.
 
+### ARM64, from 2026-09-17: built natively rather than emulated
+
+Until now the ARM machine got an emulated x64 window and a native component,
+and that was defended here as the right way round: the window sits idle in a
+tray, the component is on the handshake path. The product supports the whole
+Windows 11 line, so both halves are now built for arm64 by a `windows-11-arm`
+job beside the x64 one, and there is an arm64 bundle and an arm64 installer.
+
+**The runner still cannot do it unaided**, which is what defeated the first
+attempt on 2026-08-15 and has not changed: its image provisions i686 and x86_64
+mingw and nothing else, so `gcc` there is an x86-64 compiler running under
+emulation, and cgo handing it the arm64 assembly in `runtime/cgo` gets
+`no such instruction: stp x29,x30`. The job therefore installs llvm-mingw
+itself — one pinned archive, checksum verified, the same treatment `wintun.dll`
+gets and for a stronger reason, since this one compiles what we sign — and
+points `CC` and `CXX` at its `aarch64-w64-mingw32` drivers.
+
+**One thing a green build does not prove, and it should be tested on real ARM
+hardware before an arm64 installer is handed to anyone.** Fyne chooses its
+painter by architecture, so a windows/arm64 build asks for OpenGL ES through
+WGL and fails at window creation — `WGL: Failed to create OpenGL ES context` —
+wherever the driver has no `WGL_EXT_create_context_es2_profile`. That is
+fyne-io/fyne#6483, open upstream since 2026-08-17, with a fallback proposed in
+#6484 and not merged. The runner is headless and compiles it either way. If it
+does fail on hardware, the emulated x64 window still works and is the fallback
+that costs nothing.
+
 ### Signing: what exists, as of 2026-09-16
 
 **Proven end to end on 2026-09-16**, run 35105123345 of the GUI workflow: the

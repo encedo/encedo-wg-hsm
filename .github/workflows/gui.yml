@@ -45,26 +45,34 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # There is no windows-11-arm entry, and it is not an oversight: it was
-        # added on 2026-08-15 and taken out the same day.
+        # windows-11-arm was added on 2026-08-15, taken out the same day, and
+        # is back on 2026-09-17 because the product supports the whole Windows
+        # 11 line rather than the half of it that runs x64.
         #
-        # It fails before reaching any of our code. cgo on that runner picks up
-        # an x86-64 gcc from PATH and hands it the arm64 assembly in
-        # runtime/cgo, which answers `no such instruction: stp x29,x30` - the
-        # same failure an empty main.go importing "C" would produce. Fixing it
-        # means putting a native aarch64 toolchain on the runner, MSYS2's
-        # CLANGARM64 being the usual way.
+        # What removed it was real and has not gone away: the runner image
+        # still provisions only i686 and x86_64 mingw (its own
+        # Install-Mingw64.ps1 asks niXman/mingw-builds-binaries for those two
+        # and no other), so the `gcc` on PATH there is an x86-64 compiler under
+        # emulation. cgo hands it the arm64 assembly in runtime/cgo and it
+        # answers `no such instruction: stp x29,x30`, which is the failure an
+        # empty main.go importing "C" would produce. What changed is not the
+        # image but that the step below puts a native aarch64 toolchain on the
+        # runner before anything is compiled.
         #
-        # Not done, because of what it would buy. Windows on ARM runs x64
-        # binaries under emulation, so the amd64 window built here already runs
-        # on the ARM machine, and a window spends its life idle in a tray. The
-        # half where native matters - the component, which is on the handshake
-        # path - is CGO_ENABLED=0 and already cross-builds to windows/arm64 in
-        # ci.yml. So the ARM machine gets a native privileged half today and an
-        # emulated window, which is the right way round.
+        # The window is why this needs a runner of its own. cgo cannot be
+        # cross-compiled the way the component can, so the window's
+        # architecture is the runner's; the component is CGO_ENABLED=0 and is
+        # built beside it here for the same reason it is on x64, that one
+        # checkout and one call to scripts/version.sh is what keeps the two
+        # halves' stamps from disagreeing.
         #
-        # Add the entry back when somebody has a reason beyond tidiness; the
-        # Build step below already handles either architecture.
+        # One thing this build cannot answer, and it should be tested on real
+        # hardware before an arm64 installer is handed to anyone: Fyne picks
+        # its painter by architecture, so a windows/arm64 build asks for OpenGL
+        # ES over WGL and fails at window creation where the driver has no
+        # WGL_EXT_create_context_es2_profile. That is fyne-io/fyne#6483, open
+        # upstream since 2026-08-17 with a fallback proposed in #6484. A
+        # headless runner compiles it either way and says nothing.
         # ubuntu-24.04-arm builds the Linux window and the .deb for arm64.
         # The window needs cgo, so its architecture is the runner's and cannot
         # be cross-compiled the way the command-line client is: until GitHub
@@ -72,7 +80,8 @@ jobs:
         # way to produce one here, and an arm64 package came from reinstall.sh
         # on the machine that wanted it. There is now, and the dev machine is
         # arm64, so the package it needs should not be the one nobody builds.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest,
+            windows-11-arm]
 
     steps:
       - name: Checkout
@@ -111,6 +120,44 @@ jobs:
             libgl1-mesa-dev xorg-dev libxxf86vm-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
 
+      # The native aarch64 toolchain the runner does not have. See the matrix
+      # comment for what is on it instead and what that costs.
+      #
+      # llvm-mingw rather than MSYS2's CLANGARM64: one pinned archive with a
+      # checksum, against a package database that moves underneath a pinned
+      # version. It is the same treatment wintun.dll gets a few steps below and
+      # for a stronger reason - this one compiles the binary we sign.
+      #
+      # Relative paths and `pwd -W`, both deliberate. An absolute path written
+      # by git-bash means nothing to the Go toolchain, which is a Windows
+      # program: `pwd -W` is what turns /d/a/... into D:/a/..., and CC has to be
+      # the second. Unpacked beside the checkout rather than inside it, so that
+      # 600 MB of compiler is not something the upload step has to be told to
+      # leave out.
+      - name: Windows ARM64 build dependencies
+        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        shell: bash
+        run: |
+          set -eu
+          ver=20260908
+          sum=7fe35f60407473c420ac72b25137f54385b0affd2c42efd507c0062fc626ab56
+          zip=llvm-mingw-$ver-ucrt-aarch64.zip
+          work=../_toolchain
+          rm -rf "$work"; mkdir -p "$work"
+          curl -sSLf -o "$work/$zip" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/$ver/$zip"
+          echo "$sum  $work/$zip" | sha256sum -c -
+          powershell -NoProfile -Command "Expand-Archive -Force '$work/$zip' '$work/x'"
+
+          bin="$(cd "$work/x/llvm-mingw-$ver-ucrt-aarch64/bin" && pwd -W)"
+          # Said out loud, because a CC that is not there is a cgo build that
+          # falls back to the emulated gcc and fails much later and worse.
+          "$bin/aarch64-w64-mingw32-gcc.exe" --version | head -1
+          {
+            echo "CC=$bin/aarch64-w64-mingw32-gcc.exe"
+            echo "CXX=$bin/aarch64-w64-mingw32-g++.exe"
+          } >> "$GITHUB_ENV"
+
       - name: gofmt
         working-directory: gui
         shell: bash
@@ -143,6 +190,13 @@ jobs:
           VERSION="$(cd .. && sh scripts/version.sh)"
           STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION"
           echo "version: $VERSION"
+
+          # Written down beside the binaries, for the job that packages them
+          # somewhere else. The sign job checks this tree out afresh and builds
+          # the installer from downloaded executables; the stamp the installer
+          # records has to be theirs rather than whatever that checkout computes
+          # for itself. build-msi.sh reads it from here.
+          echo "$VERSION" > ../dist-gui/VERSION
 
           # Both record dialects, as build.sh does for the command-line client.
           # The window reads the configuration itself, so a 128-byte build against
@@ -231,9 +285,19 @@ jobs:
                 # files where nothing links them. Go only takes them from the
                 # directory of the package being built, so the window came out
                 # with no icon and nothing said a word.
+                # The record size, spelled out rather than composed from the
+                # suffix. `${variant:+64}${variant:-128}` looks like it says
+                # "64 when there is a suffix, 128 when there is not" and does
+                # not: the second expansion yields the suffix itself, so the
+                # 64-byte build called itself "descr 64-descr64 B" in the file
+                # properties every time.
+                case "$variant" in
+                  "")        descr_bytes=128 ;;
+                  -descr64)  descr_bytes=64  ;;
+                esac
                 go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
                     -icon packaging/icon.ico \
-                    -product-version "$VERSION (descr ${variant:+64}${variant:-128} B)" \
+                    -product-version "$VERSION (descr $descr_bytes B)" \
                     -platform-specific \
                     packaging/versioninfo.json
 
@@ -489,8 +553,12 @@ jobs:
   # so signing the one the build made would wrap a signature around unsigned
   # binaries - exactly the case Defender looks inside for.
   #
-  # Only the x64 build. There is no Windows ARM job to take from (the matrix
-  # above says why), and the signing action does not run on ARM runners either.
+  # Both architectures, in one job on an x64 runner. The signing action does
+  # not run on Windows ARM runners, and it does not need to: a signature is
+  # over the bytes of a file and does not care what machine type the header
+  # declares. What an x64 runner cannot do is *execute* an arm64 binary -
+  # Windows emulates x64 on ARM and not the other way round - which is the one
+  # thing build-msi.sh had to be taught.
   sign:
     name: Sign for Windows
     needs: build
@@ -522,12 +590,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The build's Windows output, unsigned: four executables, the two staged
-      # bundles that copy them, and an installer this job replaces.
-      - name: Download the unsigned build
+      # Both Windows jobs' output, unsigned, merged into one directory: per
+      # architecture four executables, the two staged bundles that copy them,
+      # and an installer this job replaces. They cannot collide, because every
+      # file either carries its architecture in its name or is the VERSION
+      # file, which both jobs wrote and both wrote the same.
+      - name: Download the unsigned builds
         uses: actions/download-artifact@v4
         with:
-          name: encedo-wg-gui-Windows-X64
+          pattern: encedo-wg-gui-Windows-*
+          merge-multiple: true
           path: dist-gui
 
       # Exact versions for the two actions that handle the credential, where the
@@ -552,8 +624,10 @@ jobs:
       # Recursive, deliberately: the staged bundles hold copies of the loose
       # executables, and the copies are what a person installs. Signing only the
       # loose ones would ship two downloads of one program where only one is
-      # signed, which is worse than neither. wintun.dll is not touched - it is
-      # WireGuard LLC's, signed by them, and redistributed as it came.
+      # signed, which is worse than neither. This is also what covers the second
+      # architecture, since both builds unpacked into the same directory.
+      # wintun.dll is not touched - it is WireGuard LLC's, signed by them, and
+      # redistributed as it came.
       #
       # The timestamp is not decoration. An Artifact Signing certificate lives
       # about three days and is renewed daily, so a signature without one stops
@@ -571,12 +645,25 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      # Again, from the same stage, now that what it embeds is signed. The same
-      # script and the same run number as the build job used, so the result
-      # differs from the unsigned installer in exactly the signatures.
-      - name: Rebuild the installer around the signed binaries
+      # Again, from the same stages, now that what they embed is signed. The
+      # same script and the same run number as the build jobs used, so each
+      # result differs from its unsigned installer in exactly the signatures.
+      #
+      # Both are built here, on x64, including the arm64 one: `wix build -arch`
+      # names the platform the package declares rather than one the host has to
+      # match. What the host cannot do is run the arm64 component to ask its
+      # version, which is why build-msi.sh checks the recorded stamp instead
+      # when the two architectures differ. This is the first run that builds an
+      # arm64 database anywhere but on an arm64 runner; if WiX turns out to
+      # object, the ARM build job makes its own and this loop drops back to
+      # amd64.
+      - name: Rebuild the installers around the signed binaries
         shell: bash
-        run: packaging/windows/build-msi.sh amd64 "${{ github.run_number }}"
+        run: |
+          set -eu
+          for goarch in amd64 arm64; do
+            packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
+          done
 
       - name: Sign the installer
         uses: Azure/artifact-signing-action@v2.0.0
@@ -633,6 +720,6 @@ jobs:
       - name: Upload the signed build
         uses: actions/upload-artifact@v4
         with:
-          name: encedo-wg-windows-signed-X64
+          name: encedo-wg-windows-signed
           path: dist-gui/
           retention-days: 30

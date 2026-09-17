@@ -339,7 +339,8 @@ window runs a scripted stand-in unless given `-live`, which looked exactly like 
 working tunnel: it now says "(stand-in)" beside the state.
 
 **Still not tested:** full-tunnel routing, failover across more than one
-candidate (there is one peer in the repository), macOS, Windows on ARM, and
+candidate (there is one peer in the repository), macOS, the natively built
+Windows on ARM binaries (see `docs/WINDOWS.md` on Fyne and WGL), and
 packaging for Windows — there is no installer, so the service is registered with
 `wg-hem service install` by hand. See `TODO.md` and `docs/WINDOWS.md`.
 

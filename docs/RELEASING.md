@@ -62,8 +62,16 @@ uploaded, the copies inside the staged bundles included; rebuilds the MSI from
 the signed stage with `packaging/windows/build-msi.sh`, the same script the
 build used; signs the MSI; verifies every signature with `signtool verify /pa /v`
 and refuses one without a timestamp; writes `SHA256SUMS`; and uploads
-`encedo-wg-windows-signed-X64`. The run log carries the signtool output, which
+`encedo-wg-windows-signed`. The run log carries the signtool output, which
 makes it the record of what was signed and by whom.
+
+Both architectures go through it. x64 and arm64 are built by two jobs, on two
+runners, because the window needs cgo and cgo cannot be cross-compiled; they are
+signed by one job on an x64 runner, because a signature is over a file's bytes
+and does not care what machine type its header declares. The one thing that job
+cannot do is run an arm64 executable, which is why `build-msi.sh` checks the
+stamp against the binary only where the two architectures match and against the
+`VERSION` the build recorded everywhere else.
 
 > **Still open.** `ci.yml` also runs on `v*` tags and publishes Windows bundles
 > cross-built on Linux, which cannot be signed there — so a tag yields a signed
