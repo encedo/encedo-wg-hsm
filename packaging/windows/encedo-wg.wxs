@@ -180,6 +180,22 @@
       <RegistryValue
           Root="HKLM" Key="Software\Encedo\encedo-wg"
           Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+      <!--
+        And the folder itself, which does not go on its own. Uninstalling on
+        2026-09-17 took away every file, the service and the Start menu entry,
+        and left "C:\Program Files\Encedo WG" standing and empty: Windows
+        Installer removes the files a component owns, not the directory they
+        were in, unless something says so. This is that something, and it
+        belongs here because this component is the one that has no file of its
+        own and therefore runs last in the directory.
+
+        Unlike the RemoveFolder the shortcut above deliberately does not have,
+        this folder is ours: nothing else installs into it, and taking it away
+        is the difference between a clean uninstall and one that leaves a mark.
+        It is still only removed when empty, so anything a person put there
+        themselves survives, which is the behaviour to want.
+      -->
+      <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
     </Component>
 
   </Package>
