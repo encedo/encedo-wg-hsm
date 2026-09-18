@@ -102,6 +102,7 @@ carried a live tunnel. This page will say so until it has.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — where the key stays, what is patched, and why the module must stay online
 - **[docs/ARCHITECTURE-GUI.md](docs/ARCHITECTURE-GUI.md)** — the window and the privileged component
 - **[docs/WINDOWS.md](docs/WINDOWS.md)** — the service, the named pipe, and what each test settled
+- **[docs/MACOS.md](docs/MACOS.md)** — not built yet: what exists, the one design decision it turns on, and the order to do it in
 - **[docs/ENCEDO-WG-CONFIGFREE-SPEC.md](docs/ENCEDO-WG-CONFIGFREE-SPEC.md)** — specification for the config-free client
 - **[docs/RELEASING.md](docs/RELEASING.md)** — build, sign, package, in that order
 - **[UPSTREAM.md](UPSTREAM.md)** — the wireguard-go relationship and how to raise the pin

@@ -132,6 +132,7 @@ encedo-wg-hsm/
     ARCHITECTURE.md               # this file
     ARCHITECTURE-GUI.md           # the window and the privileged component
     WINDOWS.md                    # the service, the pipe, and what each test settled
+    MACOS.md                      # not built: the plan and the design decision it waits on
     ENCEDO-WG-CONFIGFREE-SPEC.md  # specification for the config-free client
     RELEASING.md                  # build, sign, package, in that order
   internal/

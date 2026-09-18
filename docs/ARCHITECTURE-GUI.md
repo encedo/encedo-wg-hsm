@@ -317,6 +317,13 @@ Fewest unknowns of the three.
 
 ## macOS
 
+**A plan and a competing design live in [MACOS.md](MACOS.md), written
+2026-09-18.** It argues for a launchd daemon instead of what follows, on the
+grounds that it reuses `internal/ipc` and `platform_darwin.go` whole and removes
+both the heartbeat and the dead System Settings toggle described below, at the
+cost of running as root. Nothing is settled: whoever starts the work picks one,
+and then one of the two documents is wrong and should say so.
+
 The privileged component is not ours: it is a **system extension**.
 `NEPacketTunnelProvider` in Swift with the Go core linked as a `c-archive`, which
 is how the official client is built — its "Go backend version" string is
