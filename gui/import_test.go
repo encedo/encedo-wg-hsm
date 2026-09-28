@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -33,46 +34,70 @@ func parseDemo(t *testing.T) *wgconf.Conf {
 // The preview is the screen that makes the import believable, and the sentence
 // it must not omit is the one about the key it is leaving behind. A tool that
 // discards a private key silently looks exactly like a tool that kept it.
-func TestImportSummarySaysWhatBecomesOfThePrivateKey(t *testing.T) {
-	got := importSummary(parseDemo(t))
-	if !strings.Contains(got, "NOT imported") {
-		t.Errorf("the summary does not say the private key is left behind:\n%s", got)
+func TestImportWarningSaysWhatBecomesOfThePrivateKey(t *testing.T) {
+	c := parseDemo(t)
+	got := importWarning(c)
+	if !strings.Contains(got, "not imported") {
+		t.Errorf("the warning does not say the private key is left behind:\n%s", got)
 	}
 	if !strings.Contains(got, "delete the file") {
-		t.Errorf("the summary does not say the old key is still live:\n%s", got)
+		t.Errorf("the warning does not say the old key is still live:\n%s", got)
 	}
-	// And it must not print the key itself. It is a secret that is already
-	// compromised, which is not a reason to put it on a screen.
-	if strings.Contains(got, "kOk30xyXpohscPIXf1WuFquKdgd1pWeJrsdTsXs50XQ=") {
-		t.Errorf("the summary prints the private key:\n%s", got)
+	// And nothing on the screen prints the key itself. It is a secret that is
+	// already compromised, which is not a reason to put it on a screen.
+	if strings.Contains(importSummary(c)+got, "kOk30xyXpohscPIXf1WuFquKdgd1pWeJrsdTsXs50XQ=") {
+		t.Errorf("the preview prints the private key")
 	}
 }
 
 // A file with no private key in it - somebody's already-migrated config, or one
 // written by hand - must not be told that a key was discarded.
-func TestImportSummaryIsSilentWhenThereWasNoPrivateKey(t *testing.T) {
+func TestImportWarningIsSilentWhenThereWasNoPrivateKey(t *testing.T) {
 	body := strings.Replace(demoConf, "PrivateKey = kOk30xyXpohscPIXf1WuFquKdgd1pWeJrsdTsXs50XQ=\n", "", 1)
 	c, err := wgconf.Parse(strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := importSummary(c); strings.Contains(got, "NOT imported") {
+	if got := importWarning(c); strings.Contains(got, "not imported") {
 		t.Errorf("claimed to have discarded a key that was never there:\n%s", got)
 	}
 }
 
-func TestImportSummaryShowsWhatWillBeStored(t *testing.T) {
+func TestImportSummarySaysWhereAndHowMuch(t *testing.T) {
 	got := importSummary(parseDemo(t))
 	for _, want := range []string{
-		"192.168.2.2/32",
-		"8.8.8.8",
-		"o98XCmRcyP+by2GUzpPkPD+6HtNQkCl7qRmXZlizsDA=",
-		"95.50.164.18:51820",
-		"0.0.0.0/0",
-		"25s",
+		"Connects to 95.50.164.18.",
+		"Your address in the tunnel: 192.168.2.2.",
+		"All your traffic goes through the tunnel.",
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("the summary does not mention %q:\n%s", want, got)
+			t.Errorf("the summary does not say %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRoutesSentence(t *testing.T) {
+	p := func(ss ...string) []netip.Prefix {
+		var out []netip.Prefix
+		for _, s := range ss {
+			out = append(out, netip.MustParsePrefix(s))
+		}
+		return out
+	}
+	cases := []struct {
+		in   []netip.Prefix
+		want string
+	}{
+		{p("0.0.0.0/0", "::/0"), "All your traffic"},
+		{p("::/0"), "All your traffic"},
+		{p("10.0.0.0/24"), "Only 10.0.0.0/24 goes"},
+		{p("10.0.0.0/24", "10.1.0.0/24"), "Only 10.0.0.0/24 and 10.1.0.0/24 go"},
+		{p("10.0.0.0/24", "10.1.0.0/24", "10.2.0.0/24"), "Only 10.0.0.0/24 and 2 more networks"},
+		{nil, "No traffic"},
+	}
+	for _, tc := range cases {
+		if got := routesSentence(tc.in); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("%v: %q, want it to start %q", tc.in, got, tc.want)
 		}
 	}
 }
@@ -106,22 +131,27 @@ func TestValidPeerName(t *testing.T) {
 	}
 }
 
-// The window does not resize, and these dialogues are drawn inside it. The
-// preview is the widest of them because it lists addresses and a base64 key.
+// The window does not resize, and the preview is drawn inside it. It was a
+// monospace block wider than the dialogue, cut off at the right; now it is
+// sentences that wrap, and this holds the dialogue to the window.
 func TestImportPreviewFits(t *testing.T) {
 	a := test.NewApp()
 	defer a.Quit()
 
-	// A conf with everything filled in, which is the widest the summary gets.
-	c := parseDemo(t)
-	summary := importSummary(c)
+	u := &ui{app: a, sess: newFakeSession()}
+	defer u.sess.Close()
+	u.win = test.NewWindow(nil)
+	defer u.win.Close()
+	u.build()
+	u.resizeForContent()
 
-	for _, line := range strings.Split(summary, "\n") {
-		// The base64 peer key is 44 characters and cannot be shortened without
-		// making it useless to compare against a server, so it sets the floor.
-		// What must not happen is a line materially longer than that one.
-		if len(line) > 62 {
-			t.Errorf("summary line is %d characters and will be cut:\n  %s", len(line), line)
-		}
+	u.previewImport("a-rather-long-name-for-a-head-office-tunnel.conf", strings.NewReader(demoConf))
+
+	top := u.win.Canvas().Overlays().Top()
+	if top == nil {
+		t.Fatal("the preview did not open")
+	}
+	if need := top.MinSize().Width; need > windowWidth {
+		t.Errorf("the preview needs %.1f of width and the window is %d", need, windowWidth)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,16 +116,21 @@ func (u *ui) previewImport(name string, r io.Reader) {
 	label.Validator = validPeerName
 
 	summary := widget.NewLabel(importSummary(conf))
-	summary.TextStyle = fyne.TextStyle{Monospace: true}
+	summary.Wrapping = fyne.TextWrapWord
+	warning := widget.NewLabel(importWarning(conf))
+	warning.Wrapping = fyne.TextWrapWord
+	warning.Importance = widget.WarningImportance
 
 	body := container.NewBorder(
-		widget.NewLabel("This is what would be written into the module."),
+		nil,
 		container.New(layout.NewFormLayout(), widget.NewLabel("call this peer"), label),
 		nil, nil,
-		container.NewVScroll(summary),
+		container.NewVScroll(container.NewVBox(summary, warning)),
 	)
 
-	d := dialog.NewCustomConfirm("Import "+name, "Import", "Cancel", body, func(ok bool) {
+	// Not the file's name: a title does not wrap, so a long one widened the
+	// dialogue past the window, and the name is in the field below anyway.
+	d := dialog.NewCustomConfirm("Import a tunnel", "Import", "Cancel", body, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -137,51 +144,82 @@ func (u *ui) previewImport(name string, r io.Reader) {
 	d.Show()
 }
 
-// importSummary is the middle screen: what lands in the module, and what is
-// left behind.
+// importSummary is the middle screen: where the tunnel goes and what it
+// carries, in sentences.
 //
-// The private key is named first because it is the thing somebody is most
-// likely to be uneasy about, and the uneasiness is the correct instinct - a key
-// that has sat in a text file is already out. Saying it plainly is worth more
-// than saying it quietly.
+// It used to be the whole configuration in a monospace block - addresses, DNS,
+// MTU, the peer's base64 key - under a paragraph about the private key, and in
+// a dialogue inside a window this narrow every line was cut off at the right
+// and the rest scrolled. None of those fields changes whether somebody presses
+// Import: they came from the file somebody chose, and they go into the module
+// unchanged. What does change it is where the tunnel leads and whether it takes
+// all their traffic, so that is what is said.
 func importSummary(c *wgconf.Conf) string {
-	var b strings.Builder
-
-	if c.HadPrivateKey {
-		b.WriteString("The private key in this file is NOT imported.\n")
-		b.WriteString("A new one is generated inside the module and never\n")
-		b.WriteString("leaves it. The old key stays in the file, and stays\n")
-		b.WriteString("as usable as it was - delete the file once this works.\n\n")
-	}
-
-	b.WriteString("Stored in the module:\n")
-	for _, a := range c.Addresses {
-		fmt.Fprintf(&b, "  address       %s\n", a)
-	}
-	for _, d := range c.DNS {
-		fmt.Fprintf(&b, "  dns           %s\n", d)
-	}
-	if c.MTU != 0 {
-		fmt.Fprintf(&b, "  mtu           %d\n", c.MTU)
-	}
-	if c.ListenPort != 0 {
-		fmt.Fprintf(&b, "  listen port   %d\n", c.ListenPort)
-	}
-	fmt.Fprintf(&b, "  peer key      %s\n", c.PeerPubKey)
+	var lines []string
 	if c.PeerEndpoint != "" {
-		fmt.Fprintf(&b, "  peer endpoint %s\n", c.PeerEndpoint)
+		host := c.PeerEndpoint
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		lines = append(lines, "Connects to "+host+".")
+	} else {
+		lines = append(lines, "Waits for the server to connect - the file names no address for it.")
 	}
-	for _, p := range c.PeerAllowed {
-		fmt.Fprintf(&b, "  routes        %s\n", p)
+	if len(c.Addresses) > 0 {
+		var addrs []string
+		for _, a := range c.Addresses {
+			addrs = append(addrs, hostAddr(a))
+		}
+		lines = append(lines, "Your address in the tunnel: "+strings.Join(addrs, ", ")+".")
 	}
-	if c.PeerKeepalive != 0 {
-		fmt.Fprintf(&b, "  keepalive     %ds\n", c.PeerKeepalive)
-	}
+	lines = append(lines, routesSentence(c.PeerAllowed))
+	return strings.Join(lines, "\n")
+}
 
-	b.WriteString("\nAfterwards the tunnel will not come up until the server\n")
-	b.WriteString("is told the new public key. The last screen has the exact\n")
-	b.WriteString("lines to send.\n")
-	return b.String()
+// importWarning is the two things that happen whether or not anybody reads the
+// rest, which is why they are the ones in colour.
+//
+// The private key is named because it is what somebody is most likely to be
+// uneasy about, and the unease is the correct instinct - a key that has sat in
+// a text file is already out. Saying so plainly is worth more than saying it
+// quietly.
+func importWarning(c *wgconf.Conf) string {
+	s := "A new key is made inside the module, so the server has to be told " +
+		"about it before the tunnel works. The next screen shows what to send."
+	if c.HadPrivateKey {
+		s += "\n\nThe private key in this file is not imported, and it still " +
+			"works - delete the file once the new tunnel is up."
+	}
+	return s
+}
+
+// hostAddr drops the prefix length from a single-host address, which is what
+// every client address is and what nobody needs to read "/32" after.
+func hostAddr(p netip.Prefix) string {
+	if p.IsSingleIP() {
+		return p.Addr().String()
+	}
+	return p.String()
+}
+
+// routesSentence says how much traffic the tunnel takes, which is the one fact
+// in AllowedIPs somebody importing a file cares about.
+func routesSentence(allowed []netip.Prefix) string {
+	var nets []string
+	for _, p := range allowed {
+		if p.Bits() == 0 {
+			return "All your traffic goes through the tunnel."
+		}
+		nets = append(nets, p.String())
+	}
+	switch len(nets) {
+	case 0:
+		return "No traffic is routed through the tunnel - the file lists no networks."
+	case 1, 2:
+		return "Only " + strings.Join(nets, " and ") + " goes through the tunnel."
+	default:
+		return fmt.Sprintf("Only %s and %d more networks go through the tunnel.", nets[0], len(nets)-1)
+	}
 }
 
 // runImport does the work, having asked for everything it needs first.
