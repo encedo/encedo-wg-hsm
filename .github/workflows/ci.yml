@@ -1,32 +1,34 @@
 name: CI
 
-# This builds and verifies. It does not publish.
+# Every push to main and gui, and every pull request: test, and compile
+# everything on every platform. Nothing is packaged and nothing is uploaded -
+# that is release.yml's, on a tag. A push used to leave some 550 MB of
+# artifacts behind it, fifty-four of them by one afternoon, none of which
+# anybody downloaded; the packages a push produced were never the ones a
+# release was made from.
 #
-# Releases are made by hand, because the binaries are signed on a hardware token
-# that cannot be handed to a runner. A tag is applied after signing, so anything
-# here that reacted to a tag by uploading would be racing to publish the unsigned
-# build of the very commit that was just signed. Tags still build, as a check on
-# the exact commit about to be released; the artefacts are for inspection.
-
-# gui is here as well as main. Everything this workflow checks that the GUI
-# workflow does not - gofmt over cmd and internal, go vet and go test -race in
-# both record dialects, and the rule that everything is plain ASCII - had not run
-# once during the whole of the Windows work, because that work happens on a
-# branch this did not name. The ASCII check in particular was added here and then
-# cited as the reason the mistake could not come back, while never having
-# executed.
+# gui is here as well as main. Everything this workflow checks that the window
+# build does not - gofmt over cmd and internal, go vet and go test -race in
+# both record dialects, and the rule that everything is plain ASCII - had not
+# run once during the whole of the Windows work, because that work happens on
+# a branch this did not name.
 on:
   push:
     branches: [main, gui]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+
+# A new push supersedes the run in flight for the same ref. Five runners
+# compiling a commit that is already out of date is only a queue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  cli:
     name: descr ${{ matrix.descr }} B
     runs-on: ubuntu-latest
     strategy:
@@ -61,15 +63,6 @@ jobs:
         env:
           WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./build.sh
-
-      # Windows needs wintun.dll beside the executable or the tunnel fails at
-      # the moment it is created. Its licence permits redistribution alongside
-      # software using only the documented API, which is what this is, so the
-      # driver ships in the same archive rather than being a step in a README.
-      - name: Package the Windows bundles
-        env:
-          WG_HEM_DESCR: ${{ matrix.descr }}
-        run: ./package-windows.sh
 
       # Everything this repository builds or runs is plain ASCII, and it is
       # checked rather than intended.
@@ -151,9 +144,44 @@ jobs:
       - name: Test
         run: go test ${{ matrix.descr == '64' && '-tags descr64' || '' }} -race ./...
 
-      - name: Upload binaries
-        uses: actions/upload-artifact@v4
-        with:
-          name: wg-hem-descr${{ matrix.descr }}
-          path: dist/
-          retention-days: 14
+  # The window and the component on every platform, compiled and vetted, with
+  # nothing packaged. This is where code for macOS and Windows, written on a
+  # Linux machine that can compile neither, is first compiled at all.
+  window:
+    name: window
+    uses: ./.github/workflows/build.yml
+    with:
+      package: false
+    # The checkout inside reads the SDK submodule, and a called workflow sees
+    # no secrets unless it is handed them.
+    secrets: inherit
+
+  # Artifacts older than a week, deleted. Every upload here says
+  # `retention-days: 7`, so GitHub expires future ones by itself; this sweeps
+  # anything uploaded before that and anything a later workflow uploads
+  # without it. On the two branches work lands on, and never from a pull
+  # request, which has no write token. Taken from encedo-chat, where the same
+  # backlog had built up.
+  sweep-artifacts:
+    name: sweep old artifacts
+    needs: [cli, window]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Delete artifacts older than a week
+        run: |
+          set -euo pipefail
+          CUTOFF=$(date -u -d '7 days ago' +%s)
+          # Expired ones are still listed but cannot be deleted - GitHub has
+          # already taken them - so they are skipped rather than an error.
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" --paginate \
+            -q '.artifacts[] | select(.expired | not) | "\(.id)\t\(.created_at)\t\(.name)"' \
+          | while IFS=$'\t' read -r id created name; do
+              [ "$(date -u -d "$created" +%s)" -lt "$CUTOFF" ] || continue
+              echo "deleting: $name ($created)"
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" || true
+            done

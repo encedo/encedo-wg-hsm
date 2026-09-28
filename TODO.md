@@ -546,7 +546,7 @@ temporary accommodation for current hardware, not a product characteristic, and
 it should not outlive the firmware that needs it. It reaches further than it
 looks: `descr64` and the `-descr64` suffix in `build.sh`, the two-way matrix in
 the CI workflow, `size_descr64.go`, the record size reported by `wg-hem version`,
-the `-descr64` stage the MSI is built from in `gui.yml`, and the passages in
+the `-descr64` MSI built in `build.yml` and signed in `release.yml`, and the passages in
 `docs/INSTALL.md`, `CLAUDE.md` and `UPSTREAM.md` that explain why a tree written
 by one build cannot be read by the other. Removing half of that
 leaves a build flag that no longer does anything and documentation describing a

@@ -2,24 +2,26 @@
 # Builds the Windows installer from a staged bundle: one file to download and
 # double-click.
 #
-#     packaging/windows/build-msi.sh <amd64|arm64> <build-number>
+#     packaging/windows/build-msi.sh <amd64|arm64> <build-number> [-descr64]
 #
 # Run from the repository root, after the Bundle step has laid down
-# dist-gui/encedo-wg-windows-<arch>-descr64/. Writes dist-gui/encedo-wg-<arch>.msi.
+# dist-gui/encedo-wg-windows-<arch><variant>/. Writes
+# dist-gui/encedo-wg-<arch><variant>.msi - the variant suffix exactly as build.sh
+# and build-deb.sh use it, empty for 128-byte records.
 #
-# A script rather than a workflow step because two jobs in gui.yml build the
+# A script rather than a workflow step because two jobs build the
 # installer and must not drift: the build job, from binaries fresh off the
 # compiler, and the sign job, again, from the same stage once the binaries in it
 # carry a signature. An installer embeds its payload, so signing it does not
 # reach inside - the MSI has to be rebuilt after the executables are signed and
 # then signed itself. Two copies of this logic would be two things to forget.
 #
-# Only the descr64 dialect gets an installer. The two record sizes cannot read
-# each other's configuration, so a machine wants exactly one of them, and two
-# installers sharing an UpgradeCode would silently replace each other while two
-# with different ones would fight over the same directory. Today's firmware is
-# 64-byte; when that stops being true this grows a second product rather than a
-# second file.
+# Both dialects get an installer, and they share an UpgradeCode on purpose. The
+# two record sizes cannot read each other's configuration, so a machine wants
+# exactly one of them, and one replacing the other is the right outcome - two
+# with different codes would fight over the same directory. The 128-byte one is
+# what a release carries; the descr64 one is for today's firmware and never
+# leaves the team (MVP.md, 3.3).
 #
 # WiX needs Windows: it is .NET and starts on Linux, but the bind phase - where
 # the MSI database is written - wants msi.dll. The authoring is checked on Linux
@@ -27,16 +29,22 @@
 # Directory/@Name.
 set -euo pipefail
 
-usage="usage: $0 <amd64|arm64> <build-number>"
+usage="usage: $0 <amd64|arm64> <build-number> [-descr64]"
 goarch="${1:?$usage}"
 build="${2:?$usage}"
+variant="${3:-}"
+case "$variant" in
+	"")       descr=128 ;;
+	-descr64) descr=64  ;;
+	*) echo "unknown variant $variant - empty or -descr64" >&2; exit 1 ;;
+esac
 case "$goarch" in
 	amd64) wixarch=x64   ;;
 	arm64) wixarch=arm64 ;;
 	*) echo "unknown architecture $goarch" >&2; exit 1 ;;
 esac
 
-stage="dist-gui/encedo-wg-windows-$goarch-descr64"
+stage="dist-gui/encedo-wg-windows-$goarch$variant"
 [ -f "$stage/wg-hem.exe" ] || {
 	echo "no bundle at $stage - the Bundle step comes first" >&2; exit 1; }
 
@@ -67,7 +75,7 @@ host=amd64
 case "${PROCESSOR_ARCHITECTURE:-}" in ARM64) host=arm64 ;; esac
 if [ "$goarch" = "$host" ]; then
 	said="$("$stage/wg-hem.exe" version)"
-	[ "$said" = "wg-hem $VERSION (descr 64 B)" ] || {
+	[ "$said" = "wg-hem $VERSION (descr $descr B)" ] || {
 		echo "stamp mismatch: the build recorded '$VERSION', the component says '$said'" >&2
 		exit 1; }
 fi
@@ -84,16 +92,16 @@ command -v wix >/dev/null 2>&1 || dotnet tool install --global wix --version 5.0
 
 wix build -arch "$wixarch" \
 	-d Version="$msiversion" \
-	-d Stamp="$VERSION (descr 64 B)" \
+	-d Stamp="$VERSION (descr $descr B)" \
 	-d Payload="$(cd "$stage" && pwd)" \
 	packaging/windows/encedo-wg.wxs \
-	-o "dist-gui/encedo-wg-$goarch.msi"
+	-o "dist-gui/encedo-wg-$goarch$variant.msi"
 
 # WiX writes debug symbols for the installer beside it. Nothing here reads
 # them, and an artifact is what a release is assembled from by hand - so a file
 # nobody wants is a file somebody uploads. Removed rather than suppressed with
 # a flag, because the flag's spelling has changed between WiX versions and rm
 # has not.
-rm -f "dist-gui/encedo-wg-$goarch.wixpdb"
+rm -f "dist-gui/encedo-wg-$goarch$variant.wixpdb"
 
-ls -l "dist-gui/encedo-wg-$goarch.msi"
+ls -l "dist-gui/encedo-wg-$goarch$variant.msi"

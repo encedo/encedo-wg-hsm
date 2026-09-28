@@ -1,9 +1,29 @@
 # Releasing
 
-CI builds and verifies every push and publishes nothing. `ci.yml` covers both
-command-line clients in both record sizes; `gui.yml` builds the window on three
-runners and produces the `.deb`, the bundle and the MSI. On a `v*` tag, or on
-request, a second job in `gui.yml` signs the Windows output — see below.
+Three workflows, in the shape encedo-chat uses:
+
+- **`ci.yml`** runs on every push to `main` and `gui` and on pull requests. It
+  tests both command-line clients in both record sizes and compiles the window
+  and the component on every platform through `build.yml`. It packages nothing
+  and uploads nothing, and it deletes artifacts older than a week.
+- **`build.yml`** is not run on its own. It is the matrix both other workflows
+  call: five runners, the window and the component, and - when `release.yml`
+  asks - the `.deb`, the Windows bundles and the MSIs.
+- **`release.yml`** runs on a `v*` tag, or by hand. It creates a draft GitHub
+  Release, builds everything, signs Windows behind a reviewer, and attaches
+  the release's files to the draft. Publishing the draft is done by hand.
+
+Only 128-byte builds are attached. The `descr64` builds are made and signed in
+the same run and stay in its artifacts, for the team: none may go out, not even
+as a pre-release, so that no customer ever migrates when the firmware drops it
+(MVP.md, 3.3). The attach step removes anything named `descr64` and then refuses
+to continue if one is left.
+
+What the draft gets: the `.deb` for amd64 and arm64, `encedo-wg-amd64.msi` and
+`encedo-wg-arm64.msi` (signed), the macOS window for both architectures, the
+command-line clients for Linux and macOS, and `SHA256SUMS` over all of it. No
+loose Windows executables: the only Windows files in a release are the signed
+installers.
 
 ## The order, which matters more than it looks
 
@@ -12,7 +32,7 @@ binaries  →  signature  →  package  →  signature of the package
 ```
 
 Signing an installer wrapped around unsigned binaries is worse than not signing
-it at all: Defender looks at what is inside. `gui.yml` therefore signs the loose
+it at all: Defender looks at what is inside. `release.yml` therefore signs the loose
 executables *before* the bundle copies them, so every copy of every binary is
 signed rather than only the ones inside an archive.
 
@@ -43,7 +63,7 @@ Six repository *variables* and no secrets say which account to use —
 It works: first proven on 2026-09-16, and `docs/WINDOWS.md` has the run and
 the one trap in the Azure portal that cost the first attempt.
 
-It does not run on every push. The `sign` job in `gui.yml` runs after the build,
+It does not run on every push. The `sign` job in `release.yml` runs after the build,
 only on a `v*` tag or a manual run with *sign* ticked, and only inside the
 `release` environment, which waits for a reviewer. Three things follow:
 
@@ -79,16 +99,12 @@ The `windows-11-arm` job uploads a native arm64 window under a name the signing
 job does not match. It ships nowhere, for the reason in `WINDOWS.md`, and is
 there to be re-tested.
 
-> **Still open.** `ci.yml` also runs on `v*` tags and publishes Windows bundles
-> cross-built on Linux, which cannot be signed there — so a tag yields a signed
-> set from `gui.yml` and an unsigned set from `ci.yml`, two downloads of one
-> program. Either the latter stop being published or they are built and signed
-> on Windows; until one of those is done, releasing is not finished. The build
-> job's own unsigned Windows upload is the same shape of thing, on a smaller
-> scale — it is what the sign job consumes, and it should not be what anyone
-> is handed. `install.ps1` and `uninstall.ps1` are not signed either; the MSI is
-> the installer, and signing the scripts is a follow-up if they stay in the
-> bundle.
+> **Settled 2026-09-28.** A tag used to yield a signed Windows set from the old
+> `gui.yml` and an unsigned one from `ci.yml`, two downloads of one program.
+> `ci.yml` no longer runs on tags and uploads nothing, and the draft release
+> carries only the signed MSIs. `install.ps1` and `uninstall.ps1` inside the
+> bundles are still unsigned; the MSI is the installer, and signing the scripts
+> is a follow-up if they stay in the bundle.
 
 ## Building by hand
 

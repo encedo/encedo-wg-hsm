@@ -56,7 +56,7 @@ MSG
 done
 
 # WG_PREPARE_ONLY stops here, with the patched upstream tree in place and
-# nothing built. It exists for the Windows job in .github/workflows/gui.yml,
+# nothing built. It exists for the Windows job in .github/workflows/build.yml,
 # which needs that tree in order to build the component beside the window - the
 # component imports wireguard-go, and go.mod resolves it to this directory - but
 # does not want the other eleven binaries this script would go on to produce.

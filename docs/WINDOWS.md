@@ -246,7 +246,7 @@ this project keeps meeting in other forms.
 
 It is already answered and does not change. `wintun.dll` is not in this
 repository and will not be in the installer's sources either: the Bundle step in
-`gui.yml` reads the version and the SHA-256 out of `package-windows.sh`,
+`build.yml` reads the version and the SHA-256 out of `package-windows.sh`,
 downloads the archive from wintun.net, verifies it before opening it, and copies
 the DLL for the architecture being built. A driver is the last thing to take on
 faith from a URL, and a hash in a script is a claim somebody can check; a binary
@@ -395,7 +395,7 @@ holds them as *variables*.
     TRUSTED_SIGNING_PROFILE    SigningCode
 
 and an environment `release` with a required reviewer and deployment rules that
-list the `v*` tags. The sign job in `gui.yml` runs in that environment: a job
+list the `v*` tags. The sign job in `release.yml` runs in that environment: a job
 that is not in it cannot sign, and a job that is waits for the reviewer. How
 the job is triggered and what it does is in [RELEASING.md](RELEASING.md).
 
@@ -420,7 +420,7 @@ nothing in the workflow changes that.
 
 Decided in principle on 2026-08-15: both halves and the installer signed with
 Trusted Signing, since renamed Artifact Signing. Written on 2026-09-16 as a
-`sign` job in `gui.yml`; the first end-to-end run is what remains. Three things
+`sign` job in `release.yml`; the first end-to-end run is what remains. Three things
 about it shape the pipeline rather than being details of it.
 
 *Order.* Sign `wg-hem.exe` and `encedo-wg-gui.exe` **before** the installer is
@@ -434,7 +434,7 @@ three days and is renewed daily. Without an RFC 3161 timestamp
 the week — the timestamp is what makes it outlive the certificate that made it.
 
 *It runs on Windows only.* `azure/trusted-signing-action` needs a Windows
-runner, which the pipeline already converges on: the Windows job in `gui.yml` is
+runner, which the pipeline already converges on: the Windows job in `build.yml` is
 where both halves exist with one stamp and where the bundle is assembled. The
 signing belongs in that job and nowhere else, and it needs an Azure identity —
 OIDC federated credentials and `id-token: write` — rather than a secret holding

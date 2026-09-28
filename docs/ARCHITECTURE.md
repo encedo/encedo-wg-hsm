@@ -153,5 +153,5 @@ encedo-wg-hsm/
                                   # verify, peer, wipe — plus failover and state file
   gui/                            # the window; a separate Go module, because it needs cgo
   packaging/                      # .deb, MSI, the service and the polkit rule
-  .github/workflows/              # ci.yml both record sizes; gui.yml the window and packages
+  .github/workflows/              # ci.yml tests; build.yml the window and packages; release.yml the draft release
 ```

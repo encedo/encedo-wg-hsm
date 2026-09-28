@@ -1,0 +1,370 @@
+name: Release
+
+# A version tag builds everything, signs Windows, and puts the release's files
+# into a draft GitHub Release for a person to read over and publish. A manual
+# run builds the same and releases nothing, and signs only when asked.
+#
+# The shape is encedo-chat's: the draft exists before the matrix does, the
+# builds and the signing fill in behind it, and publishing stays a click.
+# Nothing becomes public by itself.
+#
+# Only 128-byte builds go into the draft. descr64 is for the firmware on the
+# modules today and does not leave the team, not even as a pre-release, so
+# that no customer ever has to migrate when the firmware drops it (MVP.md,
+# 3.3). Both dialects are still built, signed and uploaded as this run's
+# artifacts; the publish job refuses to attach anything with descr64 in its
+# name, rather than trusting its own globs.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: >-
+          Sign the Windows build with the company certificate. The run waits
+          for a reviewer before anything is signed.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  # First, so the jobs behind it only ever add to one release. Created if the
+  # tag has none; an existing one - a re-run, or a release somebody started by
+  # hand - is left as it is.
+  draft:
+    name: draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Create the draft if the tag has none
+        run: |
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "a release for $TAG exists - leaving it alone"
+            exit 0
+          fi
+          # A hyphen is a pre-release by semver's own rule: v0.9.2-rc1.
+          pre=false
+          case "$TAG" in *-*) pre=true ;; esac
+          gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+            -f tag_name="$TAG" -f name="Encedo WG $TAG" \
+            -F draft=true -F prerelease=$pre > /dev/null
+          echo "draft created for $TAG (pre-release: $pre)"
+
+  # The command-line clients for every platform, in both dialects, and the
+  # Windows zip bundles. The Linux and macOS binaries of the release dialect go
+  # into the draft; the Windows ones are unsigned and ship only inside the MSI,
+  # which carries signed copies.
+  cli:
+    name: cli descr ${{ matrix.descr }} B
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        descr: ["128", "64"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        env:
+          WG_HEM_DESCR: ${{ matrix.descr }}
+        run: ./build.sh
+
+      # Windows needs wintun.dll beside the executable or the tunnel fails at
+      # the moment it is created; package-windows.sh puts it there.
+      - name: Package the Windows bundles
+        env:
+          WG_HEM_DESCR: ${{ matrix.descr }}
+        run: ./package-windows.sh
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: wg-hem-descr${{ matrix.descr }}
+          path: dist/
+          retention-days: 7
+
+  window:
+    name: window
+    uses: ./.github/workflows/build.yml
+    with:
+      package: true
+    secrets: inherit
+
+  # Signing, in a job of its own and behind a person.
+  #
+  # It could not stay in the build job, and the reason is the credential. There
+  # is no key: the job asks GitHub for an OIDC token, Azure exchanges it for the
+  # right to use the certificate, and the federated credential on the Azure side
+  # accepts that token only when its subject names this repository *and* the
+  # "release" environment. A job outside the environment gets a token Azure
+  # refuses - AADSTS700213, "no matching federated identity record". The
+  # environment in turn waits for a reviewer, so a job inside it waits too, which
+  # is right for a release and wrong for every push to the branch. Hence a job of
+  # its own: the build runs as it always has, this one runs on a tag or when
+  # asked, and the reviewer approves exactly one thing, the signing.
+  #
+  # A pull request never reaches this, from a fork or otherwise: the condition
+  # names the two events that may, and pull_request is not one of them. Anything
+  # looser would let a PR produce a file signed in the company's name.
+  #
+  # What it signs is what the build uploaded, in the order RELEASING.md gives:
+  # the executables first, every copy of them, then the installer is rebuilt
+  # from the signed copies and signed itself. An installer embeds its payload,
+  # so signing the one the build made would wrap a signature around unsigned
+  # binaries - exactly the case Defender looks inside for.
+  #
+  # Both architectures, in one job on an x64 runner. The signing action does
+  # not run on Windows ARM runners, and it does not need to: a signature is
+  # over the bytes of a file and does not care what machine type the header
+  # declares. What an x64 runner cannot do is *execute* an arm64 binary -
+  # Windows emulates x64 on ARM and not the other way round - which is the one
+  # thing build-msi.sh had to be taught.
+  sign:
+    name: Sign for Windows
+    needs: window
+    # Spelled out rather than implied: a job with an `if` of its own loses the
+    # default success() check, so the build's result has to be named here or a
+    # red build could be signed.
+    if: >-
+      needs.window.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.sign))
+    runs-on: windows-latest
+    # The name is part of the credential. The federated credential in Azure
+    # matches the OIDC subject character for character, and the subject is
+    # repo:encedo/encedo-wg-hsm:environment:release. Rename this, or the
+    # repository, and every attempt fails at login with AADSTS700213.
+    environment: release
+    permissions:
+      contents: read
+      # The OIDC token. Requested here and nowhere else: nothing in the
+      # repository holds a credential, and no other job could spend one.
+      id-token: write
+
+    steps:
+      # The tree, for what the installer is built from: the WiX authoring, the
+      # version script and build-msi.sh. No submodule, since nothing is compiled
+      # here; build-msi.sh checks that the stamp this checkout computes is the
+      # one inside the binaries, so a checkout that described itself differently
+      # would stop there rather than ship a mismatched installer.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The x64 job's output, unsigned, which is everything that ships for
+      # Windows: both architectures' components, the x64 window, the four
+      # staged bundles that copy them and the two installers this job replaces.
+      # The ARM job's artifact is deliberately not matched by this pattern -
+      # what it holds cannot open a window and must not be signed.
+      - name: Download the unsigned builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: encedo-wg-gui-Windows-*
+          merge-multiple: true
+          path: dist-gui
+
+      # Exact versions for the two actions that handle the credential, where the
+      # rest of this file follows a major tag. These are the steps that can sign
+      # something in the company's name; what they run should change when
+      # somebody changes it here, not when a tag moves upstream.
+      #
+      # A client id and no secret is the OIDC flow: the action asks GitHub for
+      # the token and exchanges it. Do not add a secret to this.
+      - name: Sign in to Azure
+        uses: azure/login@v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Microsoft renamed the service from Trusted Signing to Artifact Signing
+      # in 2026 and the action with it; azure/trusted-signing-action is now a
+      # redirect to this one. The inputs kept their shape and the repository
+      # variables kept their names.
+      #
+      # Recursive, deliberately: the staged bundles hold copies of the loose
+      # executables, and the copies are what a person installs. Signing only the
+      # loose ones would ship two downloads of one program where only one is
+      # signed, which is worse than neither. This is also what covers the second
+      # architecture, since both builds unpacked into the same directory.
+      # wintun.dll is not touched - it is WireGuard LLC's, signed by them, and
+      # redistributed as it came.
+      #
+      # The timestamp is not decoration. An Artifact Signing certificate lives
+      # about three days and is renewed daily, so a signature without one stops
+      # verifying within the week; with one it outlives the certificate.
+      - name: Sign the executables
+        uses: Azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist-gui
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Again, from the same stages, now that what they embed is signed. The
+      # same script and the same run number as the build jobs used, so each
+      # result differs from its unsigned installer in exactly the signatures.
+      #
+      # Both are built here, on x64, including the arm64 one: `wix build -arch`
+      # names the platform the package declares rather than one the host has to
+      # match. What the host cannot do is run the arm64 component to ask its
+      # version, which is why build-msi.sh checks the recorded stamp instead
+      # when the two architectures differ. This is the first run that builds an
+      # arm64 database anywhere but on an arm64 runner; if WiX turns out to
+      # object, the ARM build job makes its own and this loop drops back to
+      # amd64.
+      - name: Rebuild the installers around the signed binaries
+        shell: bash
+        run: |
+          set -eu
+          for goarch in amd64 arm64; do
+            for variant in "" "-descr64"; do
+              packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}" "$variant"
+            done
+          done
+
+      - name: Sign the installer
+        uses: Azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: ${{ vars.TRUSTED_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist-gui
+          files-folder-filter: msi
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Checked with the tool a Windows machine would use, not with the action's
+      # exit code. signtool verify /pa applies the ordinary Authenticode policy -
+      # the chain has to reach a root the machine trusts - and /v prints the
+      # chain and the timestamp, which makes this run's log the record of what
+      # was signed and by whom. Every executable and the installer, the copies
+      # inside the bundles included, and each has to carry a timestamp or it is
+      # a signature with a week to live.
+      - name: Every signature must verify and carry a timestamp
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64\signtool.exe" |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw "no signtool.exe in the Windows Kits on this runner" }
+          "using $($signtool.FullName)"
+          $files = @(Get-ChildItem dist-gui -Recurse -Include *.exe, *.msi)
+          if (-not ($files | Where-Object Extension -eq '.msi')) { throw "no installer to verify" }
+          $bad = 0
+          foreach ($f in $files) {
+            $out = & $signtool.FullName verify /pa /v $f.FullName 2>&1 | Out-String
+            $out
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "$($f.FullName): the signature does not verify"; $bad++
+            } elseif ($out -notmatch 'The signature is timestamped') {
+              Write-Error "$($f.FullName): signed but not timestamped"; $bad++
+            }
+          }
+          "$($files.Count) files verified, $bad bad"
+          if ($bad) { exit 1 }
+
+      # After signing, because signing changes the file. Over the loose files
+      # only: the bundles are directories, and a directory has no checksum.
+      - name: SHA256SUMS
+        shell: bash
+        run: |
+          set -eu
+          cd dist-gui && sha256sum *.exe *.msi | tee SHA256SUMS
+
+      # A name the unsigned upload cannot be mistaken for. The publish job
+      # takes the release's share of it into the draft the same run, so it
+      # needs no longer life than any other artifact.
+      - name: Upload the signed build
+        uses: actions/upload-artifact@v4
+        with:
+          name: encedo-wg-windows-signed
+          path: dist-gui/
+          retention-days: 7
+
+  # The release's files, into the draft. Everything above has to have
+  # succeeded: a draft missing a platform looks finished, and the person
+  # publishing it would have to notice what is not there.
+  publish:
+    name: attach to the draft
+    needs: [draft, cli, window, sign]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Download the Debian packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: encedo-wg-deb-*
+          merge-multiple: true
+          path: in/deb
+
+      - name: Download the signed Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: encedo-wg-windows-signed
+          path: in/windows
+
+      - name: Download the macOS window
+        uses: actions/download-artifact@v4
+        with:
+          pattern: encedo-wg-gui-macOS-*
+          merge-multiple: true
+          path: in/macos
+
+      - name: Download the command-line clients
+        uses: actions/download-artifact@v4
+        with:
+          name: wg-hem-descr128
+          path: in/cli
+
+      - name: Attach
+        run: |
+          set -euo pipefail
+          mkdir out
+          # What a release carries, by name: the packages and installers for
+          # Linux and Windows, the macOS window, and the command-line clients
+          # for Linux and macOS. Windows executables only inside the signed MSI.
+          cp in/deb/*.deb                                   out/
+          cp in/windows/encedo-wg-amd64.msi                 out/
+          cp in/windows/encedo-wg-arm64.msi                 out/
+          cp in/macos/encedo-wg-gui-darwin-amd64            out/
+          cp in/macos/encedo-wg-gui-darwin-arm64            out/
+          for f in in/cli/wg-hem-linux-* in/cli/wg-hem-darwin-* \
+                   in/cli/wg-quick-encedo-linux-* in/cli/wg-quick-encedo-darwin-*; do
+            cp "$f" out/
+          done
+          # The .deb glob took both dialects; the rest were named. Removed
+          # here and then checked for, so the rule does not rest on a glob.
+          rm -f out/*descr64*
+          if ls out | grep -q descr64; then
+            echo "a descr64 file reached the release - refusing" >&2; exit 1
+          fi
+          ( cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS )
+          gh release upload "$GITHUB_REF_NAME" out/* --clobber --repo "$GITHUB_REPOSITORY"
+          echo "attached to the draft for $GITHUB_REF_NAME - publish it by hand"
