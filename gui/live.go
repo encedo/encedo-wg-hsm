@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -444,9 +445,51 @@ func (s *liveSession) probe(ctx context.Context) (bool, string) {
 		// The friendly sentence stays where it is, because on a machine with
 		// nothing plugged in a dial error is a worse first thing to read than
 		// "plug in your key".
-		return false, err.Error()
+		return false, reachReason(err)
 	}
 	return true, ""
+}
+
+// reachReason names which of the four facts behind "no module" this one is.
+//
+// The SDK's text is the whole chain - "GET https://my.ence.do/api/system/version:
+// Get \"https://my.ence.do/api/system/version\": context deadline exceeded" -
+// which says the address twice, and the address is on the line above it. The
+// cause is what the panel is opened for. The SDK flattens it into the message
+// rather than wrapping it, so the kinds are told apart by the words Go's
+// resolver, dialer and TLS put there, on Linux and on Windows; a cause none of
+// them matches is shown as it came, less the repetition.
+func reachReason(err error) string {
+	msg := err.Error()
+	var he *hem.HemError
+	if errors.As(err, &he) && he.Code == "timeout" {
+		return fmt.Sprintf("no answer in %s - nothing plugged in, or no route to it", presenceTimeout)
+	}
+	low := strings.ToLower(msg)
+	has := func(words ...string) bool {
+		for _, w := range words {
+			if strings.Contains(low, w) {
+				return true
+			}
+		}
+		return false
+	}
+	cause := msg
+	if i := strings.LastIndex(msg, "\": "); i >= 0 {
+		cause = msg[i+3:]
+	}
+	switch {
+	case has("no such host", "server misbehaving"):
+		return "the name does not resolve"
+	case has("connection refused", "actively refused"):
+		return "the address answered and refused the connection"
+	case has("network is unreachable", "no route to host", "unreachable network", "unreachable host"):
+		return "no route to the address"
+	case has("x509:", "tls:", "certificate"):
+		return "certificate not accepted: " + cause
+	default:
+		return cause
+	}
 }
 
 // setHEM points the session at another appliance. The window offers this on the

@@ -681,10 +681,17 @@ func (u *ui) render(e Event) {
 	// reads out when the component has refused the window, and it has to be the
 	// one the component compared against - the same text `wg-hem version` prints
 	// after the program name.
-	u.advText.SetText(fmt.Sprintf(
-		"version        %s\nsession        %s\nstate          %s\nhem            %s\nreach          %s\npeer           %s\nlast handshake %s\nexpires        %s\ntray           %v",
-		ipc.Current(), u.sessionKind(), e.State, dash(e.HEM), u.reach(e), dash(e.Peer),
-		stamp(e.LastHandshake), stamp(e.ExpiresAt), u.hasTr))
+	u.advText.SetText(panel(panelColumns(), [][2]string{
+		{"version", fmt.Sprint(ipc.Current())},
+		{"session", u.sessionKind()},
+		{"state", e.State.String()},
+		{"hem", dash(e.HEM)},
+		{"reach", u.reach(e)},
+		{"peer", dash(e.Peer)},
+		{"last handshake", stamp(e.LastHandshake)},
+		{"expires", stamp(e.ExpiresAt)},
+		{"tray", fmt.Sprint(u.hasTr)},
+	}))
 
 	u.compose(e)
 }
@@ -966,6 +973,70 @@ func stamp(t time.Time) string {
 		return "-"
 	}
 	return t.Format("15:04:05")
+}
+
+// panelLabel is the width of the advanced panel's name column: "last handshake"
+// and a space.
+const panelLabel = 15
+
+// panelColumns is how many characters of value fit beside the name column
+// before the panel is wider than the window.
+//
+// Measured rather than written down, and the reason is the screenshot that
+// prompted it: the window is fixed at windowWidth, but a label's minimum is its
+// longest line, and a fixed-size window gives way to its content rather than
+// clipping it. One dial error - "GET https://my.ence.do/api/system/version: Get
+// ..." - took the window to two thousand pixels, and the stand-in's own session
+// line was already seventy past the edge.
+func panelColumns() int {
+	glyph := fyne.MeasureText("0000000000", theme.TextSize(), fyne.TextStyle{Monospace: true}).Width / 10
+	// The content's padding and the label's own, both sides.
+	room := float32(windowWidth) - 2*theme.Padding() - 2*theme.InnerPadding()
+	return int(room/glyph) - panelLabel - 1
+}
+
+// panel draws the advanced panel's rows, folding a value that does not fit onto
+// lines of its own under the value column, so the names stay a column.
+func panel(cols int, rows [][2]string) string {
+	var b strings.Builder
+	for i, r := range rows {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		for j, line := range fold(r[1], cols) {
+			if j > 0 {
+				b.WriteByte('\n')
+			}
+			name := ""
+			if j == 0 {
+				name = r[0]
+			}
+			fmt.Fprintf(&b, "%-*s%s", panelLabel, name, line)
+		}
+	}
+	return b.String()
+}
+
+// fold breaks s into lines of at most cols characters, at a space where there
+// is one and mid-word where there is not - a URL has none.
+func fold(s string, cols int) []string {
+	if cols < 1 {
+		cols = 1
+	}
+	var out []string
+	rs := []rune(s)
+	for len(rs) > cols {
+		cut := cols
+		for k := cols; k > cols/2; k-- {
+			if rs[k] == ' ' {
+				cut = k
+				break
+			}
+		}
+		out = append(out, strings.TrimRight(string(rs[:cut]), " "))
+		rs = []rune(strings.TrimLeft(string(rs[cut:]), " "))
+	}
+	return append(out, string(rs))
 }
 
 func dash(s string) string {
