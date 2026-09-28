@@ -11,4 +11,4 @@ package version
 // Version is the release number. Semantic: the record format and the MAC
 // domain-separation string are what a bump has to consider, since a tree
 // written by one build is only readable by another that agrees on both.
-var Version = "0.9.1"
+var Version = "0.9.2"

@@ -279,7 +279,7 @@ wg-hsm/
 
 ## Implementation status
 
-Release 0.9.1. Both clients build for six platforms in two record sizes; CI
+Release 0.9.2. Both clients build for six platforms in two record sizes; CI
 covers both on every push and publishes nothing (releases are signed by hand).
 
 **Tested end to end on 2026-08-11, Linux arm64 client to a stock server.** The

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml/badge.svg)](https://github.com/encedo/encedo-wg-hsm/actions/workflows/ci.yml)
 
-**Version 0.9.1** · MIT
+**Version 0.9.2** · MIT
 
 WireGuard with the private key in hardware. The key is generated inside an
 **Encedo HEM** — Hardware Encryption Module — and **never leaves it**. Every

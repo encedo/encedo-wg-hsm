@@ -101,8 +101,8 @@ WG_HEM_DESCR=64 ./package-windows.sh
 
 sha256sum dist/*.zip dist/wg-* > dist/SHA256SUMS
 
-git tag -a v0.9.1 -m "0.9.1"    # tag the commit that was built
-git push origin v0.9.1          # starts the signed build; it then waits for a reviewer
+git tag -a v0.9.2 -m "0.9.2"    # tag the commit that was built
+git push origin v0.9.2          # starts the signed build; it then waits for a reviewer
 ```
 
 Do **not** sign `wintun.dll` — `package-windows.sh` explains why. It is
