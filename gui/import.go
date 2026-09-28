@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -35,7 +37,47 @@ import (
 
 // onImport is the whole flow, from a file dialogue to a block somebody can
 // paste into a server.
+//
+// The file comes from the system's own chooser where there is one. Fyne draws
+// its own otherwise - a grid of folder icons with none of the places somebody
+// keeps things, no search and no recent files - and a person who has just been
+// emailed a .conf file is looking for it in the chooser they know. Fyne asks the
+// system only in a Flatpak build, and the tag that turns that on also moves the
+// notifications and link opening onto the portal with no fallback, so the
+// chooser is asked for here instead, and Fyne's is what is left when there is no
+// system chooser to ask.
 func (u *ui) onImport() {
+	// The owner is read here, on the main goroutine, because the chooser blocks
+	// until somebody answers it and so is run off it.
+	owner := nativeOwner(u.win)
+	go func() {
+		path, handled, err := nativeOpen(owner, "Import a WireGuard configuration")
+		fyne.Do(func() {
+			switch {
+			case !handled:
+				u.fyneOpen()
+			case err != nil:
+				dialog.ShowError(fmt.Errorf("The file chooser failed: %w", err), u.win)
+			case path != "":
+				u.previewPath(path)
+			}
+		})
+	}()
+}
+
+// previewPath opens a file the system chooser named.
+func (u *ui) previewPath(path string) {
+	f, err := os.Open(path)
+	if err != nil {
+		dialog.ShowError(err, u.win)
+		return
+	}
+	defer f.Close()
+	u.previewImport(filepath.Base(path), f)
+}
+
+// fyneOpen is Fyne's own chooser, for a system that offers none.
+func (u *ui) fyneOpen() {
 	d := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
 		if err != nil || rc == nil {
 			return

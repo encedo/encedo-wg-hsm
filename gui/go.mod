@@ -16,6 +16,7 @@ require (
 	github.com/encedo/hem-sdk-go v0.0.0
 	github.com/fyne-io/oksvg v0.2.0
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/rymdport/portal v0.4.2
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef
 	golang.org/x/sys v0.32.0
 )
@@ -44,7 +45,6 @@ require (
 	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646 // indirect
 	github.com/nicksnyder/go-i18n/v2 v2.5.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/rymdport/portal v0.4.2 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
