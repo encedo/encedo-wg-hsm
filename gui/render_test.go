@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -229,4 +230,33 @@ func TestRenderScenario(t *testing.T) {
 		writeShot(t, dir, fmt.Sprintf("flow-%d", i), 1, u.win.Canvas().Capture())
 		t.Logf("step %d: %s -> %s", i, s.what, last.State)
 	}
+}
+
+// TestRenderImport draws the two import dialogues: the preview, with the line
+// a missing passphrase puts under it, and the key that ends a successful one.
+func TestRenderImport(t *testing.T) {
+	dir := shotDir(t)
+	if dir == "" {
+		t.Skip("set WG_GUI_SHOTS to a directory to render the interface")
+	}
+	u := newImportUI(t)
+	u.app.Settings().SetTheme(shotTheme(t))
+	u.render(Event{State: Ready})
+	u.resizeForContent()
+
+	p := u.previewImport("Firmowa-HEM.conf", strings.NewReader(demoConf))
+	writeShot(t, dir, "9-import-preview", 1, u.win.Canvas().Capture())
+	test.Tap(p.importBtn)
+	writeShot(t, dir, "9-import-no-passphrase", 1, u.win.Canvas().Capture())
+
+	p.pass.SetText("secret")
+	test.Tap(p.importBtn)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if top := u.win.Canvas().Overlays().Top(); top != nil && hasText(top, "Tell the server") {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	writeShot(t, dir, "10-import-handoff", 1, u.win.Canvas().Capture())
 }

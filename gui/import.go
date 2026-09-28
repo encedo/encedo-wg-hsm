@@ -100,11 +100,13 @@ func (u *ui) fyneOpen() {
 // cannot honour is refused while somebody is still choosing files - and the
 // refusal names what it could not carry rather than failing halfway through
 // writing a configuration.
-func (u *ui) previewImport(name string, r io.Reader) {
+//
+// It returns the controls it drew, which only the tests use.
+func (u *ui) previewImport(name string, r io.Reader) *importPreview {
 	conf, err := wgconf.Parse(r)
 	if err != nil {
 		dialog.ShowError(fmt.Errorf("%s cannot be imported as it is.\n\n%w", name, err), u.win)
-		return
+		return nil
 	}
 
 	// A peer needs a name, and a .conf file has nowhere to carry one. The file
@@ -121,27 +123,105 @@ func (u *ui) previewImport(name string, r io.Reader) {
 	warning.Wrapping = fyne.TextWrapWord
 	warning.Importance = widget.WarningImportance
 
+	// The passphrase is asked for here, not taken from the field on the main
+	// screen. It used to be: pressing Import with that field empty closed this
+	// dialogue and put a sentence on the main screen, which read as nothing
+	// having happened at all - and whether it had was exactly the question.
+	pass := widget.NewPasswordEntry()
+	pass.SetPlaceHolder("HEM passphrase")
+
+	// Progress and failure are said in the dialogue that caused them, which
+	// stays open until the module has answered.
+	// Hidden until it has something to say, so the row it takes goes to the
+	// summary instead.
+	status := widget.NewLabel("")
+	status.Wrapping = fyne.TextWrapWord
+	status.Hide()
+
 	body := container.NewBorder(
 		nil,
-		container.New(layout.NewFormLayout(), widget.NewLabel("call this peer"), label),
+		container.NewVBox(
+			container.New(layout.NewFormLayout(),
+				widget.NewLabel("call this peer"), label,
+				widget.NewLabel("passphrase"), pass),
+			status),
 		nil, nil,
 		container.NewVScroll(container.NewVBox(summary, warning)),
 	)
 
-	// Not the file's name: a title does not wrap, so a long one widened the
-	// dialogue past the window, and the name is in the field below anyway.
-	d := dialog.NewCustomConfirm("Import a tunnel", "Import", "Cancel", body, func(ok bool) {
-		if !ok {
-			return
+	d := dialog.NewCustomWithoutButtons("Import a tunnel", body, u.win)
+	cancel := widget.NewButton("Cancel", d.Hide)
+	importBtn := widget.NewButton("Import", nil)
+	importBtn.Importance = widget.HighImportance
+
+	say := func(text string, importance widget.Importance) {
+		status.Importance = importance
+		status.SetText(text)
+		status.Show()
+	}
+	busy := func(on bool) {
+		for _, w := range []fyne.Disableable{label, pass, importBtn, cancel} {
+			if on {
+				w.Disable()
+			} else {
+				w.Enable()
+			}
 		}
+	}
+
+	importBtn.OnTapped = func() {
 		if err := validPeerName(label.Text); err != nil {
-			dialog.ShowError(err, u.win)
+			say(err.Error(), widget.DangerImportance)
 			return
 		}
-		u.runImport(conf, strings.TrimSpace(label.Text))
-	}, u.win)
+		if pass.Text == "" {
+			say("Type the module passphrase - importing writes to it.", widget.WarningImportance)
+			u.win.Canvas().Focus(pass)
+			return
+		}
+		params, err := provision.FromConf(conf, strings.TrimSpace(label.Text))
+		if err != nil {
+			say(humanError(err), widget.DangerImportance)
+			return
+		}
+		secret := []byte(pass.Text)
+		pass.SetText("")
+
+		// Cancel goes too. The write cannot be taken back once it has started,
+		// and a dialogue dismissed halfway would leave somebody with a new key
+		// in the module and nobody told what to send the server.
+		busy(true)
+		say("Importing - this takes a few seconds while the module works.", widget.MediumImportance)
+
+		// Off this goroutine for the same reason connecting is: deriving the key
+		// from the passphrase is 600,000 rounds of PBKDF2, and doing that here
+		// freezes the window hard enough that the desktop offers to kill it.
+		go func() {
+			res, err := u.sess.Import(context.Background(), secret, params)
+			fyne.Do(func() {
+				busy(false)
+				if err != nil {
+					say(humanError(err), widget.DangerImportance)
+					return
+				}
+				d.Hide()
+				u.showHandoff(res)
+			})
+		}()
+	}
+	pass.OnSubmitted = func(string) { importBtn.OnTapped() }
+
+	d.SetButtons([]fyne.CanvasObject{cancel, importBtn})
 	d.Resize(fyne.NewSize(windowWidth-dialogInset, compactHeight-40*uiScale))
 	d.Show()
+	return &importPreview{pass: pass, status: status, importBtn: importBtn}
+}
+
+// importPreview is what previewImport drew, so a test can press its buttons.
+type importPreview struct {
+	pass      *widget.Entry
+	status    *widget.Label
+	importBtn *widget.Button
 }
 
 // importSummary is the middle screen: where the tunnel goes and what it
@@ -184,11 +264,10 @@ func importSummary(c *wgconf.Conf) string {
 // a text file is already out. Saying so plainly is worth more than saying it
 // quietly.
 func importWarning(c *wgconf.Conf) string {
-	s := "A new key is made inside the module, so the server has to be told " +
-		"about it before the tunnel works. The next screen shows what to send."
+	s := "The server has to be given a new key - the next screen shows it."
 	if c.HadPrivateKey {
-		s += "\n\nThe private key in this file is not imported, and it still " +
-			"works - delete the file once the new tunnel is up."
+		s += "\nThe private key in this file is not imported, but it still works: " +
+			"delete the file once the tunnel is up."
 	}
 	return s
 }
@@ -222,65 +301,40 @@ func routesSentence(allowed []netip.Prefix) string {
 	}
 }
 
-// runImport does the work, having asked for everything it needs first.
-func (u *ui) runImport(c *wgconf.Conf, label string) {
-	pass := []byte(u.pass.Text)
-	if len(pass) == 0 {
-		u.setNotice("Type the module passphrase first - importing writes to it.", false)
-		return
-	}
-	u.pass.SetText("")
-
-	params, err := provision.FromConf(c, label)
-	if err != nil {
-		dialog.ShowError(err, u.win)
-		return
-	}
-
-	u.setNotice("Importing - this takes a few seconds while the module works.", false)
-
-	// Off this goroutine for the same reason connecting is: deriving the key
-	// from the passphrase is 600,000 rounds of PBKDF2, and doing that here
-	// freezes the window hard enough that the desktop offers to kill it.
-	go func() {
-		res, err := u.sess.Import(context.Background(), pass, params)
-		fyne.Do(func() {
-			if err != nil {
-				u.setNotice(humanError(err), true)
-				return
-			}
-			u.showHandoff(res)
-		})
-	}()
-}
-
-// showHandoff is the last screen: the lines an administrator has to be sent,
-// and a button that copies them.
+// showHandoff is the last screen: the one line the server has to change, and a
+// button that copies it.
 //
-// The copy button is the whole reason this screen exists rather than a sentence
+// Only the public key. It used to be the whole [Peer] block, but an import
+// replaces a tunnel the server already has: the address, the routes and the
+// endpoint are the ones it was configured with, and the key is the one thing
+// that moved. A block invited somebody to paste an entry beside the old one,
+// which leaves two peers claiming the same address.
+//
+// The copy button is the reason this screen exists rather than a sentence
 // saying "run wg-hem status". Retyping a public key is the one step in the
-// entire flow where a mistake passes unnoticed - the tunnel simply never
+// whole flow where a mistake passes unnoticed - the tunnel simply never
 // completes a handshake, and nothing anywhere says why.
 func (u *ui) showHandoff(res provision.Result) {
-	block := res.Server.ConfBlock()
+	key := res.Server.PublicKey
 
-	text := widget.NewLabel(block)
-	text.TextStyle = fyne.TextStyle{Monospace: true}
+	head := widget.NewLabel("Imported. On the server, this peer's PublicKey changes to:")
+	head.Wrapping = fyne.TextWrapWord
+
+	text := widget.NewLabel(key)
+	text.Selectable = true
 
 	copied := widget.NewLabel("")
 	copyBtn := widget.NewButton("Copy", func() {
-		u.win.Clipboard().SetContent(block)
+		u.win.Clipboard().SetContent(key)
 		copied.SetText("Copied.")
 	})
 
-	head := widget.NewLabel("Imported. Send these lines to whoever runs the server:\n" +
-		"they replace the peer entry this machine already has.")
-	head.Wrapping = fyne.TextWrapWord
+	tail := widget.NewLabel("Nothing else in its entry changes. The tunnel connects once the server has the new key.")
+	tail.Wrapping = fyne.TextWrapWord
 
-	body := container.NewBorder(head,
+	body := container.NewVBox(head, text,
 		container.NewBorder(nil, nil, nil, copyBtn, copied),
-		nil, nil,
-		container.NewVScroll(text))
+		tail)
 
 	d := dialog.NewCustom("Tell the server", "Done", body, u.win)
 	d.Resize(fyne.NewSize(windowWidth-dialogInset, compactHeight-40*uiScale))
