@@ -243,8 +243,8 @@ func TestPSKWrapIsBoundToItsPeer(t *testing.T) {
 	if len(f.wraps) != 2 {
 		t.Fatalf("%d wrap calls, want one per peer", len(f.wraps))
 	}
-	ctxA := f.wraps[0]["ctx"]
-	ctxB := f.wraps[1]["ctx"]
+	ctxA := f.wraps[0]["hkdf_ctx"]
+	ctxB := f.wraps[1]["hkdf_ctx"]
 	if ctxA == ctxB {
 		t.Error("both peers were wrapped under the same context, so a ciphertext would move between them")
 	}
@@ -254,8 +254,8 @@ func TestPSKWrapIsBoundToItsPeer(t *testing.T) {
 			key = peerKeyB
 		}
 		want := base64.StdEncoding.EncodeToString(config.PSKContext(descr.KID(mustKey(t, key))))
-		if w["ctx"] != want {
-			t.Errorf("wrap %d context = %v, want the one naming that peer", i, w["ctx"])
+		if w["hkdf_ctx"] != want {
+			t.Errorf("wrap %d context = %v, want the one naming that peer", i, w["hkdf_ctx"])
 		}
 		// Same plaintext each time: it is one pre-shared key, wrapped twice.
 		if w["msg"] != f.wraps[0]["msg"] {

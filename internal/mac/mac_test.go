@@ -270,7 +270,7 @@ func TestSignUsesSelfECDH(t *testing.T) {
 }
 
 func TestVerifyRejectsATamperedTree(t *testing.T) {
-	c, rec := mockHEM(t, `{}`, 200)
+	c, rec := mockHEM(t, `{"verified":true}`, 200)
 	ifPub := pubKey(0x11)
 	peers := []PeerRecord{peerRecord(t, 0x0A, "198.51.100.1:51820")}
 	ifDescr := tree(t, peers, true)
@@ -291,8 +291,8 @@ func TestVerifyRejectsATamperedTree(t *testing.T) {
 		t.Error("a record without a MAC must not verify")
 	}
 
-	// 406 is how the device reports a MAC that does not match.
-	reject, _ := mockHEM(t, `{}`, http.StatusNotAcceptable)
+	// Firmware 1.3 reports a MAC that does not match as 200 {"verified":false}.
+	reject, _ := mockHEM(t, `{"verified":false}`, 200)
 	err := Verify(context.Background(), reject, "tok", "kid1", ifPub, ifDescr, peers)
 	if err == nil {
 		t.Fatal("a rejected MAC must surface as an error, never as a warning")

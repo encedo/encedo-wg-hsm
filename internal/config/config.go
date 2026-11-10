@@ -259,7 +259,13 @@ func (t *Tree) UnwrapPSK(ctx context.Context, c *hem.Client, useTok string, p Pe
 		Ctx:    PSKContext(p.KID),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unwrapping the pre-shared key of %s: %w", p.Label, err)
+		// Builds before 0.9.3 sent the context as `ctx`, which firmware 1.3
+		// ignores, so their wraps were made without it and do not unwrap here.
+		// Deliberately no fallback: that would keep the unbound wrap valid.
+		return nil, fmt.Errorf("unwrapping the pre-shared key of %s: %w\n"+
+			"A pre-shared key set by wg-hem 0.9.2 or earlier is wrapped in a form this "+
+			"build no longer accepts. Set the same key again, and the server needs no change:\n"+
+			"  wg-hem peer update --peer <this peer's spec> --psk -", p.Label, err)
 	}
 	if len(psk) != PSKLen {
 		return nil, fmt.Errorf("unwrapped pre-shared key is %d bytes, expected %d", len(psk), PSKLen)

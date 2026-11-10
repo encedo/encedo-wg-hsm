@@ -289,11 +289,12 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		f.verifies = append(f.verifies, body)
 		msg, _ := base64.StdEncoding.DecodeString(body["msg"].(string))
 		got, _ := base64.StdEncoding.DecodeString(body["mac"].(string))
+		// Firmware 1.3: the verdict is in a 200 body, never an HTTP error.
 		if !hmac.Equal(got, f.hmac(msg)) {
-			w.WriteHeader(http.StatusNotAcceptable) // what the device returns
+			io.WriteString(w, `{"verified":false}`)
 			return
 		}
-		io.WriteString(w, `{}`)
+		io.WriteString(w, `{"verified":true}`)
 
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -492,8 +493,8 @@ func TestProvisionWrapsThePSKUnderSelfECDH(t *testing.T) {
 	// The context names the peer the wrap belongs to, so a ciphertext lifted
 	// into another peer's record derives a different key and fails to unwrap.
 	wantCtx := config.PSKContext(descr.KID(mustKey(t, peerKeyA)))
-	if w["ctx"] != base64.StdEncoding.EncodeToString(wantCtx) {
-		t.Errorf("wrap ctx = %v, want %s", w["ctx"], wantCtx)
+	if w["hkdf_ctx"] != base64.StdEncoding.EncodeToString(wantCtx) {
+		t.Errorf("wrap hkdf_ctx = %v, want %s", w["hkdf_ctx"], wantCtx)
 	}
 	if len(wantCtx) > 64 {
 		t.Errorf("the context is %d bytes, over the device's 64", len(wantCtx))
