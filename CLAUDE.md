@@ -278,7 +278,7 @@ wg-hsm/
 
 ## Implementation status
 
-Release 0.9.2. Both clients build for six platforms; CI tests them on every
+Release 0.9.3. Both clients build for six platforms; CI tests them on every
 push and uploads nothing. A `v*` tag runs `release.yml`, which signs Windows
 behind a reviewer and fills a draft GitHub Release; publishing it is by hand.
 Firmware 1.3 or later is required: 128-byte records, and a device initialised
