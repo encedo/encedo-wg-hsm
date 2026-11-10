@@ -1,7 +1,11 @@
 # Key modes: WireGuard on a HEM without device-wide raw ECDH
 
-Status: design, 2026-11-10. Nothing here is implemented. Firmware references
-are to the HEM REST API 1.3.x reference.
+Status: design, 2026-11-10. Firmware references are to the HEM REST API 1.3.x
+reference.
+
+Decision (2026-11-10): **R ships now**, on firmware 1.3.x. **N1 is the next
+iteration**, with firmware 1.4.x. K, W and N2 stay on the table and are not
+scheduled.
 
 ## The problem
 
