@@ -141,12 +141,68 @@ func PlanRouting(peers []Peer, hemURL string) (*Plan, error) {
 		return nil, fmt.Errorf("resolving the HEM address %s: %w", p.HEMHost, err)
 	}
 	for _, a := range hemAddrs {
-		if covered(a, peers) {
+		if covered(a, peers) && coverBits(a, peers) > connectedBits(a) {
 			p.HEMInside = true
 			break
 		}
 	}
 	return p, nil
+}
+
+// coverBits is the length of the most specific AllowedIPs prefix holding addr,
+// -1 when none does.
+func coverBits(addr netip.Addr, peers []Peer) int {
+	best := -1
+	for _, p := range peers {
+		for _, prefix := range p.AllowedIPs {
+			if prefix.Contains(addr) && prefix.Bits() > best {
+				best = prefix.Bits()
+			}
+		}
+	}
+	return best
+}
+
+// connectedBits is the length of the most specific network this machine is
+// directly attached to that holds addr, -1 when none does.
+//
+// A PPA is reached over its own USB network (192.168.7.0/24), and that
+// connected route is more specific than any full-tunnel prefix, so the HEM
+// stays outside the tunnel however wide AllowedIPs is. Without this the plan
+// reported "the HEM is routed through the tunnel" for every full tunnel on a
+// machine with the module plugged in - measured 2026-11-10, while the route
+// to it went out on the USB link.
+func connectedBits(addr netip.Addr) int {
+	best := -1
+	for _, prefix := range localPrefixes() {
+		if prefix.Contains(addr) && prefix.Bits() > best {
+			best = prefix.Bits()
+		}
+	}
+	return best
+}
+
+// localPrefixes lists the networks of this machine's interfaces. A variable so
+// tests can describe a machine without having one.
+var localPrefixes = func() []netip.Prefix {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []netip.Prefix
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip, ok := netip.AddrFromSlice(ipn.IP)
+		if !ok {
+			continue
+		}
+		ones, _ := ipn.Mask.Size()
+		out = append(out, netip.PrefixFrom(ip.Unmap(), ones).Masked())
+	}
+	return out
 }
 
 // ProbeHEM applies the HEM half of the routing decision once the routes are in

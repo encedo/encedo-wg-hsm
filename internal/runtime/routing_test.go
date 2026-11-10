@@ -11,7 +11,11 @@ import (
 func withResolver(t *testing.T, table map[string][]string) {
 	t.Helper()
 	prev := resolveHost
-	t.Cleanup(func() { resolveHost = prev })
+	prevLocal := localPrefixes
+	t.Cleanup(func() { resolveHost, localPrefixes = prev, prevLocal })
+	// A machine attached to nothing, unless a test says otherwise: the
+	// decision must not depend on the networks of whoever runs the tests.
+	localPrefixes = func() []netip.Prefix { return nil }
 	resolveHost = func(host string) ([]netip.Addr, error) {
 		if addr, err := netip.ParseAddr(host); err == nil {
 			return []netip.Addr{addr}, nil
@@ -264,5 +268,32 @@ func TestTheUAPIGetsTheResolvedAddress(t *testing.T) {
 	}
 	if got := plan.UAPIEndpoint("203.0.113.1:51821"); got != "203.0.113.1:51821" {
 		t.Errorf("address endpoint = %q, want it unchanged", got)
+	}
+}
+
+// A PPA sits on its own USB network, and that connected /24 is more specific
+// than a full tunnel: the HEM stays outside however wide AllowedIPs is, and
+// saying otherwise sends the reader looking for a problem that is not there.
+// A host route to the HEM in AllowedIPs is more specific still, and wins.
+func TestAHEMOnAConnectedNetworkIsNotInside(t *testing.T) {
+	withResolver(t, nil)
+	localPrefixes = func() []netip.Prefix {
+		return []netip.Prefix{netip.MustParsePrefix("192.168.7.0/24")}
+	}
+
+	plan, err := PlanRouting([]Peer{peer("203.0.113.1:51820", "0.0.0.0/0")}, "https://192.168.7.1")
+	if err != nil {
+		t.Fatalf("PlanRouting: %v", err)
+	}
+	if plan.HEMInside {
+		t.Error("HEMInside = true for a HEM on a connected /24 under a /0 tunnel")
+	}
+
+	plan, err = PlanRouting([]Peer{peer("203.0.113.1:51820", "0.0.0.0/0", "192.168.7.1/32")}, "https://192.168.7.1")
+	if err != nil {
+		t.Fatalf("PlanRouting: %v", err)
+	}
+	if !plan.HEMInside {
+		t.Error("HEMInside = false although AllowedIPs names the HEM itself")
 	}
 }
