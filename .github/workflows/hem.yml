@@ -1,0 +1,70 @@
+name: HEM
+
+# The commands against a real HEM: cmd/wg-hem/hemci_test.go provisions,
+# verifies, changes peers, unwraps a pre-shared key, tampers with a record and
+# wipes. The unit tests answer the way this code believes the device answers;
+# this asks the device, so a firmware update that changes an answer shows up
+# here the next night rather than in somebody's tunnel.
+#
+# The device is wg-tester-ci.playground.ence.do, a firmware simulator kept for
+# this workflow alone - the test wipes every WG:* record on it, and a second
+# user of the same device would make runs fail for reasons that are not in the
+# code. Its passphrase is the HEM_CI_PASSPHRASE secret of the hem-ci
+# environment, which only main may use: a run from any other branch is refused
+# by the environment before it starts.
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+# One device, one run at a time; a queued run waits rather than cancelling one
+# that is half way through provisioning.
+concurrency:
+  group: hem-ci
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  hem:
+    name: end to end on a HEM
+    runs-on: ubuntu-24.04
+    environment: hem-ci
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # go.mod points golang.zx2c4.com/wireguard at the overlaid tree, so
+      # nothing compiles before this has run.
+      - name: Prepare wireguard-go
+        run: WG_PREPARE_ONLY=1 ./build.sh
+
+      # The test skips itself without a passphrase, which is right on a
+      # developer's machine and wrong here: a green run that tested nothing.
+      - name: End to end
+        env:
+          WG_HEM_URL: https://wg-tester-ci.playground.ence.do
+          HEM_CI_PASSPHRASE: ${{ secrets.HEM_CI_PASSPHRASE }}
+        run: |
+          if [ -z "$HEM_CI_PASSPHRASE" ]; then
+            echo "::error::HEM_CI_PASSPHRASE is empty - is the hem-ci environment set up?"
+            exit 1
+          fi
+          curl -fsS --max-time 10 "$WG_HEM_URL/api/system/version"
+          echo
+          go test -tags hemci -run TestHEM -count=1 -v ./cmd/wg-hem

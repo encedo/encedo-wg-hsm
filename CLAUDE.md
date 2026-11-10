@@ -397,6 +397,14 @@ because a daemon that restarts cannot re-authenticate).
   done
   ```
 
+- **`.github/workflows/hem.yml` runs the commands against a real HEM**
+  (`cmd/wg-hem/hemci_test.go`, build tag `hemci`) on every push to `main`,
+  nightly and by hand: `wg-tester-ci.playground.ence.do`, passphrase in the
+  `hem-ci` environment, which only `main` may use. The test wipes every WG:*
+  record on the device it is given, so run it locally only against a HEM kept
+  for testing:
+  `WG_HEM_URL=... HEM_CI_PASSPHRASE=... go test -tags hemci -run TestHEM -v ./cmd/wg-hem`.
+
 - **`hem-sdk-go` is pushed before this repository.** It is a submodule, so a
   parent commit naming an unpushed SDK commit dies in checkout on every runner.
 
