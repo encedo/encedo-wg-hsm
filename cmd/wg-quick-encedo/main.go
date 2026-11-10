@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -290,7 +291,11 @@ func cmdUp(ifname, cfgPath string) {
 	case <-errs:
 	case <-wgdev.Wait():
 	case <-hsm.Dead():
-		fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable - bringing interface down.")
+		if cause := hsm.Cause(); errors.Is(cause, rt.ErrRawECDHRefused) {
+			fmt.Fprintln(os.Stderr, cause.Error())
+		} else {
+			fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable - bringing interface down.")
+		}
 	}
 
 	// 13. Cleanup

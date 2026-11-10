@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 )
 
 // requireRoom skips a scenario the configured record size cannot express. The
@@ -61,6 +63,11 @@ type fakeHEM struct {
 	// window between the identity key being created and the interface record
 	// being written - the only window in which provisioning owns what it made.
 	refuseImport bool
+
+	// noRawECDH is a device initialised without the raw_ecdh_enabled policy:
+	// firmware 1.3 answers a raw ECDH with 403.
+	noRawECDH bool
+	ecdhs     int
 }
 
 type importCall struct {
@@ -272,6 +279,15 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		body := f.body(r)
 		f.wraps = append(f.wraps, body)
 		io.WriteString(w, `{"wrapped":"`+b64(bytes.Repeat([]byte{0x5A}, descr.PSKWrappedLen))+`"}`)
+
+	case r.URL.Path == "/api/crypto/ecdh":
+		body := f.body(r)
+		f.ecdhs++
+		if _, hashed := body["alg"]; !hashed && f.noRawECDH {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		io.WriteString(w, `{"ecdh":"`+b64(bytes.Repeat([]byte{0x33}, 32))+`"}`)
 
 	case r.URL.Path == "/api/crypto/hmac/hash":
 		body := f.body(r)
@@ -606,6 +622,31 @@ func TestProvisionRemovesTheIdentityKeyItCouldNotFinish(t *testing.T) {
 	defer f.mu.Unlock()
 	if len(f.deleted) != 1 || f.deleted[0] != f.ifKID {
 		t.Fatalf("identity key %s should have been removed; deleted = %v", f.ifKID, f.deleted)
+	}
+}
+
+// Firmware 1.3 refuses the raw ECDH WireGuard needs unless the device was
+// initialised with raw_ecdh_enabled. Provisioning finds out before it writes
+// anything, says what to do, and takes back the key it made.
+func TestProvisionRefusesADeviceWithoutRawECDH(t *testing.T) {
+	f, srv := newFakeHEM(t)
+	f.noRawECDH = true
+
+	_, err := runProvision(t,
+		"-hem", srv.URL, "-broker", srv.URL,
+		"-address", "10.0.0.7/32",
+		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24")
+	if !errors.Is(err, rt.ErrRawECDHRefused) {
+		t.Fatalf("err = %v, want the raw ECDH policy named", err)
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.imported) != 0 || len(f.updates) != 0 {
+		t.Errorf("nothing should be written: %d imports, %d updates", len(f.imported), len(f.updates))
+	}
+	if len(f.deleted) != 1 || f.deleted[0] != f.ifKID {
+		t.Errorf("identity key %s should have been removed; deleted = %v", f.ifKID, f.deleted)
 	}
 }
 

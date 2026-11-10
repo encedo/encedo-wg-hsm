@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -76,7 +77,8 @@ type HSM struct {
 	mu      sync.RWMutex
 	extKIDs map[device.NoisePublicKey]string
 
-	dead chan struct{}
+	dead    chan struct{}
+	deadErr atomic.Pointer[error]
 }
 
 // SetToken replaces the credential every subsequent handshake acts with.
@@ -131,6 +133,16 @@ func (h *HSM) peerKID(pubKey device.NoisePublicKey) (string, bool) {
 // rather than leave it up and silent.
 func (h *HSM) Dead() <-chan struct{} { return h.dead }
 
+// Cause is the error that fired Dead, nil before it has. Most deaths are the
+// device gone or the token expired, and the caller's generic sentence covers
+// them; a policy refusal is not either and carries its own instructions.
+func (h *HSM) Cause() error {
+	if p := h.deadErr.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
 // Inject installs the session into wireguard-go. It is process-wide: the fork
 // keeps one session, which is all either client needs.
 func (h *HSM) Inject() {
@@ -144,7 +156,12 @@ func (h *HSM) Inject() {
 			// handshake, so it goes to the device as a value.
 			result, err := h.ecdh(hem.CryptoOpts{PubKey: pub[:]})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable - shutting down interface: %v\n", err)
+				if errors.Is(err, ErrRawECDHRefused) {
+					fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
+				} else {
+					fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable - shutting down interface: %v\n", err)
+				}
+				h.deadErr.CompareAndSwap(nil, &err)
 				select {
 				case h.dead <- struct{}{}:
 				default:
@@ -184,6 +201,11 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 			fmt.Fprintf(os.Stderr, "[hsm] %s ecdh#%-4d %-9s FAILED after %s (try %d/%d): %v\n",
 				time.Now().Format("15:04:05.000"), seq, operandKind(opts), took.Round(time.Millisecond),
 				i+1, ecdhRetries, err)
+		}
+		if rawECDHRefused(err) {
+			// The policy does not change between attempts, and three of them
+			// would only delay the one sentence that says what to do.
+			return [32]byte{}, ErrRawECDHRefused
 		}
 		lastErr = err
 	}

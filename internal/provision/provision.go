@@ -27,6 +27,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/handoff"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
+	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
@@ -219,6 +220,14 @@ func Run(ctx context.Context, client *hem.Client, auth *session.Auth, p Params, 
 	}
 	var ifPub [pubKeyLen]byte
 	copy(ifPub[:], ifKey.PubKey)
+
+	// One raw ECDH before anything is written: firmware 1.3 refuses it unless
+	// the device was initialised with raw_ecdh_enabled, and a configuration
+	// that provisions cleanly and then fails its first handshake is the worst
+	// place to find that out.
+	if err = rt.CheckRawECDH(ctx, client, useTok, ifKID, ifPub[:]); err != nil {
+		return Result{}, cleanup, session.Fail(session.KindDevice, "%w", err)
+	}
 
 	ifRec := descr.Interface{
 		Addrs:      p.Addrs,

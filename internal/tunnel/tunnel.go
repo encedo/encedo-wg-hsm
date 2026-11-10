@@ -16,6 +16,7 @@ package tunnel
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -256,6 +257,9 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		case <-t.ctx.Done():
 		case <-t.hsm.Dead():
 			endMsg = "The HEM is gone or the token has expired - bringing the interface down."
+			if cause := t.hsm.Cause(); errors.Is(cause, rt.ErrRawECDHRefused) {
+				endMsg = cause.Error()
+			}
 		}
 		close(ending)
 	}()
