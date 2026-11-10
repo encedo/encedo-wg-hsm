@@ -32,11 +32,11 @@ jobs:
   # the tests with -race. Compiling for every platform is build.yml's.
   checks:
     name: checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # hem-sdk-go is a submodule and go.mod resolves the SDK to it, so a
           # shallow checkout without it does not build. If the SDK repository is
@@ -46,7 +46,7 @@ jobs:
           token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -161,7 +161,7 @@ jobs:
     name: sweep old artifacts
     needs: [checks, build]
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: write
     env:
