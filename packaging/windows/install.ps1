@@ -21,10 +21,8 @@ $source  = $PSScriptRoot
 $target  = Join-Path $env:ProgramFiles 'Encedo WG'
 $service = 'encedo-wg'
 
-# Named rather than globbed. A glob here is how the wrong record dialect gets
-# installed: the 64-byte and 128-byte builds differ by a suffix, they cannot read
-# each other's configuration, and the failure reads as a corrupt tree rather than
-# as a mismatched binary.
+# Named rather than globbed: a glob installs whatever else happens to be lying
+# in the directory.
 $files = @('wg-hem.exe', 'encedo-wg-gui.exe', 'wintun.dll', 'icon.ico')
 
 foreach ($f in $files) {

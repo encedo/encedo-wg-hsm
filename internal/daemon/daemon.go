@@ -156,10 +156,8 @@ func (s *Server) handle(c net.Conn) {
 
 func (s *Server) start(c net.Conn, who Principal, req ipc.Request) error {
 	if !s.Build.Matches(req.Build) {
-		// Named on both sides, because the usual mismatch is a record dialect
-		// and its natural symptom is a MAC failure - which reads as somebody
-		// having tampered with a configuration rather than as two builds that
-		// disagree.
+		// Named on both sides, so whoever reads it knows which half to
+		// replace.
 		return session.Fail(session.KindDevice,
 			"this component is %s and the window is %s; they cannot drive each other",
 			s.Build, req.Build)

@@ -59,7 +59,6 @@ func storedRefs(t *testing.T, f *fakeHEM) []descr.PeerRef {
 }
 
 func TestPeerAddResealsTheTree(t *testing.T) {
-	requireRoom(t, 66) // a third reference alongside an address and the MAC
 	f, srv := newFakeHEM(t)
 	provisionInto(t, srv.URL)
 	before := len(storedRefs(t, f))
@@ -87,7 +86,6 @@ func TestPeerAddResealsTheTree(t *testing.T) {
 }
 
 func TestPeerAddFirstTakesPriority(t *testing.T) {
-	requireRoom(t, 66)
 	f, srv := newFakeHEM(t)
 	provisionInto(t, srv.URL)
 
@@ -101,39 +99,6 @@ func TestPeerAddFirstTakesPriority(t *testing.T) {
 	key, _ := base64.StdEncoding.DecodeString(peerKeyC)
 	if storedRefs(t, f)[0] != descr.MakePeerRef(key) {
 		t.Error("--first should put the peer at the head of the failover order")
-	}
-}
-
-// A record that cannot hold another reference has to be refused before the key
-// is imported, or the device keeps a peer no configuration mentions.
-func TestPeerAddRefusesWhenTheRecordIsFull(t *testing.T) {
-	if descr.Size >= 128 {
-		t.Skip("filling a 128-byte record would take more peers than the device's message limit allows")
-	}
-	f, srv := newFakeHEM(t)
-	provisionInto(t, srv.URL)
-	f.mu.Lock()
-	before := len(f.imported)
-	f.mu.Unlock()
-
-	_, err := runCmd(t, peerAdd, "",
-		"-hem", srv.URL, "-broker", srv.URL,
-		"-peer", "pubkey="+peerKeyC+",endpoint=192.0.2.5:51820,allowed-ips=10.9.0.0/24",
-	)
-	if err == nil {
-		t.Fatal("a peer that does not fit must be refused")
-	}
-	if !strings.Contains(err.Error(), "does not fit") {
-		t.Errorf("error should say it does not fit, got: %v", err)
-	}
-	f.mu.Lock()
-	after := len(f.imported)
-	f.mu.Unlock()
-	if after != before {
-		t.Error("the key was imported even though the reference could not be stored")
-	}
-	if _, err := runVerify(t, "-hem", srv.URL, "-broker", srv.URL); err != nil {
-		t.Errorf("the existing configuration should be untouched: %v", err)
 	}
 }
 

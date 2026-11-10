@@ -65,7 +65,7 @@ every one of them falls through to unmodified upstream behaviour.
    git diff -- device/ > ../_wireguard-go-encedo/patches/0001-delegate-static-key-dh-to-the-hem.patch
    ```
 
-4. Re-run the tests for **both** record sizes, and re-run a real tunnel against a
+4. Re-run the tests, and re-run a real tunnel against a
    stock kernel WireGuard server. The unit tests do not exercise the handshake.
 
 Do not force a patch through. Every hunk sits on a Diffie-Hellman the whole

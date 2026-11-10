@@ -8,8 +8,8 @@ name: CI
 # release was made from.
 #
 # gui is here as well as main. Everything this workflow checks that the window
-# build does not - gofmt over cmd and internal, go vet and go test -race in
-# both record dialects, and the rule that everything is plain ASCII - had not
+# build does not - gofmt over cmd and internal, go vet and go test -race,
+# and the rule that everything is plain ASCII - had not
 # run once during the whole of the Windows work, because that work happens on
 # a branch this did not name.
 on:
@@ -29,15 +29,8 @@ permissions:
 
 jobs:
   cli:
-    name: descr ${{ matrix.descr }} B
+    name: cli
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # Both record sizes are built and tested: the length is part of what the
-        # configuration MAC covers, so the two binaries cannot read each other's
-        # trees and a change that suits one can break the other.
-        descr: ["128", "64"]
 
     steps:
       - name: Checkout
@@ -60,8 +53,6 @@ jobs:
       # go.mod points golang.zx2c4.com/wireguard at that directory, so nothing
       # compiles before it has run - not the tests, not even `go vet`.
       - name: Build
-        env:
-          WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./build.sh
 
       # Everything this repository builds or runs is plain ASCII, and it is
@@ -137,12 +128,12 @@ jobs:
           fi
 
       - name: Vet
-        run: go vet ${{ matrix.descr == '64' && '-tags descr64' || '' }} ./...
+        run: go vet ./...
 
       # -race needs cgo, which build.sh disables per-command for the release
       # binaries only, so it is available here.
       - name: Test
-        run: go test ${{ matrix.descr == '64' && '-tags descr64' || '' }} -race ./...
+        run: go test -race ./...
 
   # The window and the component on every platform, compiled and vetted, with
   # nothing packaged. This is where code for macOS and Windows, written on a

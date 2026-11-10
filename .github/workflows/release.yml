@@ -7,13 +7,6 @@ name: Release
 # The shape is encedo-chat's: the draft exists before the matrix does, the
 # builds and the signing fill in behind it, and publishing stays a click.
 # Nothing becomes public by itself.
-#
-# Only 128-byte builds go into the draft. descr64 is for the firmware on the
-# modules today and does not leave the team, not even as a pre-release, so
-# that no customer ever has to migrate when the firmware drops it (MVP.md,
-# 3.3). Both dialects are still built, signed and uploaded as this run's
-# artifacts; the publish job refuses to attach anything with descr64 in its
-# name, rather than trusting its own globs.
 on:
   push:
     tags: ["v*"]
@@ -58,17 +51,12 @@ jobs:
             -F draft=true -F prerelease=$pre > /dev/null
           echo "draft created for $TAG (pre-release: $pre)"
 
-  # The command-line clients for every platform, in both dialects, and the
-  # Windows zip bundles. The Linux and macOS binaries of the release dialect go
-  # into the draft; the Windows ones are unsigned and ship only inside the MSI,
-  # which carries signed copies.
+  # The command-line clients for every platform, and the Windows zip bundles.
+  # The Linux and macOS binaries go into the draft; the Windows ones are
+  # unsigned and ship only inside the MSI, which carries signed copies.
   cli:
-    name: cli descr ${{ matrix.descr }} B
+    name: cli
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        descr: ["128", "64"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,21 +71,17 @@ jobs:
           cache: true
 
       - name: Build
-        env:
-          WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./build.sh
 
       # Windows needs wintun.dll beside the executable or the tunnel fails at
       # the moment it is created; package-windows.sh puts it there.
       - name: Package the Windows bundles
-        env:
-          WG_HEM_DESCR: ${{ matrix.descr }}
         run: ./package-windows.sh
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: wg-hem-descr${{ matrix.descr }}
+          name: wg-hem
           path: dist/
           retention-days: 7
 
@@ -240,9 +224,7 @@ jobs:
         run: |
           set -eu
           for goarch in amd64 arm64; do
-            for variant in "" "-descr64"; do
-              packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}" "$variant"
-            done
+            packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
           done
 
       - name: Sign the installer
@@ -340,7 +322,7 @@ jobs:
       - name: Download the command-line clients
         uses: actions/download-artifact@v4
         with:
-          name: wg-hem-descr128
+          name: wg-hem
           path: in/cli
 
       - name: Attach
@@ -359,12 +341,6 @@ jobs:
                    in/cli/wg-quick-encedo-linux-* in/cli/wg-quick-encedo-darwin-*; do
             cp "$f" out/
           done
-          # The .deb glob took both dialects; the rest were named. Removed
-          # here and then checked for, so the rule does not rest on a glob.
-          rm -f out/*descr64*
-          if ls out | grep -q descr64; then
-            echo "a descr64 file reached the release - refusing" >&2; exit 1
-          fi
           ( cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS )
           gh release upload "$GITHUB_REF_NAME" out/* --clobber --repo "$GITHUB_REPOSITORY"
           echo "attached to the draft for $GITHUB_REF_NAME - publish it by hand"

@@ -25,6 +25,7 @@ import (
 
 	// Aliased: the package is internal/runtime, and rt keeps it visibly apart
 	// from the standard library's runtime wherever both might be read for one.
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
@@ -291,7 +292,7 @@ func cmdUp(ifname, cfgPath string) {
 	case <-errs:
 	case <-wgdev.Wait():
 	case <-hsm.Dead():
-		if cause := hsm.Cause(); errors.Is(cause, rt.ErrRawECDHRefused) {
+		if cause := hsm.Cause(); errors.Is(cause, policy.ErrRawECDHRefused) {
 			fmt.Fprintln(os.Stderr, cause.Error())
 		} else {
 			fmt.Fprintln(os.Stderr, "HEM token expired or HEM unreachable - bringing interface down.")

@@ -5,20 +5,16 @@ import (
 	"testing"
 )
 
-// The day the firmware changes record size, every client in the field reports
-// "failed authentication" until it is replaced. Without this sentence beside
-// it, that message says somebody has edited the configuration - which is the
-// opposite of what happened and calls for the opposite reaction.
+// A tree written before firmware 1.3 fails verification as "failed
+// authentication". Without this sentence beside it, that message says somebody
+// has edited the configuration - which is the opposite of what happened and
+// calls for the opposite reaction.
 func TestExplainSizeNamesBothLengths(t *testing.T) {
-	other := 64
-	if Size == 64 {
-		other = 128
-	}
-	got := ExplainSize(other)
+	got := ExplainSize(64)
 	if got == "" {
 		t.Fatal("a record of the other size explains nothing")
 	}
-	for _, want := range []string{"not tampering", "wg-hem version"} {
+	for _, want := range []string{"not tampering", "wg-hem wipe"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the sentence does not contain %q:\n%s", want, got)
 		}

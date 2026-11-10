@@ -19,12 +19,13 @@ release carries both clients for six platforms:
 | `-windows-amd64.exe` | Windows x86\_64 |
 | `-windows-arm64.exe` | Windows ARM64 |
 
-**Pick the right record size.** Binaries with a `-descr64` suffix target firmware
-whose `descr` field is 64 bytes rather than 128. The length is part of what the
-configuration MAC covers, so a tree written by one build cannot be verified by
-the other — this is not a compatibility shim but two incompatible dialects. If
-unsure, run `wg-hem version`, which reports both the release and the size it was
-built for.
+**Firmware 1.3 or later.** The configuration records are 128 bytes, and the
+module has to be initialised with raw ECDH enabled (the `raw_ecdh_enabled`
+policy, set in Encedo Manager): WireGuard needs the raw X25519 shared secret,
+and the policy can not be turned on after initialisation. `wg-hem provision`
+checks it before it writes anything. A configuration written by an older build
+for the 64-byte firmware can not be read; remove it with `wg-hem wipe` and
+provision again.
 
 **Windows comes as a bundle.** `encedo-wg-windows-<arch>.zip` holds both clients,
 the `wintun.dll` they need, and the licences of both — unpack it and everything
@@ -39,8 +40,7 @@ software using only its documented API.
 ```bash
 git clone --recurse-submodules https://github.com/encedo/encedo-wg-hsm
 cd encedo-wg-hsm
-bash build.sh                       # 128-byte records
-WG_HEM_DESCR=64 bash build.sh       # 64-byte records, suffixed -descr64
+bash build.sh
 ```
 
 The HEM SDK lives in its own repository and is wired in as the `hem-sdk-go`

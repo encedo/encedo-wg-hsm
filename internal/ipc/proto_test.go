@@ -143,19 +143,13 @@ func TestValidateAccepts(t *testing.T) {
 	}
 }
 
-// The record dialect is part of what makes two builds compatible, because the
-// mismatch presents as a MAC failure - which reads as a tampered configuration
-// rather than as a build-flag disagreement.
-func TestBuildsOfDifferentDialectsDoNotMatch(t *testing.T) {
-	a := Build{Release: "0.9.1", Descr: 128}
-	b := Build{Release: "0.9.1", Descr: 64}
-	if a.Matches(b) {
-		t.Error("a 128-byte build accepted a 64-byte one; the failure would surface as a MAC error")
-	}
+// Two builds drive each other only when they are the same release.
+func TestBuildsOfDifferentReleasesDoNotMatch(t *testing.T) {
+	a := Build{Release: "0.9.1"}
 	if !a.Matches(a) {
 		t.Error("a build did not match itself")
 	}
-	if a.Matches(Build{Release: "0.9.2", Descr: 128}) {
+	if a.Matches(Build{Release: "0.9.2"}) {
 		t.Error("two releases matched")
 	}
 }

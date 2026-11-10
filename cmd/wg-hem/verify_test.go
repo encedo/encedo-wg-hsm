@@ -48,8 +48,6 @@ func runVerify(t *testing.T, args ...string) (stdout string, err error) {
 // self-consistent tree for verify to read back.
 func provisionInto(t *testing.T, srv string, extra ...string) {
 	t.Helper()
-	// This profile is sized to fit 64-byte records too: one address, no DNS,
-	// and two peers whose records stay inside the tighter budget.
 	args := append([]string{
 		"-hem", srv, "-broker", srv,
 		"-address", "10.0.0.7/32",
@@ -61,9 +59,7 @@ func provisionInto(t *testing.T, srv string, extra ...string) {
 	}
 }
 
-// provisionWithPSK seeds a tree whose single peer carries a wrapped key. On
-// 64-byte firmware that record lands on exactly 64 bytes, which is why it has
-// an IPv4 endpoint, one route and no keepalive - there is room for nothing else.
+// provisionWithPSK seeds a tree whose single peer carries a wrapped key.
 func provisionWithPSK(t *testing.T, srv string) {
 	t.Helper()
 	if _, err := runProvision(t,

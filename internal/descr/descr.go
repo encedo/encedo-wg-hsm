@@ -691,17 +691,13 @@ func ZeroMAC(rec [Size]byte) ([Size]byte, error) {
 // there is nothing to say.
 //
 // This exists because the failure it explains is the most misleading one in the
-// system, and it is about to happen on every machine at once. The record length
-// is part of the canonical message the configuration MAC covers (section 4), so
-// a build reading the wrong size computes a different message over the same
-// bytes and the device refuses it. From the inside that is indistinguishable
-// from somebody having edited the stored configuration - and the two call for
-// opposite reactions. One is an attack. The other is the wrong download.
-//
-// The day the firmware changes size, every client in the field says "failed
-// authentication" until it is replaced, and anyone reading that message without
-// this sentence beside it will reasonably conclude they have been tampered
-// with.
+// system. The record length is part of the canonical message the configuration
+// MAC covers (section 4), so a tree written with another length - by a build
+// for the 64-byte firmware before 1.3 - computes a different message and the
+// device refuses it. From the inside that is indistinguishable from somebody
+// having edited the stored configuration, and the two call for opposite
+// reactions: one is an attack, the other is a module that needs provisioning
+// again.
 func ExplainSize(observed int) string {
 	if observed <= 0 || observed == Size {
 		return ""
@@ -709,8 +705,8 @@ func ExplainSize(observed int) string {
 	return fmt.Sprintf(
 		"The device returned %d-byte configuration records and this build reads %d-byte ones. "+
 			"That alone produces this, and it is not tampering: the record length is part of "+
-			"what the configuration MAC covers, so the two cannot read each other's records. "+
-			"`wg-hem version` reports the size this build was made for - install the build that "+
-			"matches the appliance's firmware.",
+			"what the configuration MAC covers, and the configuration was written by an older "+
+			"build for the firmware before 1.3. Remove it with `wg-hem wipe` and provision "+
+			"the module again.",
 		observed, Size)
 }

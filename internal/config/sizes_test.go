@@ -7,17 +7,13 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 )
 
-func otherSize() int {
-	if descr.Size == 64 {
-		return 128
-	}
-	return 64
-}
+// otherSize is the record length of a tree written for firmware before 1.3.
+func otherSize() int { return 64 }
 
-// The firmware-day case: every record the device returns is the other length.
-// That is one dialect meeting another, and it is the whole reason this exists -
-// the failure it causes is reported as "failed authentication", which reads as
-// tampering to anyone who has not been told otherwise.
+// A module upgraded to firmware 1.3 still holds the tree an older build wrote:
+// every record the device returns is the other length. The failure it causes
+// is reported as "failed authentication", which reads as tampering to anyone
+// who has not been told otherwise.
 func TestSizesExplainsAConsistentDifference(t *testing.T) {
 	s := newSizes(otherSize())
 	s.add(otherSize())

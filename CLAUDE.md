@@ -218,11 +218,10 @@ wg-hsm/
     ENCEDO-WG-CONFIGFREE-SPEC.md  <- spec for the config-free client (wg-hem)
 
   internal/                       <- shared by both CLIs
-    descr/                        <- TLV codec for the descr records (spec §3)
-                                     size_default.go / size_descr64.go pick 128 or
-                                     64 B. Build -tags descr64 for old firmware;
-                                     the record length is inside the MAC, so the
-                                     two builds cannot read each other's trees.
+    descr/                        <- TLV codec for the descr records (spec §3),
+                                     128 B (firmware 1.3+). The record length is
+                                     inside the MAC, so a tree written for the old
+                                     64 B firmware cannot be read - re-provision.
     mac/                          <- canonical message + Sign/Verify (spec §4)
     config/                       <- load + authenticate the whole tree (spec §6.2)
     runtime/                      <- the OS half of bringing an interface up (spec §9):
@@ -279,10 +278,11 @@ wg-hsm/
 
 ## Implementation status
 
-Release 0.9.2. Both clients build for six platforms in two record sizes; CI
-tests both on every push and uploads nothing. A `v*` tag runs `release.yml`,
-which signs Windows behind a reviewer and fills a draft GitHub Release with the
-128-byte builds only; publishing it is by hand. See `docs/RELEASING.md`.
+Release 0.9.2. Both clients build for six platforms; CI tests them on every
+push and uploads nothing. A `v*` tag runs `release.yml`, which signs Windows
+behind a reviewer and fills a draft GitHub Release; publishing it is by hand.
+Firmware 1.3 or later is required: 128-byte records, and a device initialised
+with the `raw_ecdh_enabled` policy (see "Important technical facts"). See `docs/RELEASING.md`.
 
 **Tested end to end on 2026-08-11, Linux arm64 client to a stock server.** The
 far end is `blbx.pl`, ordinary Ubuntu `wireguard-tools` on the kernel module,
@@ -405,6 +405,13 @@ foreground because a daemon that restarts cannot re-authenticate).
   public key, `keymgmt:use:<KID>` grants use of that one key, `keymgmt:upd` changes a
   descr, `keymgmt:del` removes a key. Provisioning holds the first three and asks for the
   fourth only to remove an identity key its own run created and could not finish.
+- **Firmware 1.3 returns the raw ECDH secret only with the `raw_ecdh_enabled`
+  policy**, set once at initialisation (Encedo Manager) and never changeable
+  afterwards; without it `POST /api/crypto/ecdh` with no `alg` answers 403.
+  WireGuard needs the raw value - Noise runs its own HKDF over BLAKE2s, so the
+  device's hashed and HKDF variants are no use. `provision` tries one ECDH before
+  writing anything; the handshake path does not retry a 403 and ends the tunnel
+  with `runtime.ErrRawECDHRefused`.
 - `hsmSession == nil` -> original wireguard-go behaviour unchanged (wg0 works normally)
 - `wg show` does not show public key -- because private key = 0, `wg` cannot derive it. Expected.
 - `ListenPort` in client config behind NAT = problem (server tries to reach a fixed port). Do not set.

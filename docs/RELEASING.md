@@ -3,7 +3,7 @@
 Three workflows, in the shape encedo-chat uses:
 
 - **`ci.yml`** runs on every push to `main` and `gui` and on pull requests. It
-  tests both command-line clients in both record sizes and compiles the window
+  tests both command-line clients and compiles the window
   and the component on every platform through `build.yml`. It packages nothing
   and uploads nothing, and it deletes artifacts older than a week.
 - **`build.yml`** is not run on its own. It is the matrix both other workflows
@@ -12,12 +12,6 @@ Three workflows, in the shape encedo-chat uses:
 - **`release.yml`** runs on a `v*` tag, or by hand. It creates a draft GitHub
   Release, builds everything, signs Windows behind a reviewer, and attaches
   the release's files to the draft. Publishing the draft is done by hand.
-
-Only 128-byte builds are attached. The `descr64` builds are made and signed in
-the same run and stay in its artifacts, for the team: none may go out, not even
-as a pre-release, so that no customer ever migrates when the firmware drops it
-(MVP.md, 3.3). The attach step removes anything named `descr64` and then refuses
-to continue if one is left.
 
 What the draft gets: the `.deb` for amd64 and arm64, `encedo-wg-amd64.msi` and
 `encedo-wg-arm64.msi` (signed), the macOS window for both architectures, the
@@ -109,11 +103,8 @@ there to be re-tested.
 ## Building by hand
 
 ```bash
-./build.sh                      # 128-byte records
-WG_HEM_DESCR=64 ./build.sh      # 64-byte records, suffixed -descr64
-
+./build.sh
 ./package-windows.sh            # bundle — AFTER signing, never before
-WG_HEM_DESCR=64 ./package-windows.sh
 
 sha256sum dist/*.zip dist/wg-* > dist/SHA256SUMS
 

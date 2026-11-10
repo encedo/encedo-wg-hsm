@@ -33,6 +33,7 @@ import (
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/paths"
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
@@ -257,7 +258,7 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		case <-t.ctx.Done():
 		case <-t.hsm.Dead():
 			endMsg = "The HEM is gone or the token has expired - bringing the interface down."
-			if cause := t.hsm.Cause(); errors.Is(cause, rt.ErrRawECDHRefused) {
+			if cause := t.hsm.Cause(); errors.Is(cause, policy.ErrRawECDHRefused) {
 				endMsg = cause.Error()
 			}
 		}

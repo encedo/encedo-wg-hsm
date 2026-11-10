@@ -21,18 +21,8 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/config"
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
-	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 )
-
-// requireRoom skips a scenario the configured record size cannot express. The
-// 64-byte firmware leaves an interface record room for an address, two peer
-// references and the MAC, and nothing else.
-func requireRoom(t *testing.T, n int) {
-	t.Helper()
-	if descr.Size < n {
-		t.Skipf("scenario needs %d-byte records, this build uses %d", n, descr.Size)
-	}
-}
 
 // fakeHEM is enough of the device to run provisioning end to end: it records
 // what it was asked to store so a test can check the bytes that would land in a
@@ -344,7 +334,6 @@ const peerKeyA = "i14L0qgxykUZL7GVV2x/hBXwuvbcXbcv+TIEp60Pk0M="
 const peerKeyB = "9Sq9OSCbaKMqvV6MDwo1sVoYUqyBRcqCPEHEHZ2Zvhc="
 
 func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
-	requireRoom(t, 70) // this profile carries DNS and an MTU as well
 	f, srv := newFakeHEM(t)
 
 	out, err := runProvision(t,
@@ -636,7 +625,7 @@ func TestProvisionRefusesADeviceWithoutRawECDH(t *testing.T) {
 		"-hem", srv.URL, "-broker", srv.URL,
 		"-address", "10.0.0.7/32",
 		"-peer", "pubkey="+peerKeyA+",endpoint=203.0.113.1:51820,allowed-ips=10.0.0.0/24")
-	if !errors.Is(err, rt.ErrRawECDHRefused) {
+	if !errors.Is(err, policy.ErrRawECDHRefused) {
 		t.Fatalf("err = %v, want the raw ECDH policy named", err)
 	}
 

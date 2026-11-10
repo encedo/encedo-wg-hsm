@@ -182,177 +182,147 @@ jobs:
           # for itself. build-msi.sh reads it from here.
           echo "$VERSION" > ../dist-gui/VERSION
 
-          # Both record dialects, as build.sh does for the command-line client.
-          # The window reads the configuration itself, so a 128-byte build against
-          # 64-byte firmware fails at MAC verification - which looks exactly like
-          # somebody having tampered with the configuration. Shipping only one
-          # size is how that happens to a person rather than to a test.
-          # $1 is the dialect suffix, $2 anything extra for the linker, the rest
-          # goes to go build. One -ldflags, composed here, because passing two
-          # silently keeps only the last.
+          # $1 is anything extra for the linker, the rest goes to go build. One
+          # -ldflags, composed here, because passing two silently keeps only
+          # the last.
           build() {
-            local suffix="$1" extra="$2"; shift 2
-            case "$suffix" in
-              "")        local tags="" ;;
-              -descr64)  local tags="descr64" ;;
-            esac
-            CGO_ENABLED=1 go build ${tags:+-tags "$tags"} -ldflags "$STAMP $extra" "$@"
+            local extra="$1"; shift
+            CGO_ENABLED=1 go build -ldflags "$STAMP $extra" "$@"
           }
 
-          for variant in "" "-descr64"; do
-            case "${{ runner.os }}" in
-              Linux)
-                # The runner's own architecture, because cgo builds for the
-                # machine it runs on. Two Linux jobs, one per architecture.
-                case "${{ runner.arch }}" in
-                  X64)   goarch=amd64 ;;
-                  ARM64) goarch=arm64 ;;
-                esac
-                GOARCH="$goarch" build "$variant" "" \
-                  -o "../dist-gui/encedo-wg-gui-linux-$goarch$variant" .
+          case "${{ runner.os }}" in
+            Linux)
+              # The runner's own architecture, because cgo builds for the
+              # machine it runs on. Two Linux jobs, one per architecture.
+              case "${{ runner.arch }}" in
+                X64)   goarch=amd64 ;;
+                ARM64) goarch=arm64 ;;
+              esac
+              GOARCH="$goarch" build "" \
+                -o "../dist-gui/encedo-wg-gui-linux-$goarch" .
 
-                # The component beside the window, for the same reason it is
-                # built beside it on Windows: build-deb.sh needs both, they
-                # refuse each other unless their stamps agree, and two workflows
-                # producing them is how the stamps come to differ. From the
-                # repository root, because gui/ is its own module.
-                #
-                # The patched upstream tree first. The component imports
-                # wireguard-go and go.mod resolves that to ./wireguard-go, which
-                # only build.sh produces - and the first version of this asked
-                # for it in the packaging step, which runs after this one. The
-                # build failed with "replacement directory ./wireguard-go does
-                # not exist" while the step that would have created it sat two
-                # steps below. The Windows branch had it in the right place; the
-                # two are now the same.
-                # ./build.sh, not `sh build.sh`. It declares bash and uses
-                # `set -o pipefail`, and sh on Ubuntu is dash, which answers
-                # "Illegal option -o pipefail" and stops. It ran on the Windows
-                # runner because sh there is git-bash. Letting the shebang decide
-                # means nobody has to remember which script wants which shell.
-                if [ ! -d ../wireguard-go/device ]; then
-                  ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
-                fi
-                case "$variant" in
-                  "")        cli_tags="" ;;
-                  -descr64)  cli_tags="descr64" ;;
-                esac
-                ( cd .. && CGO_ENABLED=0 GOARCH="$goarch" go build ${cli_tags:+-tags "$cli_tags"} \
+              # The component beside the window, for the same reason it is
+              # built beside it on Windows: build-deb.sh needs both, they
+              # refuse each other unless their stamps agree, and two workflows
+              # producing them is how the stamps come to differ. From the
+              # repository root, because gui/ is its own module.
+              #
+              # The patched upstream tree first. The component imports
+              # wireguard-go and go.mod resolves that to ./wireguard-go, which
+              # only build.sh produces - and the first version of this asked
+              # for it in the packaging step, which runs after this one. The
+              # build failed with "replacement directory ./wireguard-go does
+              # not exist" while the step that would have created it sat two
+              # steps below. The Windows branch had it in the right place; the
+              # two are now the same.
+              # ./build.sh, not `sh build.sh`. It declares bash and uses
+              # `set -o pipefail`, and sh on Ubuntu is dash, which answers
+              # "Illegal option -o pipefail" and stops. It ran on the Windows
+              # runner because sh there is git-bash. Letting the shebang decide
+              # means nobody has to remember which script wants which shell.
+              if [ ! -d ../wireguard-go/device ]; then
+                ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
+              fi
+              ( cd .. && CGO_ENABLED=0 GOARCH="$goarch" go build \
+                  -ldflags "$STAMP" \
+                  -o "dist/wg-hem-linux-$goarch" ./cmd/wg-hem )
+              ;;
+            macOS)
+              for arch in arm64 amd64; do
+                GOARCH="$arch" build "" \
+                  -o "../dist-gui/encedo-wg-gui-darwin-$arch" .
+              done
+              ;;
+            Windows)
+              # The icon and version resource, compiled into the window.
+              #
+              # Windows reads the icon for Explorer, the task bar and a Start
+              # menu shortcut out of the executable, never from the running
+              # program - which is why the tray icon was right and the other
+              # three were generic. The version goes in with it, so the file
+              # can say what it is without being run.
+              #
+              # -platform-specific writes resource_windows_<arch>.syso, which
+              # is the naming Go already applies GOOS and GOARCH rules to, so
+              # the right one is linked and the rest are ignored. Generated
+              # rather than committed: it carries the stamp, which changes
+              # every commit.
+              #
+              # Run from here, which is gui/, and that is the whole of what
+              # went wrong the first time. -platform-specific ignores -o and
+              # writes into the working directory, so wrapping this in a
+              # subshell that stepped up to the repository root put four .syso
+              # files where nothing links them. Go only takes them from the
+              # directory of the package being built, so the window came out
+              # with no icon and nothing said a word.
+              go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
+                  -icon packaging/icon.ico \
+                  -product-version "$VERSION" \
+                  -platform-specific \
+                  packaging/versioninfo.json
+
+              # Said out loud, because the failure above was silent: a missing
+              # resource is a build that succeeds and an icon that is not
+              # there, found days later by somebody looking at a Start menu.
+              ls resource_windows_*.syso >/dev/null 2>&1 || {
+                echo "goversioninfo produced no .syso in $(pwd)" >&2; exit 1; }
+              # Whatever the runner is, natively: cgo means no cross-building,
+              # so the ARM64 runner produces the ARM64 window and the x64 one
+              # produces x64. runner.arch is the only thing that distinguishes
+              # the two jobs, since both call themselves Windows.
+              case "${{ runner.arch }}" in
+                X64)   goarch=amd64 ;;
+                ARM64) goarch=arm64 ;;
+                *)     echo "unknown runner architecture ${{ runner.arch }}" >&2; exit 1 ;;
+              esac
+              # -H=windowsgui suppresses the console window that would otherwise
+              # open behind the interface. Without it every launch shows a black
+              # rectangle nobody asked for.
+              GOARCH=$goarch build "-H=windowsgui" \
+                -o "../dist-gui/encedo-wg-gui-windows-$goarch.exe" .
+
+              # The component beside the window, from this tree and this
+              # stamp. It is built in ci.yml too, and that is not the same
+              # thing: the two halves refuse each other unless their stamps
+              # agree, and two workflows mean two artifacts somebody has to
+              # pair up by hand from runs they have to match by commit. That
+              # went wrong the first time it was tried. Built here they cannot
+              # disagree, because there is one checkout and one call to
+              # scripts/version.sh behind both.
+              #
+              # CGO_ENABLED=0 as build.sh uses for it: the component needs no
+              # C and a static one starts anywhere.
+              #
+              # The patched upstream tree has to exist first. The component
+              # imports wireguard-go and go.mod resolves that to ./wireguard-go,
+              # which build.sh clones and patches - so this asks build.sh for
+              # exactly that and nothing else.
+              if [ ! -d ../wireguard-go/device ]; then
+                ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
+              fi
+              # Both architectures from the x64 job, and this is what lets one
+              # job assemble both bundles. The component has no cgo, so its
+              # architecture is a variable rather than the runner's - unlike
+              # the window above, which is why the window is the half that
+              # needed a second runner at all.
+              case "${{ runner.arch }}" in
+                X64)   cli_arches="amd64 arm64" ;;
+                ARM64) cli_arches="arm64" ;;
+              esac
+              # From the repository root, not from here. gui/ is its own
+              # module with its own go.sum, and that go.sum has no entry for
+              # wireguard-go and must not gain one - deps_test.go exists to
+              # keep the tunnel out of the window. Building the component from
+              # inside gui/ resolves it against the wrong module and fails
+              # with six missing go.sum entries, which is the right answer to
+              # the wrong question.
+              for cli_arch in $cli_arches; do
+                ( cd .. && CGO_ENABLED=0 GOARCH=$cli_arch go build \
                     -ldflags "$STAMP" \
-                    -o "dist/wg-hem-linux-$goarch$variant" ./cmd/wg-hem )
-                ;;
-              macOS)
-                for arch in arm64 amd64; do
-                  GOARCH="$arch" build "$variant" "" \
-                    -o "../dist-gui/encedo-wg-gui-darwin-$arch$variant" .
-                done
-                ;;
-              Windows)
-                # The icon and version resource, compiled into the window.
-                #
-                # Windows reads the icon for Explorer, the task bar and a Start
-                # menu shortcut out of the executable, never from the running
-                # program - which is why the tray icon was right and the other
-                # three were generic. The version goes in with it, so the file
-                # can say what it is without being run.
-                #
-                # -platform-specific writes resource_windows_<arch>.syso, which
-                # is the naming Go already applies GOOS and GOARCH rules to, so
-                # the right one is linked and the rest are ignored. Generated
-                # rather than committed: it carries the stamp, which changes
-                # every commit.
-                #
-                # Run from here, which is gui/, and that is the whole of what
-                # went wrong the first time. -platform-specific ignores -o and
-                # writes into the working directory, so wrapping this in a
-                # subshell that stepped up to the repository root put four .syso
-                # files where nothing links them. Go only takes them from the
-                # directory of the package being built, so the window came out
-                # with no icon and nothing said a word.
-                # The record size, spelled out rather than composed from the
-                # suffix. `${variant:+64}${variant:-128}` looks like it says
-                # "64 when there is a suffix, 128 when there is not" and does
-                # not: the second expansion yields the suffix itself, so the
-                # 64-byte build called itself "descr 64-descr64 B" in the file
-                # properties every time.
-                case "$variant" in
-                  "")        descr_bytes=128 ;;
-                  -descr64)  descr_bytes=64  ;;
-                esac
-                go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
-                    -icon packaging/icon.ico \
-                    -product-version "$VERSION (descr $descr_bytes B)" \
-                    -platform-specific \
-                    packaging/versioninfo.json
-
-                # Said out loud, because the failure above was silent: a missing
-                # resource is a build that succeeds and an icon that is not
-                # there, found days later by somebody looking at a Start menu.
-                ls resource_windows_*.syso >/dev/null 2>&1 || {
-                  echo "goversioninfo produced no .syso in $(pwd)" >&2; exit 1; }
-                # Whatever the runner is, natively: cgo means no cross-building,
-                # so the ARM64 runner produces the ARM64 window and the x64 one
-                # produces x64. runner.arch is the only thing that distinguishes
-                # the two jobs, since both call themselves Windows.
-                case "${{ runner.arch }}" in
-                  X64)   goarch=amd64 ;;
-                  ARM64) goarch=arm64 ;;
-                  *)     echo "unknown runner architecture ${{ runner.arch }}" >&2; exit 1 ;;
-                esac
-                # -H=windowsgui suppresses the console window that would otherwise
-                # open behind the interface. Without it every launch shows a black
-                # rectangle nobody asked for.
-                GOARCH=$goarch build "$variant" "-H=windowsgui" \
-                  -o "../dist-gui/encedo-wg-gui-windows-$goarch$variant.exe" .
-
-                # The component beside the window, from this tree and this
-                # stamp. It is built in ci.yml too, and that is not the same
-                # thing: the two halves refuse each other unless their stamps
-                # agree, and two workflows mean two artifacts somebody has to
-                # pair up by hand from runs they have to match by commit. That
-                # went wrong the first time it was tried. Built here they cannot
-                # disagree, because there is one checkout and one call to
-                # scripts/version.sh behind both.
-                #
-                # CGO_ENABLED=0 as build.sh uses for it: the component needs no
-                # C and a static one starts anywhere.
-                #
-                # The patched upstream tree has to exist first. The component
-                # imports wireguard-go and go.mod resolves that to ./wireguard-go,
-                # which build.sh clones and patches - so this asks build.sh for
-                # exactly that and nothing else. Once per job, not once per
-                # variant.
-                if [ ! -d ../wireguard-go/device ]; then
-                  ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
-                fi
-                case "$variant" in
-                  "")        cli_tags="" ;;
-                  -descr64)  cli_tags="descr64" ;;
-                esac
-                # Both architectures from the x64 job, and this is what lets one
-                # job assemble both bundles. The component has no cgo, so its
-                # architecture is a variable rather than the runner's - unlike
-                # the window above, which is why the window is the half that
-                # needed a second runner at all.
-                case "${{ runner.arch }}" in
-                  X64)   cli_arches="amd64 arm64" ;;
-                  ARM64) cli_arches="arm64" ;;
-                esac
-                # From the repository root, not from here. gui/ is its own
-                # module with its own go.sum, and that go.sum has no entry for
-                # wireguard-go and must not gain one - deps_test.go exists to
-                # keep the tunnel out of the window. Building the component from
-                # inside gui/ resolves it against the wrong module and fails
-                # with six missing go.sum entries, which is the right answer to
-                # the wrong question.
-                for cli_arch in $cli_arches; do
-                  ( cd .. && CGO_ENABLED=0 GOARCH=$cli_arch go build ${cli_tags:+-tags "$cli_tags"} \
-                      -ldflags "$STAMP" \
-                      -o "dist-gui/wg-hem-windows-$cli_arch$variant.exe" ./cmd/wg-hem )
-                done
-                ;;
-            esac
-          done
+                    -o "dist-gui/wg-hem-windows-$cli_arch.exe" ./cmd/wg-hem )
+              done
+              ;;
+          esac
           ls -l ../dist-gui
 
       # Not signed here, and this is where it once was. Signing needs an OIDC
@@ -375,7 +345,7 @@ jobs:
         run: |
           set -eu
           VERSION="$(cd .. && sh scripts/version.sh)"
-          CGO_ENABLED=1 GOARCH=arm64 go build -tags descr64 \
+          CGO_ENABLED=1 GOARCH=arm64 go build \
             -ldflags "-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION" \
             -o ../dist-gui/encedo-wg-gui-windows-arm64-console.exe .
 
@@ -432,30 +402,26 @@ jobs:
           powershell -NoProfile -Command "Expand-Archive -Force '$work/wintun.zip' '$work/x'"
 
           for goarch in amd64 arm64; do
-            for variant in "" "-descr64"; do
-              stage="../dist-gui/encedo-wg-windows-$goarch$variant"
-              mkdir -p "$stage"
-              # Renamed to the plain names on the way in. The suffixes exist to
-              # keep dialects apart in a build directory; inside an installation
-              # they would only be something to get wrong.
-              #
-              # The component follows the bundle's architecture and the window
-              # does not: there is one window here, the x64 one, and on an arm64
-              # machine it runs emulated. The comment above this step says why.
-              # wintun.dll follows the component, since the component is what
-              # creates the adapter.
-              cp "../dist-gui/wg-hem-windows-$goarch$variant.exe"       "$stage/wg-hem.exe"
-              cp "../dist-gui/encedo-wg-gui-windows-amd64$variant.exe"  "$stage/encedo-wg-gui.exe"
-              cp "$work/x/wintun/bin/$goarch/wintun.dll"                "$stage/wintun.dll"
-              cp ../packaging/windows/install.ps1                        "$stage/"
-              # The icon as a file as well as a resource: the installer points the
-              # notification registration at it, and Windows wants an image there
-              # rather than an executable.
-              cp packaging/icon.ico                                      "$stage/"
-              cp ../packaging/windows/uninstall.ps1                      "$stage/"
-              cp ../LICENSE                                              "$stage/LICENSE.txt"
-              cp "$work/x/wintun/LICENSE.txt"                          "$stage/WINTUN-LICENSE.txt"
-            done
+            stage="../dist-gui/encedo-wg-windows-$goarch"
+            mkdir -p "$stage"
+            # Renamed to the plain names on the way in.
+            #
+            # The component follows the bundle's architecture and the window
+            # does not: there is one window here, the x64 one, and on an arm64
+            # machine it runs emulated. The comment above this step says why.
+            # wintun.dll follows the component, since the component is what
+            # creates the adapter.
+            cp "../dist-gui/wg-hem-windows-$goarch.exe"       "$stage/wg-hem.exe"
+            cp "../dist-gui/encedo-wg-gui-windows-amd64.exe"  "$stage/encedo-wg-gui.exe"
+            cp "$work/x/wintun/bin/$goarch/wintun.dll"                "$stage/wintun.dll"
+            cp ../packaging/windows/install.ps1                        "$stage/"
+            # The icon as a file as well as a resource: the installer points the
+            # notification registration at it, and Windows wants an image there
+            # rather than an executable.
+            cp packaging/icon.ico                                      "$stage/"
+            cp ../packaging/windows/uninstall.ps1                      "$stage/"
+            cp ../LICENSE                                              "$stage/LICENSE.txt"
+            cp "$work/x/wintun/LICENSE.txt"                          "$stage/WINTUN-LICENSE.txt"
           done
 
           # Out of the way before the upload: it lives under dist-gui so that it
@@ -486,9 +452,7 @@ jobs:
           esac
           # No prepare here: the build step above has already laid down the
           # patched upstream tree, because that is where the component is built.
-          for variant in "" "-descr64"; do
-            sh packaging/linux/build-deb.sh "$goarch" "$variant"
-          done
+          sh packaging/linux/build-deb.sh "$goarch"
           ls -l dist-deb/
 
       - name: Upload the Debian packages
@@ -505,16 +469,14 @@ jobs:
       # The installer: one file to download and double-click. A script rather
       # than a step, because the sign job builds it a second time once the
       # binaries carry a signature and the two must not drift. The script says
-      # why both dialects share a product code and why this has to be Windows.
+      # why this has to be Windows.
       - name: Installer
         if: inputs.package && (runner.os == 'Windows' && runner.arch == 'X64')
         shell: bash
         run: |
           set -eu
           for goarch in amd64 arm64; do
-            for variant in "" "-descr64"; do
-              packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}" "$variant"
-            done
+            packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
           done
 
       # Windows 10 is one of the machines this ships to, and "will it start

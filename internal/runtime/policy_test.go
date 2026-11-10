@@ -11,6 +11,8 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 
 	hem "github.com/encedo/hem-sdk-go"
+
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 )
 
 // A device without raw_ecdh_enabled answers every handshake with 403, and the
@@ -28,7 +30,7 @@ func TestHandshakeECDHStopsOnThePolicy(t *testing.T) {
 	h := NewHSM(hem.NewClient(srv.URL, hem.Config{}), "tok", "00112233445566778899aabbccddeeff", device.NoisePublicKey{})
 	start := time.Now()
 	_, err := h.ecdh(hem.CryptoOpts{PubKey: make([]byte, 32)})
-	if !errors.Is(err, ErrRawECDHRefused) {
+	if !errors.Is(err, policy.ErrRawECDHRefused) {
 		t.Fatalf("err = %v, want ErrRawECDHRefused", err)
 	}
 	if n := calls.Load(); n != 1 {

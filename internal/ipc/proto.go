@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
 
@@ -68,28 +67,20 @@ const (
 //
 // Release carries the commit when build.sh stamped it, so a window and a
 // component from different builds recognise each other as different.
-//
-// Descr is the record length, and it is here because of how badly the mismatch
-// presents. A 128-byte window against a 64-byte component does not fail to
-// start: the record length is inside the configuration MAC, so it fails at
-// verification - which is what a tampered configuration looks like. Refusing by
-// name at the handshake is the difference between "these two builds disagree"
-// and a security warning about nothing.
 type Build struct {
 	Release string `json:"release"`
-	Descr   int    `json:"descr"`
 }
 
 // Current describes the build this code is part of.
 func Current() Build {
-	return Build{Release: version.Version, Descr: descr.Size}
+	return Build{Release: version.Version}
 }
 
-func (b Build) String() string { return fmt.Sprintf("%s (descr %d B)", b.Release, b.Descr) }
+func (b Build) String() string { return b.Release }
 
 // Matches reports whether two builds may drive each other.
 func (b Build) Matches(other Build) bool {
-	return b.Release == other.Release && b.Descr == other.Descr
+	return b.Release == other.Release
 }
 
 // Request is everything the component is ever told.

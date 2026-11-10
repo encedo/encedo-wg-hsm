@@ -19,8 +19,7 @@
 # cannot reissue. Sign wg-hem.exe and wg-quick-encedo.exe; leave the driver
 # exactly as it came.
 #
-# Run after build.sh, and with the same WG_HEM_DESCR, so the binaries and the
-# archive names agree.
+# Run after build.sh.
 set -euo pipefail
 
 WINTUN_VERSION="0.14.1"
@@ -29,13 +28,8 @@ WINTUN_URL="https://www.wintun.net/builds/wintun-${WINTUN_VERSION}.zip"
 
 cd "$(dirname "$0")"
 
-SUFFIX=""
-if [ "${WG_HEM_DESCR:-128}" = "64" ]; then
-    SUFFIX="-descr64"
-fi
-
-if [ ! -f "dist/wg-hem-windows-amd64${SUFFIX}.exe" ]; then
-    echo "dist/wg-hem-windows-amd64${SUFFIX}.exe is missing - run build.sh first" >&2
+if [ ! -f "dist/wg-hem-windows-amd64.exe" ]; then
+    echo "dist/wg-hem-windows-amd64.exe is missing - run build.sh first" >&2
     exit 1
 fi
 
@@ -54,24 +48,21 @@ echo "    checksum verified"
 unzip -q "${work}/wintun.zip" -d "${work}/wintun"
 
 for arch in amd64 arm64; do
-    name="encedo-wg-windows-${arch}${SUFFIX}"
+    name="encedo-wg-windows-${arch}"
     stage="${work}/${name}"
     mkdir -p "${stage}"
 
-    # Plain names inside the archive: the platform and record size are already
+    # Plain names inside the archive: the platform is already
     # in the name of the archive, and repeating them in every path makes the
     # commands in the README longer than they need to be.
-    cp "dist/wg-hem-windows-${arch}${SUFFIX}.exe"          "${stage}/wg-hem.exe"
-    cp "dist/wg-quick-encedo-windows-${arch}${SUFFIX}.exe" "${stage}/wg-quick-encedo.exe"
+    cp "dist/wg-hem-windows-${arch}.exe"          "${stage}/wg-hem.exe"
+    cp "dist/wg-quick-encedo-windows-${arch}.exe" "${stage}/wg-quick-encedo.exe"
     cp "${work}/wintun/wintun/bin/${arch}/wintun.dll"      "${stage}/wintun.dll"
     cp LICENSE                                             "${stage}/LICENSE.txt"
     cp "${work}/wintun/wintun/LICENSE.txt"                 "${stage}/WINTUN-LICENSE.txt"
 
-    descr_note="128 bytes"
-    [ -n "${SUFFIX}" ] && descr_note="64 bytes (legacy firmware)"
-
     cat > "${stage}/README.txt" <<EOF
-encedo-wg for Windows (${arch}), descr records: ${descr_note}
+encedo-wg for Windows (${arch}), for HEM firmware 1.3 or later
 
   wg-hem.exe           no configuration file; everything lives in the HEM
   wg-quick-encedo.exe  reads wg1.conf, with the private key replaced by a key id

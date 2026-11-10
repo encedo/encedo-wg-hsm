@@ -27,7 +27,7 @@ import (
 	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/handoff"
 	"github.com/encedo/encedo-wg-hsm/internal/mac"
-	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
 
@@ -225,7 +225,7 @@ func Run(ctx context.Context, client *hem.Client, auth *session.Auth, p Params, 
 	// the device was initialised with raw_ecdh_enabled, and a configuration
 	// that provisions cleanly and then fails its first handshake is the worst
 	// place to find that out.
-	if err = rt.CheckRawECDH(ctx, client, useTok, ifKID, ifPub[:]); err != nil {
+	if err = policy.CheckRawECDH(ctx, client, useTok, ifKID, ifPub[:]); err != nil {
 		return Result{}, cleanup, session.Fail(session.KindDevice, "%w", err)
 	}
 

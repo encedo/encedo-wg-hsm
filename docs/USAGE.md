@@ -162,7 +162,7 @@ sudo wg-hem down
 wg-hem verify                     # re-check the MAC and print the configuration
 wg-hem peer add|remove|update     # re-authenticates the whole tree
 wg-hem wipe                       # remove the WG:* records (typed confirmation)
-wg-hem version                    # release, and the record size it was built for
+wg-hem version                    # the release this binary was built from
 ```
 
 `--debug` prints one line per ECDH: which of the two Diffie-Hellmans it is, how

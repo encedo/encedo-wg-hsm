@@ -185,7 +185,7 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 //
 // A set rather than a single number, because a mixture means something
 // different from a consistent difference: every record the same length says
-// this is a device speaking one dialect and a build reading another, which is
+// this is a tree written for another record length, which is
 // worth explaining. Records of assorted lengths say something else entirely and
 // this has no business guessing what.
 type sizes struct {

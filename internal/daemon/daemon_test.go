@@ -184,8 +184,7 @@ func TestASecondStartIsRefused(t *testing.T) {
 	}
 }
 
-// The record dialect is part of the build, and a mismatch would otherwise
-// surface as a MAC failure - which looks like a tampered configuration.
+// A window and a component from different builds are refused by name.
 func TestAMismatchedBuildIsRefusedByName(t *testing.T) {
 	_, c := serve(t, func(context.Context, ipc.Request) (Tunnel, error) {
 		t.Fatal("a mismatched window was allowed to open a tunnel")
@@ -193,12 +192,12 @@ func TestAMismatchedBuildIsRefusedByName(t *testing.T) {
 	})
 
 	req := startReq()
-	req.Build.Descr = req.Build.Descr / 2 // the other dialect
+	req.Build.Release += "-other"
 	ipc.WriteMsg(c, req)
 
 	r := reply(t, c)
 	if r.OK {
-		t.Fatal("a build speaking the other record dialect was accepted")
+		t.Fatal("a window from another build was accepted")
 	}
 	if !strings.Contains(r.Err, ipc.Current().String()) {
 		t.Errorf("the refusal does not name this component's build: %q", r.Err)

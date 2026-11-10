@@ -186,7 +186,6 @@ func TestLoadRejectsAMismatchedIdentifier(t *testing.T) {
 }
 
 func TestPeerAddAdoptsAnExistingRecord(t *testing.T) {
-	requireRoom(t, 66)
 	f, srv := newFakeHEM(t)
 	provisionInto(t, srv.URL)
 
@@ -228,7 +227,6 @@ func TestPeerAddAdoptsAnExistingRecord(t *testing.T) {
 // wrap authenticates what it holds but not where it sits; the context is what
 // supplies the position.
 func TestPSKWrapIsBoundToItsPeer(t *testing.T) {
-	requireRoom(t, 70) // two peers, each carrying a wrapped key
 	f, srv := newFakeHEM(t)
 
 	if _, err := runProvision(t,

@@ -67,35 +67,15 @@ fi
 
 echo "==> Building..."
 
-# Emptied first, every time. This directory used to accumulate, and what
-# accumulated was two series differing by one suffix in the filename: a
-# descr64 build beside a default one, three days apart, both plausible. Picking
-# the wrong one does not fail - the record length is inside the configuration
-# MAC, so it reads as a corrupt tree rather than as a mismatched binary, which is
-# an hour spent looking at the wrong thing.
-#
-# The cost is that building both record sizes now means keeping the first
-# elsewhere, which is the right way round: two variants side by side is a
-# deliberate act and should look like one, rather than being what happens when
-# nobody cleans up. packaging/linux/reinstall.sh clears old packages for the same
-# reason, and that was written after a glob matched two of them and installed the
-# older.
+# Emptied first, every time: a directory that accumulates builds is one from
+# which the older of two plausible binaries gets picked. packaging/linux/
+# reinstall.sh clears old packages for the same reason, and that was written
+# after a glob matched two of them and installed the older.
 rm -rf dist
 mkdir -p dist
 
 # wg-quick-encedo: the config-file client (v1).
 # wg-hem:          the config-free client, everything in the HEM (docs/).
-# WG_HEM_DESCR=64 builds against firmware whose descr field is 64 bytes rather
-# than 128. The record length is part of what the configuration MAC covers, so
-# such a binary and a default one cannot read each other's trees; the suffix
-# keeps the two apart in dist/.
-TAGS=""
-SUFFIX=""
-if [ "${WG_HEM_DESCR:-128}" = "64" ]; then
-    TAGS="descr64"
-    SUFFIX="-descr64"
-    echo "    descr field: 64 bytes (legacy firmware)"
-fi
 
 # The release number lives in internal/version; a checkout stamps the commit
 # onto it, so a binary from a working tree says which one it came from and a
@@ -108,14 +88,13 @@ for cmd in wg-quick-encedo wg-hem; do
     for platform in ${PLATFORMS}; do
         os="${platform%/*}"
         arch="${platform#*/}"
-        out="dist/${cmd}-${os}-${arch}${SUFFIX}"
+        out="dist/${cmd}-${os}-${arch}"
         [ "${os}" = "windows" ] && out="${out}.exe"
         # CGO_ENABLED=0 for every target, not just the cross ones: a native build
         # would otherwise link against the builder's glibc and refuse to start on
         # an older distribution, while the cross builds are static already. Same
         # switch everywhere means the artefacts are alike.
         CGO_ENABLED=0 GOOS="${os}" GOARCH="${arch}" go build \
-            ${TAGS:+-tags "${TAGS}"} \
             -ldflags "-X github.com/encedo/encedo-wg-hsm/internal/version.Version=${VERSION}" \
             -o "${out}" "./cmd/${cmd}/"
     done

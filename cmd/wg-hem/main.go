@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
 
@@ -81,10 +80,7 @@ func main() {
 	case "probe":
 		err = cmdProbe(os.Args[2:])
 	case "version", "--version":
-		// The record size goes with it: two builds of the same release talk to
-		// different firmware and cannot read each other's trees, so the number
-		// alone does not identify a binary.
-		fmt.Printf("wg-hem %s (descr %d B)\n", version.Version, descr.Size)
+		fmt.Printf("wg-hem %s\n", version.Version)
 		os.Exit(exitOK)
 	case "-h", "--help", "help":
 		usage()

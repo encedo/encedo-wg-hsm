@@ -541,18 +541,6 @@ do. The analysis — the six-scope maximum, why ordering binds harder than count
 and what a use-scope not tied to a single KID would buy — sits with the GUI entry
 above, because that is where the number is felt.
 
-**Remove the 64-byte record variant once the target firmware ships.** It is a
-temporary accommodation for current hardware, not a product characteristic, and
-it should not outlive the firmware that needs it. It reaches further than it
-looks: `descr64` and the `-descr64` suffix in `build.sh`, the two-way matrix in
-the CI workflow, `size_descr64.go`, the record size reported by `wg-hem version`,
-the `-descr64` MSI built in `build.yml` and signed in `release.yml`, and the passages in
-`docs/INSTALL.md`, `CLAUDE.md` and `UPSTREAM.md` that explain why a tree written
-by one build cannot be read by the other. Removing half of that
-leaves a build flag that no longer does anything and documentation describing a
-choice nobody has. The customer-facing page already says nothing about record
-sizes, deliberately — until this is done, the repository and that page disagree.
-
 ## Outside the code
 
 **The landing page.** A single page aimed at a technically literate buyer, built
@@ -573,7 +561,7 @@ has not been tested, on the grounds that a page listing only advantages reads as
 brochure to the audience it is written for.
 
 Deliberately absent: any call to action with contact details, since none were
-available to invent; and any mention of record sizes, per the entry above. Named
+available to invent; and any mention of record sizes. Named
 VPN brands are avoided too — categories and implementations make the same point
 without implying a relationship with anyone. The trademark notice in the footer
 follows the same reasoning as the entry in *Not yet written*.

@@ -1,8 +1,8 @@
 # Encedo HEM × WireGuard — Config-Free Client (Implementation Specification)
 
-Version: 2.1 (2026-08-11) · Status: ready for implementation
+Version: 2.2 (2026-11-10) · Status: ready for implementation
 Base: fork `github.com/encedo/encedo-wg-hsm` (wireguard-go with the private key held in HEM)
-HEM FW: v1.7b (current API, **zero firmware changes required**)
+HEM FW: 1.3 or later, 128 B `descr`; the device initialised with the `raw_ecdh_enabled` policy
 SDK: `github.com/encedo/hem-sdk-go` — every call in §7 is implemented
 
 Changes in 1.4: self-ECDH addressed by `ext_kid` rather than `pubkey` (§4, §5);
@@ -21,11 +21,17 @@ not return public keys, so each candidate peer needs a pubkey read, all covered
 by one `keymgmt:get` token.
 
 Changes in 1.7: §3 records that the 64 B `descr` of older firmware is a
-supported build target, and what stops fitting at that size.
+supported build target (dropped in 2.2).
 
 Changes in 1.8: §6.2 step 8 adds the HEM reachability check. The endpoint
 exception was already there; the HEM's own address needs the same treatment,
 because a handshake cannot complete without it.
+
+Changes in 2.2: firmware 1.3. §3 drops the 64 B record length. `crypto/ecdh`
+returns the raw shared secret only on a device initialised with the
+`raw_ecdh_enabled` policy and answers 403 otherwise; the handshake needs the raw
+value (Noise runs its own HKDF over BLAKE2s), so provisioning tries one ECDH
+before writing anything and the tunnel names the policy instead of retrying.
 
 Changes in 2.1: the PSK wrap context becomes per-peer (`ENC-WG-PSK-v2|<peer KID>`),
 so a wrapped key is bound to the record it sits in and not merely to the identity.
@@ -104,15 +110,11 @@ Common header:
 | 6 | 1 B | version = `0x02` |
 | 7 | … | TLV stream: `tag(1B) len(1B) value(len B)`; terminated by tag `0x00` or end of buffer; zero-padded |
 
-**Record length.** 128 B, the capacity of the `descr` field. Firmware predating
-that capacity offers 64 B; build with `-tags descr64` (or `WG_HEM_DESCR=64 bash
-build.sh`) to target it. The length is not a private matter of the encoder — the
-canonical message of §4 includes each record at its full padded length, so a
-tree written against one length cannot be verified against the other. At 64 B a
-peer with a wrapped PSK fits only with a literal IPv4 endpoint, exactly one
-AllowedIPs range and no keepalive (7+8+7+42 = 64 exactly); a hostname endpoint
-and a PSK cannot coexist; and an interface record has room for one address, one
-option and two peer references beside its MAC.
+**Record length.** 128 B, the capacity of the `descr` field since firmware 1.3.
+The length is not a private matter of the encoder — the canonical message of §4
+includes each record at its full padded length, so a tree written against
+another length (the 64 B of firmware before 1.3) cannot be verified and has to
+be provisioned again.
 
 **Encoding rules (normative).** One configuration has exactly one encoding — the
 property DER gives ASN.1, and for the same reason: the record is authenticated,

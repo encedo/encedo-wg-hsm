@@ -136,7 +136,7 @@ encedo-wg-hsm/
     ENCEDO-WG-CONFIGFREE-SPEC.md  # specification for the config-free client
     RELEASING.md                  # build, sign, package, in that order
   internal/
-    descr/                        # TLV codec; size_default.go / size_descr64.go pick 128 or 64 B
+    descr/                        # TLV codec; records are 128 B (size.go)
     mac/                          # configuration MAC (self-ECDH, computed inside the HEM)
     config/                       # load and authenticate the whole stored tree
     session/                      # auth, scoped tokens, and the state file

@@ -13,6 +13,8 @@ import (
 	"golang.zx2c4.com/wireguard/device"
 
 	hem "github.com/encedo/hem-sdk-go"
+
+	"github.com/encedo/encedo-wg-hsm/internal/policy"
 )
 
 // debug turns on the handshake trace: one line per ECDH, which is the only way
@@ -156,7 +158,7 @@ func (h *HSM) Inject() {
 			// handshake, so it goes to the device as a value.
 			result, err := h.ecdh(hem.CryptoOpts{PubKey: pub[:]})
 			if err != nil {
-				if errors.Is(err, ErrRawECDHRefused) {
+				if errors.Is(err, policy.ErrRawECDHRefused) {
 					fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 				} else {
 					fmt.Fprintf(os.Stderr, "ERROR: HEM unreachable - shutting down interface: %v\n", err)
@@ -202,10 +204,10 @@ func (h *HSM) ecdh(opts hem.CryptoOpts) ([32]byte, error) {
 				time.Now().Format("15:04:05.000"), seq, operandKind(opts), took.Round(time.Millisecond),
 				i+1, ecdhRetries, err)
 		}
-		if rawECDHRefused(err) {
+		if policy.RawECDHRefused(err) {
 			// The policy does not change between attempts, and three of them
 			// would only delay the one sentence that says what to do.
-			return [32]byte{}, ErrRawECDHRefused
+			return [32]byte{}, policy.ErrRawECDHRefused
 		}
 		lastErr = err
 	}

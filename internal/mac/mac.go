@@ -188,12 +188,11 @@ func Verify(ctx context.Context, c *hem.Client, token, kid string,
 		// somebody having edited the configuration.
 		//
 		// It is worth naming because the two call for opposite reactions: one is
-		// an attack and the other is a build flag. This build says which size it
-		// reads, so whoever sees it can check that first.
+		// an attack and the other is a tree from before firmware 1.3.
 		return fmt.Errorf("mac: %w: %w\n"+
-			"This build reads %d-byte records. If the appliance stores the other size, "+
-			"that alone produces this - rebuild with the matching descr size before "+
-			"treating it as tampering.", ErrNotAuthentic, err, descr.Size)
+			"This build reads %d-byte records. A configuration written by a build for "+
+			"the firmware before 1.3 produces this as well - provision the module again "+
+			"before treating it as tampering.", ErrNotAuthentic, err, descr.Size)
 	}
 	return nil
 }

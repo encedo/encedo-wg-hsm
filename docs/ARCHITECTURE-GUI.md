@@ -184,19 +184,6 @@ the component refuses a window it does not match rather than guessing what an
 older one meant. `status` reports both, so a human can see the skew a refusal is
 about.
 
-**The record dialect travels with the version**, for the same reason and with a
-sharper edge. A 128-byte window against a 64-byte component does not fail to
-start — it fails at MAC verification, which is the signature of a configuration
-somebody has tampered with. That is the worst available error message for a
-mismatch of build flags, so the two exchange `descr.Size` at `start` and refuse
-each other by name.
-
-Saying the product ships 128 only would be true and useless: the firmware in
-front of the people building this is 64, `WG_HEM_DESCR=64` is how everything gets
-built today, and a rule that holds only after a firmware update is not a rule
-that protects the next fortnight. Both artifacts are built for both dialects and
-the pairing is checked at run time, until the day the 64-byte build is deleted.
-
 ## Liveness: no window, no tunnel
 
 The window is still the session. The component could now run without one — it does

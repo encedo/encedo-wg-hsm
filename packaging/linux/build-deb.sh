@@ -8,21 +8,20 @@
 # and a build per platform, and pretending otherwise is how a package ends up
 # with two halves from different commits.
 #
-#	WG_HEM_DESCR=64 bash build.sh
-#	(cd gui && go build -tags descr64 -ldflags "-X ...version.Version=$(sh scripts/version.sh)" -o ../dist-gui/encedo-wg-gui-linux-arm64-descr64 .)
-#	sh packaging/linux/build-deb.sh arm64 -descr64
+#	bash build.sh
+#	(cd gui && go build -ldflags "-X ...version.Version=$(sh scripts/version.sh)" -o ../dist-gui/encedo-wg-gui-linux-arm64 .)
+#	sh packaging/linux/build-deb.sh arm64
 set -eu
 
 ARCH="${1:-amd64}"
-VARIANT="${2:-}"   # "" or -descr64
 
 ROOT="$(pwd)"
 VERSION="$(sh scripts/version.sh)"
 # Debian will not take a + or a dirty marker in a version the way git prints it.
 DEBVER="$(printf '%s' "$VERSION" | tr '+' '~')"
 
-CLI="dist/wg-hem-linux-${ARCH}${VARIANT}"
-GUI="dist-gui/encedo-wg-gui-linux-${ARCH}${VARIANT}"
+CLI="dist/wg-hem-linux-${ARCH}"
+GUI="dist-gui/encedo-wg-gui-linux-${ARCH}"
 for f in "$CLI" "$GUI"; do
 	[ -f "$ROOT/$f" ] || { echo "missing $f - see the comment at the top" >&2; exit 1; }
 done
@@ -38,9 +37,9 @@ $1 was built at $2, and this tree is $VERSION.
 Packaging them together would produce a window and a component that refuse to
 drive each other. Rebuild both from here:
 
-  WG_HEM_DESCR=64 bash build.sh
+  bash build.sh
   STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=\$(sh scripts/version.sh)"
-  (cd gui && go build -tags descr64 -ldflags "\$STAMP" -o ../$GUI .)
+  (cd gui && go build -ldflags "\$STAMP" -o ../$GUI .)
 MSG
 	exit 1
 }
@@ -175,12 +174,12 @@ chmod 755 "$PKG/DEBIAN/prerm"
 
 mkdir -p "$ROOT/dist-deb"
 
-# Older packages for the same architecture and dialect go, because they are this
+# Older packages for the same architecture go, because they are this
 # script's own output and leaving them is a trap: `dpkg -i dist-deb/*.deb` then
 # matches several, unpacks all of them and configures whichever it reaches last,
 # which is not the one that was just built. Seen doing exactly that.
-rm -f "$ROOT/dist-deb"/encedo-wg_*_"${ARCH}${VARIANT}".deb
+rm -f "$ROOT/dist-deb"/encedo-wg_*_"${ARCH}".deb
 
-OUT="$ROOT/dist-deb/encedo-wg_${DEBVER}_${ARCH}${VARIANT}.deb"
+OUT="$ROOT/dist-deb/encedo-wg_${DEBVER}_${ARCH}.deb"
 dpkg-deb --build --root-owner-group "$PKG" "$OUT" >/dev/null
 echo "$OUT"
