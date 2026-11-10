@@ -41,10 +41,6 @@ const WrapAlg = "AES256"
 // PSKLen is the length of a WireGuard pre-shared key.
 const PSKLen = 32
 
-// searchPage is how many entries to ask for per search call. The device
-// defaults to 15; asking for more keeps a large repository to fewer round trips.
-const searchPage = 50
-
 // TokenFunc returns a token for a scope. The SDK caches tokens per scope, so
 // asking twice for the same scope costs nothing.
 type TokenFunc func(ctx context.Context, scope string) (string, error)
@@ -219,9 +215,8 @@ func search(ctx context.Context, c *hem.Client, tok TokenFunc, magic string) ([]
 	pattern := []byte(magic)
 
 	token := ""
-	var all []hem.KeyEntry
-	for offset := 0; ; {
-		total, page, err := c.SearchKeys(ctx, token, pattern, offset, searchPage)
+	for {
+		all, err := c.SearchKeysAll(ctx, token, pattern, hem.SearchOpts{})
 		if err != nil {
 			if token == "" && isAuthError(err) {
 				// The device wants a token for searching; ask once and restart.
@@ -233,11 +228,7 @@ func search(ctx context.Context, c *hem.Client, tok TokenFunc, magic string) ([]
 			}
 			return nil, fmt.Errorf("searching for %s records: %w", magic, err)
 		}
-		all = append(all, page...)
-		offset += len(page)
-		if len(page) == 0 || offset >= total {
-			return all, nil
-		}
+		return all, nil
 	}
 }
 

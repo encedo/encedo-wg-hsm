@@ -118,8 +118,8 @@ func importPeer(ctx context.Context, client *hem.Client, auth *session.Auth,
 func ReadPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth, kid string) (*[descr.Size]byte, error) {
 	pattern := []byte(descr.MagicPeer)
 	token := ""
-	for offset := 0; ; {
-		total, page, err := client.SearchKeys(ctx, token, pattern, offset, 50)
+	for {
+		all, err := client.SearchKeysAll(ctx, token, pattern, hem.SearchOpts{})
 		if err != nil {
 			if he, ok := err.(*hem.HemError); ok && token == "" && (he.Status == 401 || he.Status == 403) {
 				if token, err = auth.Token(ctx, "keymgmt:search"); err != nil {
@@ -129,7 +129,7 @@ func ReadPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth,
 			}
 			return nil, session.Classify(err, session.KindDevice, "searching for peer records")
 		}
-		for _, e := range page {
+		for _, e := range all {
 			if e.KID != kid {
 				continue
 			}
@@ -139,10 +139,7 @@ func ReadPeerRecord(ctx context.Context, client *hem.Client, auth *session.Auth,
 			}
 			return &rec, nil
 		}
-		offset += len(page)
-		if len(page) == 0 || offset >= total {
-			return nil, nil
-		}
+		return nil, nil
 	}
 }
 

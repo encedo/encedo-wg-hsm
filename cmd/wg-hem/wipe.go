@@ -107,9 +107,8 @@ Flags:
 func listRecords(ctx context.Context, client *hem.Client, auth *session.Auth, magic string) ([]hem.KeyEntry, error) {
 	pattern := []byte(magic)
 	token := ""
-	var all []hem.KeyEntry
-	for offset := 0; ; {
-		total, page, err := client.SearchKeys(ctx, token, pattern, offset, 50)
+	for {
+		all, err := client.SearchKeysAll(ctx, token, pattern, hem.SearchOpts{})
 		if err != nil {
 			if he, ok := err.(*hem.HemError); ok && token == "" && (he.Status == 401 || he.Status == 403) {
 				if token, err = auth.Token(ctx, "keymgmt:search"); err != nil {
@@ -119,10 +118,6 @@ func listRecords(ctx context.Context, client *hem.Client, auth *session.Auth, ma
 			}
 			return nil, classify(err, exitDevice, "searching for %s records", magic)
 		}
-		all = append(all, page...)
-		offset += len(page)
-		if len(page) == 0 || offset >= total {
-			return all, nil
-		}
+		return all, nil
 	}
 }
