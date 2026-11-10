@@ -294,10 +294,10 @@ would be wrong.
 
 ### ARM64: what each machine can actually draw
 
-The ARM line is supported. An arm64 installation ships a **native component and
-an emulated x64 window**, and the reason is not the one the first day's testing
-suggested - the second day reversed it, and both days are written down here
-because the wrong conclusion was reasonable and would be reached again.
+The ARM line is supported. Since 2026-11-10 an arm64 installation is **native
+throughout**, window included. Until then it shipped a native component and an
+emulated x64 window; how that came about, and why it changed, is written down
+here because the first day's conclusion was reasonable and wrong.
 
 **Building it natively works.** The runner cannot do it unaided: its image
 provisions i686 and x86_64 mingw and nothing else, so `gcc` there is an x86-64
@@ -329,7 +329,8 @@ The signed arm64 installer was also exercised there end to end - Edge warned
 about the download, SmartScreen showed the publisher and accepted it, and the
 installation works.
 
-**Which leaves a choice, and the emulated window wins it on coverage.** Both
+**Which left a choice, and until 2026-11-10 the emulated window won it on
+coverage.** Both
 builds run on Snapdragon; only the emulated one also runs in the virtual machine.
 A window that sits in a tray until somebody clicks it gains nothing measurable
 from being native, and loses a whole class of environments - virtual machines,
@@ -338,15 +339,14 @@ the component is native arm64, because it does the ECDH for every rekey and
 creates the adapter and that is where native matters, and `wintun.dll` follows
 it; the window is the x64 build.
 
-Both bundles are assembled by the x64 job, since the component is
-`CGO_ENABLED=0` and cross-builds - so one job still holds both halves of
-everything shipped, one checkout, one stamp.
-
-**The native window is still built** by the `windows-11-arm` job and uploaded
-under a name the signing job does not match. It is not in any installer, and the
-reason is coverage rather than defect: it is known to work on hardware and known
-to fail in a VM. The console copy is built beside it, because the shipped
-linkage has no console and prints nowhere.
+**2026-11-10: native.** The CI was rebuilt as six equal cells, each building
+and packaging only its own binaries, and the emulated window was the one
+exception to that: the arm64 bundle had to be assembled by the x64 job out of
+the x64 window. The window now follows its cell. It is known to work on
+Snapdragon hardware; what it costs is the Windows-on-ARM virtual machine on a
+Mac, where it does not open - test the arm64 installer on hardware. Each Windows
+cell uploads a console-linked copy of its window in `dist-diag/`, unsigned and
+never shipped, because the shipped linkage has no console and prints nowhere.
 
 ### Signing: what exists, as of 2026-09-16
 

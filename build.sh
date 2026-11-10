@@ -56,10 +56,9 @@ MSG
 done
 
 # WG_PREPARE_ONLY stops here, with the patched upstream tree in place and
-# nothing built. It exists for the Windows job in .github/workflows/build.yml,
-# which needs that tree in order to build the component beside the window - the
-# component imports wireguard-go, and go.mod resolves it to this directory - but
-# does not want the other eleven binaries this script would go on to produce.
+# nothing built. It exists for the checks job in .github/workflows/ci.yml,
+# which needs that tree for vet and the tests - go.mod resolves wireguard-go to
+# this directory - but not the binaries, which build.yml makes per platform.
 if [ -n "${WG_PREPARE_ONLY:-}" ]; then
     echo "==> Prepared; stopping before the build as asked."
     exit 0
@@ -83,7 +82,9 @@ mkdir -p dist
 VERSION="$(sh scripts/version.sh)"
 echo "    version: ${VERSION}"
 
-PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
+# Every platform by default. PLATFORMS narrows it: each cell of the CI matrix
+# (.github/workflows/build.yml) builds only its own, e.g. PLATFORMS=linux/arm64.
+PLATFORMS="${PLATFORMS:-linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64}"
 for cmd in wg-quick-encedo wg-hem; do
     for platform in ${PLATFORMS}; do
         os="${platform%/*}"

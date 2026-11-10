@@ -2,22 +2,31 @@
 
 Three workflows, in the shape encedo-chat uses:
 
-- **`ci.yml`** runs on every push to `main` and `gui` and on pull requests. It
-  tests both command-line clients and compiles the window
-  and the component on every platform through `build.yml`. It packages nothing
-  and uploads nothing, and it deletes artifacts older than a week.
+- **`ci.yml`** runs on every push to `main` and `gui` and on pull requests. Its
+  `checks` job runs the tests, vet, gofmt and the ASCII rule on one machine; its
+  `build` job compiles everything on every platform through `build.yml`. It
+  packages nothing and uploads nothing, and it deletes artifacts older than a
+  week.
 - **`build.yml`** is not run on its own. It is the matrix both other workflows
-  call: five runners, the window and the component, and - when `release.yml`
-  asks - the `.deb`, the Windows bundles and the MSIs.
+  call: six cells, `{linux, darwin, windows} x {amd64, arm64}`, and every cell
+  builds its own CLI (`PLATFORMS=<os>/<arch> ./build.sh`) and its own window
+  from one checkout and one stamp. When `release.yml` asks, the cell also
+  packages what it built - the `.deb` on Linux, the bundle and MSI on Windows -
+  and uploads it all as `encedo-wg-<os>-<arch>`.
 - **`release.yml`** runs on a `v*` tag, or by hand. It creates a draft GitHub
   Release, builds everything, signs Windows behind a reviewer, and attaches
   the release's files to the draft. Publishing the draft is done by hand.
 
-What the draft gets: the `.deb` for amd64 and arm64, `encedo-wg-amd64.msi` and
-`encedo-wg-arm64.msi` (signed), the macOS window for both architectures, the
-command-line clients for Linux and macOS, and `SHA256SUMS` over all of it. No
-loose Windows executables: the only Windows files in a release are the signed
-installers.
+What the draft gets, for each of the six cells:
+
+| | amd64 | arm64 |
+|---|---|---|
+| Linux | `.deb`, `wg-hem`, `wg-quick-encedo` | the same |
+| macOS | `encedo-wg-gui-darwin-*`, `wg-hem`, `wg-quick-encedo` | the same |
+| Windows | `encedo-wg-amd64.msi`, `wg-hem`, `wg-quick-encedo` (`.exe`, signed) | the same, arm64 |
+
+and `SHA256SUMS` over all of it. The Windows window ships only inside its
+installer; every Windows file in a release is signed.
 
 ## The order, which matters more than it looks
 
@@ -79,19 +88,19 @@ and refuses one without a timestamp; writes `SHA256SUMS`; and uploads
 `encedo-wg-windows-signed`. The run log carries the signtool output, which
 makes it the record of what was signed and by whom.
 
-Both architectures go through it, and both are assembled by the x64 job: the
-component cross-builds, so that job holds both of them and the only window that
-works, an arm64 installation being a native component with an emulated x64
-window. `docs/WINDOWS.md` has the measurement behind that. Signing is one job on
+Both architectures go through it. Each Windows cell builds and stages its own
+binaries - since 2026-11-10 the arm64 installer carries the native arm64
+window, see `docs/WINDOWS.md` - and the sign job downloads both cells, moves the
+loose command-line clients next to the windows and signs the lot. Signing is one job on
 an x64 runner, because a signature is over a file's bytes and does not care what
 machine type its header declares. The one thing that job cannot do is run an
 arm64 executable, which is why `build-msi.sh` checks the stamp against the
 binary only where the two architectures match, and against the `VERSION` the
 build recorded everywhere else.
 
-The `windows-11-arm` job uploads a native arm64 window under a name the signing
-job does not match. It ships nowhere, for the reason in `WINDOWS.md`, and is
-there to be re-tested.
+Each Windows cell also uploads a console-linked copy of its window in
+`dist-diag/`, outside what is signed. It ships nowhere; it is what to run when
+a window does not open and the shipped one, having no console, prints nowhere.
 
 > **Settled 2026-09-28.** A tag used to yield a signed Windows set from the old
 > `gui.yml` and an unsigned one from `ci.yml`, two downloads of one program.

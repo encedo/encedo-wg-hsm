@@ -11,8 +11,9 @@ The command-line client builds for `darwin/amd64` and `darwin/arm64` in
 `build.sh`, and `internal/runtime/platform_darwin.go` implements the OS half:
 `Up`, `Down`, `AddRoutes`, `SetMTU`, the default-gateway lookup and the host
 routes that pin an endpoint outside the tunnel, plus `UAPIListen` and
-`UAPIDial`. The window builds on macOS in CI today and is uploaded as
-`encedo-wg-gui-macOS-ARM64`.
+`UAPIDial`. The window builds on macOS in CI today, in the `darwin-amd64` and
+`darwin-arm64` cells of `build.yml`, and is uploaded as
+`encedo-wg-darwin-<arch>`.
 
 Two holes in that, and only two:
 

@@ -18,7 +18,7 @@ on:
   pull_request:
   workflow_dispatch:
 
-# A new push supersedes the run in flight for the same ref. Five runners
+# A new push supersedes the run in flight for the same ref. Six runners
 # compiling a commit that is already out of date is only a queue.
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,8 +28,10 @@ permissions:
   contents: read
 
 jobs:
-  cli:
-    name: cli
+  # The checks that need one machine, not six: plain ASCII, gofmt, vet and
+  # the tests with -race. Compiling for every platform is build.yml's.
+  checks:
+    name: checks
     runs-on: ubuntu-latest
 
     steps:
@@ -51,9 +53,10 @@ jobs:
 
       # This clones upstream wireguard-go and overlays our four files onto it.
       # go.mod points golang.zx2c4.com/wireguard at that directory, so nothing
-      # compiles before it has run - not the tests, not even `go vet`.
-      - name: Build
-        run: ./build.sh
+      # compiles before it has run - not the tests, not even `go vet`. Only the
+      # tree: the binaries come from build.yml, one platform per cell.
+      - name: Prepare wireguard-go
+        run: WG_PREPARE_ONLY=1 ./build.sh
 
       # Everything this repository builds or runs is plain ASCII, and it is
       # checked rather than intended.
@@ -135,11 +138,12 @@ jobs:
       - name: Test
         run: go test -race ./...
 
-  # The window and the component on every platform, compiled and vetted, with
-  # nothing packaged. This is where code for macOS and Windows, written on a
-  # Linux machine that can compile neither, is first compiled at all.
-  window:
-    name: window
+  # The GUI and the CLI for every platform and both architectures, compiled
+  # and vetted, with nothing packaged. This is where code for macOS and
+  # Windows, written on a Linux machine that can compile neither, is first
+  # compiled at all.
+  build:
+    name: build
     uses: ./.github/workflows/build.yml
     with:
       package: false
@@ -155,7 +159,7 @@ jobs:
   # backlog had built up.
   sweep-artifacts:
     name: sweep old artifacts
-    needs: [cli, window]
+    needs: [checks, build]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:

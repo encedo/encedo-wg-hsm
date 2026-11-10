@@ -1,21 +1,37 @@
 name: Build
 
-# The window, the component beside it and, when asked, the packages - on every
-# platform the product ships to. Not run on its own: ci.yml calls it on every
-# push to compile the lot, and release.yml calls it on a tag with `package` set
-# to produce what goes into the release. One file, so the build a release is
-# made from is the build every push has already been through.
+# The product on every platform it ships to: the window (GUI) and the
+# command-line clients (CLI), for Linux, macOS and Windows, each for amd64 and
+# arm64. Six cells, and every cell is built the same way: its own CLI, its own
+# window, its own package, from one checkout and one stamp.
 #
-# cgo is why this is a matrix of runners rather than one machine: the window
-# links a GUI toolkit, and its compilers and SDKs cannot be crossed the way the
-# command-line client's can.
+# Not run on its own: ci.yml calls it on every push to compile the lot, and
+# release.yml calls it on a tag with `package` set to produce what goes into
+# the release. One file, so the build a release is made from is the build every
+# push has already been through.
+#
+# Why a runner per cell rather than one machine: the window links a GUI
+# toolkit through cgo, and cgo builds for the machine it runs on. The CLI is
+# CGO_ENABLED=0 and could be crossed from anywhere, but it is built in the same
+# cell as the window it ships with, because the two refuse each other unless
+# their stamps agree and one checkout is what keeps them agreeing. macOS is the
+# one place a runner holds both architectures' SDKs, so both darwin cells run
+# on the same kind of runner.
+#
+# What each cell leaves behind, under one artifact `encedo-wg-<os>-<arch>`:
+#
+#   dist/      wg-hem and wg-quick-encedo for the cell      (all)
+#   dist-gui/  the window, VERSION                           (all)
+#              encedo-wg-windows-<arch>/ and the .msi        (windows)
+#   dist-deb/  encedo-wg_<version>_<arch>.deb                (linux)
+#   dist-diag/ the window linked as a console program        (windows)
 on:
   workflow_call:
     inputs:
       package:
         description: >-
-          Also assemble and upload the .deb, the Windows bundles and installers,
-          and the binaries. Off, the job compiles and checks and uploads nothing.
+          Also assemble and upload the packages and the binaries. Off, every
+          cell compiles and checks and uploads nothing.
         type: boolean
         default: false
 
@@ -24,79 +40,65 @@ permissions:
 
 jobs:
   build:
-    name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        # windows-11-arm was added on 2026-08-15, taken out the same day, and
-        # is back on 2026-09-17 because the product supports the whole Windows
-        # 11 line rather than the half of it that runs x64.
-        #
-        # What removed it was real and has not gone away: the runner image
-        # still provisions only i686 and x86_64 mingw (its own
-        # Install-Mingw64.ps1 asks niXman/mingw-builds-binaries for those two
-        # and no other), so the `gcc` on PATH there is an x86-64 compiler under
-        # emulation. cgo hands it the arm64 assembly in runtime/cgo and it
-        # answers `no such instruction: stp x29,x30`, which is the failure an
-        # empty main.go importing "C" would produce. What changed is not the
-        # image but that the step below puts a native aarch64 toolchain on the
-        # runner before anything is compiled.
-        #
-        # The window is why this needs a runner of its own. cgo cannot be
-        # cross-compiled the way the component can, so the window's
-        # architecture is the runner's; the component is CGO_ENABLED=0 and is
-        # built beside it here for the same reason it is on x64, that one
-        # checkout and one call to scripts/version.sh is what keeps the two
-        # halves' stamps from disagreeing.
-        #
-        # One thing this build cannot answer, and it should be tested on real
-        # hardware before an arm64 installer is handed to anyone: Fyne picks
-        # its painter by architecture, so a windows/arm64 build asks for OpenGL
-        # ES over WGL and fails at window creation where the driver has no
-        # WGL_EXT_create_context_es2_profile. That is fyne-io/fyne#6483, open
-        # upstream since 2026-08-17 with a fallback proposed in #6484. A
-        # headless runner compiles it either way and says nothing.
-        # ubuntu-24.04-arm builds the Linux window and the .deb for arm64.
-        # The window needs cgo, so its architecture is the runner's and cannot
-        # be cross-compiled the way the command-line client is: until GitHub
-        # offered free arm64 Linux runners to public repositories there was no
-        # way to produce one here, and an arm64 package came from reinstall.sh
-        # on the machine that wanted it. There is now, and the dev machine is
-        # arm64, so the package it needs should not be the one nobody builds.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest,
-            windows-11-arm]
+        include:
+          - { goos: linux,   goarch: amd64, runner: ubuntu-latest }
+          # Free arm64 Linux runners for public repositories; the window is
+          # cgo, so without one there is no arm64 .deb.
+          - { goos: linux,   goarch: arm64, runner: ubuntu-24.04-arm }
+          # One runner kind for both: Apple's clang carries both SDKs, so the
+          # amd64 window is a GOARCH away on the arm64 runner.
+          - { goos: darwin,  goarch: amd64, runner: macos-latest }
+          - { goos: darwin,  goarch: arm64, runner: macos-latest }
+          - { goos: windows, goarch: amd64, runner: windows-latest }
+          # Native since 2026-11-10. The window opens on Snapdragon hardware
+          # and fails only in the ARM virtual machine on a Mac, whose display
+          # driver gives native arm64 processes no OpenGL at all
+          # (`APIUnavailable: WGL: ...`) - see docs/WINDOWS.md. Until then the
+          # arm64 installer carried the emulated x64 window, which meant one
+          # cell packaging another's binary; the console copy in dist-diag/ is
+          # how to read what the window says on a machine where it does not
+          # open.
+          - { goos: windows, goarch: arm64, runner: windows-11-arm }
+
+    env:
+      # Not GOOS/GOARCH: those would also steer `go run`, and on the
+      # darwin-amd64 cell a tool built for amd64 needs Rosetta to start.
+      TARGET_OS: ${{ matrix.goos }}
+      TARGET_ARCH: ${{ matrix.goarch }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # The submodule is not reachable from here yet - the session is faked,
-          # so gui/ imports nothing from the core and the SDK never enters the
-          # build. Fetching it anyway keeps this identical to a developer's
-          # checkout, and it becomes load-bearing the moment the fake is
-          # replaced. If the SDK repository is private, GITHUB_TOKEN cannot read
-          # it and a SUBMODULE_TOKEN secret is needed.
+          # hem-sdk-go is a submodule and go.mod resolves the SDK to it. If the
+          # SDK repository is private, GITHUB_TOKEN cannot read it - a
+          # SUBMODULE_TOKEN secret with read access is needed.
           submodules: recursive
           token: ${{ secrets.SUBMODULE_TOKEN || github.token }}
 
+      # gui/ is its own module, but its Go version is the root's; both go.sums
+      # feed the cache.
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version-file: gui/go.mod
-          cache-dependency-path: gui/go.sum
+          cache-dependency-path: |
+            go.sum
+            gui/go.sum
 
       # A GUI toolkit needs cgo, and cgo on Linux needs headers - for both
       # display servers, because GLFW compiles an X11 backend and a Wayland one
-      # into the same binary and chooses at run time. Leaving either set out
-      # fails the build on a machine that would never have used that backend.
-      #
-      # Two of these are worth naming because each cost a red build, and because
-      # a developer's machine has them and so gives no warning. libxxf86vm-dev
-      # surfaces only at the link step, as "cannot find -lXxf86vm"; libwayland-dev
-      # surfaces during compilation, as a missing wayland-client-core.h.
+      # into the same binary and chooses at run time. Two of these each cost a
+      # red build and are present on any developer's machine: libxxf86vm-dev
+      # fails only at the link step ("cannot find -lXxf86vm"), libwayland-dev
+      # as a missing wayland-client-core.h.
       - name: Linux build dependencies
-        if: runner.os == 'Linux'
+        if: matrix.goos == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
@@ -104,22 +106,20 @@ jobs:
             libgl1-mesa-dev xorg-dev libxxf86vm-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
 
-      # The native aarch64 toolchain the runner does not have. See the matrix
-      # comment for what is on it instead and what that costs.
+      # The Windows ARM runner image provisions only x86 and x64 mingw, so the
+      # `gcc` on PATH is an x86-64 compiler under emulation, and cgo handed the
+      # arm64 runtime/cgo assembly answers `no such instruction: stp x29,x30`.
+      # This puts a native aarch64 toolchain there first.
       #
       # llvm-mingw rather than MSYS2's CLANGARM64: one pinned archive with a
-      # checksum, against a package database that moves underneath a pinned
-      # version. It is the same treatment wintun.dll gets a few steps below and
-      # for a stronger reason - this one compiles the binary we sign.
+      # checksum, against a package database that moves under a pinned version.
+      # It compiles the binary we sign.
       #
-      # Relative paths and `pwd -W`, both deliberate. An absolute path written
-      # by git-bash means nothing to the Go toolchain, which is a Windows
-      # program: `pwd -W` is what turns /d/a/... into D:/a/..., and CC has to be
-      # the second. Unpacked beside the checkout rather than inside it, so that
-      # 600 MB of compiler is not something the upload step has to be told to
-      # leave out.
+      # `pwd -W` turns git-bash's /d/a/... into D:/a/..., which is what the Go
+      # toolchain, a Windows program, can read. Unpacked beside the checkout so
+      # that 600 MB of compiler is never in an upload path.
       - name: Windows ARM64 build dependencies
-        if: runner.os == 'Windows' && runner.arch == 'ARM64'
+        if: matrix.goos == 'windows' && matrix.goarch == 'arm64'
         shell: bash
         run: |
           set -eu
@@ -134,15 +134,15 @@ jobs:
           powershell -NoProfile -Command "Expand-Archive -Force '$work/$zip' '$work/x'"
 
           bin="$(cd "$work/x/llvm-mingw-$ver-ucrt-aarch64/bin" && pwd -W)"
-          # Said out loud, because a CC that is not there is a cgo build that
-          # falls back to the emulated gcc and fails much later and worse.
+          # Said out loud: a CC that is not there is a cgo build that falls
+          # back to the emulated gcc and fails much later and worse.
           "$bin/aarch64-w64-mingw32-gcc.exe" --version | head -1
           {
             echo "CC=$bin/aarch64-w64-mingw32-gcc.exe"
             echo "CXX=$bin/aarch64-w64-mingw32-g++.exe"
           } >> "$GITHUB_ENV"
 
-      - name: gofmt
+      - name: gofmt (window)
         working-directory: gui
         shell: bash
         run: |
@@ -151,349 +151,93 @@ jobs:
             echo "These files are not gofmt'd:"; echo "$unformatted"; exit 1
           fi
 
-      - name: Vet
+      - name: Vet (window)
         working-directory: gui
         run: go vet ./...
 
-      # cgo means one build per operating system: the compilers and SDKs cannot
-      # be crossed the way the CLI's can. macOS is the exception in the other
-      # direction - one runner holds both architectures' SDKs, so it produces
-      # both. Windows on arm64 would need its own toolchain and is not built.
-      - name: Build
+      # The CLI for this cell, by the same script a developer runs, narrowed
+      # to one platform. build.sh also clones and patches wireguard-go, which
+      # go.mod resolves the tunnel to - nothing in the root module compiles
+      # before it has run.
+      #
+      # ./build.sh rather than `sh build.sh`: it is bash and uses pipefail, and
+      # sh on Ubuntu is dash.
+      - name: CLI
+        shell: bash
+        run: PLATFORMS="$TARGET_OS/$TARGET_ARCH" ./build.sh
+
+      - name: Window
         working-directory: gui
         shell: bash
         run: |
           set -eu
           mkdir -p ../dist-gui
 
-          # The same stamp build.sh puts on the command-line client, from the
-          # same script. The window and the privileged component refuse to drive
-          # each other unless these match - deliberately, since a mismatched pair
-          # fails later and worse - so a window built without it can never talk
-          # to a component that has one.
+          # The stamp build.sh put on the CLI, from the same script. The window
+          # and the component refuse to drive each other unless these match.
           VERSION="$(cd .. && sh scripts/version.sh)"
           STAMP="-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION"
           echo "version: $VERSION"
-
-          # Written down beside the binaries, for the job that packages them
-          # somewhere else. The sign job checks this tree out afresh and builds
-          # the installer from downloaded executables; the stamp the installer
-          # records has to be theirs rather than whatever that checkout computes
-          # for itself. build-msi.sh reads it from here.
+          # Written down for the jobs that package these binaries elsewhere:
+          # the sign job rebuilds the installer from downloaded executables,
+          # and the stamp it records has to be theirs. build-msi.sh reads it.
           echo "$VERSION" > ../dist-gui/VERSION
 
-          # $1 is anything extra for the linker, the rest goes to go build. One
-          # -ldflags, composed here, because passing two silently keeps only
-          # the last.
-          build() {
-            local extra="$1"; shift
-            CGO_ENABLED=1 go build -ldflags "$STAMP $extra" "$@"
-          }
+          out="../dist-gui/encedo-wg-gui-$TARGET_OS-$TARGET_ARCH"
+          extra=""
+          if [ "$TARGET_OS" = windows ]; then
+            out="$out.exe"
+            # -H=windowsgui: no console window behind the interface.
+            extra="-H=windowsgui"
 
-          case "${{ runner.os }}" in
-            Linux)
-              # The runner's own architecture, because cgo builds for the
-              # machine it runs on. Two Linux jobs, one per architecture.
-              case "${{ runner.arch }}" in
-                X64)   goarch=amd64 ;;
-                ARM64) goarch=arm64 ;;
-              esac
-              GOARCH="$goarch" build "" \
-                -o "../dist-gui/encedo-wg-gui-linux-$goarch" .
+            # The icon and version resource, compiled in: Explorer, the task
+            # bar and the Start menu read the icon from the executable. Run
+            # from gui/ - -platform-specific ignores -o and writes into the
+            # working directory, and Go links a .syso only from the package's
+            # own directory. The first attempt ran it from the root and the
+            # window shipped with no icon and no error.
+            go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
+                -icon packaging/icon.ico \
+                -product-version "$VERSION" \
+                -platform-specific \
+                packaging/versioninfo.json
+            ls resource_windows_*.syso >/dev/null 2>&1 || {
+              echo "goversioninfo produced no .syso in $(pwd)" >&2; exit 1; }
+          fi
 
-              # The component beside the window, for the same reason it is
-              # built beside it on Windows: build-deb.sh needs both, they
-              # refuse each other unless their stamps agree, and two workflows
-              # producing them is how the stamps come to differ. From the
-              # repository root, because gui/ is its own module.
-              #
-              # The patched upstream tree first. The component imports
-              # wireguard-go and go.mod resolves that to ./wireguard-go, which
-              # only build.sh produces - and the first version of this asked
-              # for it in the packaging step, which runs after this one. The
-              # build failed with "replacement directory ./wireguard-go does
-              # not exist" while the step that would have created it sat two
-              # steps below. The Windows branch had it in the right place; the
-              # two are now the same.
-              # ./build.sh, not `sh build.sh`. It declares bash and uses
-              # `set -o pipefail`, and sh on Ubuntu is dash, which answers
-              # "Illegal option -o pipefail" and stops. It ran on the Windows
-              # runner because sh there is git-bash. Letting the shebang decide
-              # means nobody has to remember which script wants which shell.
-              if [ ! -d ../wireguard-go/device ]; then
-                ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
-              fi
-              ( cd .. && CGO_ENABLED=0 GOARCH="$goarch" go build \
-                  -ldflags "$STAMP" \
-                  -o "dist/wg-hem-linux-$goarch" ./cmd/wg-hem )
-              ;;
-            macOS)
-              for arch in arm64 amd64; do
-                GOARCH="$arch" build "" \
-                  -o "../dist-gui/encedo-wg-gui-darwin-$arch" .
-              done
-              ;;
-            Windows)
-              # The icon and version resource, compiled into the window.
-              #
-              # Windows reads the icon for Explorer, the task bar and a Start
-              # menu shortcut out of the executable, never from the running
-              # program - which is why the tray icon was right and the other
-              # three were generic. The version goes in with it, so the file
-              # can say what it is without being run.
-              #
-              # -platform-specific writes resource_windows_<arch>.syso, which
-              # is the naming Go already applies GOOS and GOARCH rules to, so
-              # the right one is linked and the rest are ignored. Generated
-              # rather than committed: it carries the stamp, which changes
-              # every commit.
-              #
-              # Run from here, which is gui/, and that is the whole of what
-              # went wrong the first time. -platform-specific ignores -o and
-              # writes into the working directory, so wrapping this in a
-              # subshell that stepped up to the repository root put four .syso
-              # files where nothing links them. Go only takes them from the
-              # directory of the package being built, so the window came out
-              # with no icon and nothing said a word.
-              go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
-                  -icon packaging/icon.ico \
-                  -product-version "$VERSION" \
-                  -platform-specific \
-                  packaging/versioninfo.json
-
-              # Said out loud, because the failure above was silent: a missing
-              # resource is a build that succeeds and an icon that is not
-              # there, found days later by somebody looking at a Start menu.
-              ls resource_windows_*.syso >/dev/null 2>&1 || {
-                echo "goversioninfo produced no .syso in $(pwd)" >&2; exit 1; }
-              # Whatever the runner is, natively: cgo means no cross-building,
-              # so the ARM64 runner produces the ARM64 window and the x64 one
-              # produces x64. runner.arch is the only thing that distinguishes
-              # the two jobs, since both call themselves Windows.
-              case "${{ runner.arch }}" in
-                X64)   goarch=amd64 ;;
-                ARM64) goarch=arm64 ;;
-                *)     echo "unknown runner architecture ${{ runner.arch }}" >&2; exit 1 ;;
-              esac
-              # -H=windowsgui suppresses the console window that would otherwise
-              # open behind the interface. Without it every launch shows a black
-              # rectangle nobody asked for.
-              GOARCH=$goarch build "-H=windowsgui" \
-                -o "../dist-gui/encedo-wg-gui-windows-$goarch.exe" .
-
-              # The component beside the window, from this tree and this
-              # stamp. It is built in ci.yml too, and that is not the same
-              # thing: the two halves refuse each other unless their stamps
-              # agree, and two workflows mean two artifacts somebody has to
-              # pair up by hand from runs they have to match by commit. That
-              # went wrong the first time it was tried. Built here they cannot
-              # disagree, because there is one checkout and one call to
-              # scripts/version.sh behind both.
-              #
-              # CGO_ENABLED=0 as build.sh uses for it: the component needs no
-              # C and a static one starts anywhere.
-              #
-              # The patched upstream tree has to exist first. The component
-              # imports wireguard-go and go.mod resolves that to ./wireguard-go,
-              # which build.sh clones and patches - so this asks build.sh for
-              # exactly that and nothing else.
-              if [ ! -d ../wireguard-go/device ]; then
-                ( cd .. && WG_PREPARE_ONLY=1 ./build.sh )
-              fi
-              # Both architectures from the x64 job, and this is what lets one
-              # job assemble both bundles. The component has no cgo, so its
-              # architecture is a variable rather than the runner's - unlike
-              # the window above, which is why the window is the half that
-              # needed a second runner at all.
-              case "${{ runner.arch }}" in
-                X64)   cli_arches="amd64 arm64" ;;
-                ARM64) cli_arches="arm64" ;;
-              esac
-              # From the repository root, not from here. gui/ is its own
-              # module with its own go.sum, and that go.sum has no entry for
-              # wireguard-go and must not gain one - deps_test.go exists to
-              # keep the tunnel out of the window. Building the component from
-              # inside gui/ resolves it against the wrong module and fails
-              # with six missing go.sum entries, which is the right answer to
-              # the wrong question.
-              for cli_arch in $cli_arches; do
-                ( cd .. && CGO_ENABLED=0 GOARCH=$cli_arch go build \
-                    -ldflags "$STAMP" \
-                    -o "dist-gui/wg-hem-windows-$cli_arch.exe" ./cmd/wg-hem )
-              done
-              ;;
-          esac
-          ls -l ../dist-gui
-
-      # Not signed here, and this is where it once was. Signing needs an OIDC
-      # token that Azure exchanges only for a job running in the "release"
-      # environment, and that environment waits for a reviewer - so putting it
-      # on this job would put every push to the branch behind a person. The
-      # build stays unsigned and ungated; the sign job in release.yml takes
-      # what this one uploads, on a tag or on request.
+          # One -ldflags, composed here: passing two silently keeps the last.
+          CGO_ENABLED=1 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" \
+            go build -ldflags "$STAMP $extra" -o "$out" .
+          ls -l ../dist ../dist-gui
 
       # The same window linked as a console program, so that running it in a
       # terminal prints what Fyne says instead of failing in silence. That is
-      # how the arm64 window's failure was read at all on 2026-09-17, the
-      # windowsgui build having no console to print to and PowerShell
-      # redirection producing empty files, and it is how the next person will
-      # re-test when there is something new to test against.
+      # how the arm64 window's failure in the VM was read at all. Kept out of
+      # dist-gui/ so that the sign job never signs it and nothing ships it.
       - name: A console copy of the window, for reading its errors
-        if: inputs.package && (runner.os == 'Windows' && runner.arch == 'ARM64')
+        if: inputs.package && matrix.goos == 'windows'
         working-directory: gui
         shell: bash
         run: |
           set -eu
-          VERSION="$(cd .. && sh scripts/version.sh)"
-          CGO_ENABLED=1 GOARCH=arm64 go build \
+          mkdir -p ../dist-diag
+          VERSION="$(cat ../dist-gui/VERSION)"
+          CGO_ENABLED=1 GOARCH="$TARGET_ARCH" go build \
             -ldflags "-X github.com/encedo/encedo-wg-hsm/internal/version.Version=$VERSION" \
-            -o ../dist-gui/encedo-wg-gui-windows-arm64-console.exe .
-
-      # A bundle somebody can install, rather than four files and a paragraph.
-      # Assembled here because this is the only job that holds both halves - the
-      # window needs cgo and the component must carry the same stamp - and
-      # because the driver has to come with them or the tunnel fails at the
-      # moment it is created.
-      # Assembled by the x64 job for both architectures, which needs saying
-      # because the ARM job is right there and does not do it.
-      #
-      # An arm64 installation is a native component and an emulated x64 window,
-      # and that is measured rather than chosen. On Windows on ARM a native
-      # arm64 process gets no OpenGL through WGL - GLFW answers "APIUnavailable:
-      # WGL: The driver does not appear to support OpenGL" before any question
-      # of which GL flavour is wanted, and Microsoft's OpenCL and OpenGL
-      # Compatibility Pack did not change it. The same machine runs the
-      # emulated x64 window without complaint. So the window ships emulated,
-      # which costs nothing for something that sits in a tray, and the
-      # component - the half on the handshake path - is native, which is where
-      # it matters.
-      #
-      # That is also why this is one job rather than two. The component is
-      # CGO_ENABLED=0 and cross-builds, so the x64 job holds both components
-      # and the only window that works; the ARM job holds a window nothing can
-      # yet display. One job, one checkout, one stamp, which is the rule the
-      # rest of this file is built around.
-      - name: Bundle
-        if: inputs.package && (runner.os == 'Windows' && runner.arch == 'X64')
-        shell: bash
-        working-directory: gui
-        run: |
-          set -eu
-          # One source of truth for both, read out of the script that has always
-          # owned them. A second copy of a checksum is a second thing to forget.
-          ver="$(sed -n 's/^WINTUN_VERSION="\(.*\)"$/\1/p' ../package-windows.sh)"
-          sum="$(sed -n 's/^WINTUN_SHA256="\(.*\)"$/\1/p' ../package-windows.sh)"
-          # Relative, and under dist-gui, for one reason: this step is bash and
-          # the next line is PowerShell, and the two do not agree on what a path
-          # is. An absolute /tmp/... is a real place to git-bash, which maps it
-          # into the MSYS tree, and nowhere at all to PowerShell - which is
-          # exactly how this failed the first time, after the download and the
-          # checksum had both succeeded. A relative path is resolved by each
-          # against the same working directory and means the same thing to both.
-          work=../dist-gui/_wintun
-          rm -rf "$work"; mkdir -p "$work"
-
-          curl -sSLf -o "$work/wintun.zip" "https://www.wintun.net/builds/wintun-${ver}.zip"
-          # Verified rather than trusted: this is redistributed to users, and a
-          # driver is the last thing to take on faith from a URL.
-          echo "${sum}  $work/wintun.zip" | sha256sum -c -
-          # Expand-Archive rather than unzip, which is not on every Windows
-          # runner image; PowerShell 5 is.
-          powershell -NoProfile -Command "Expand-Archive -Force '$work/wintun.zip' '$work/x'"
-
-          for goarch in amd64 arm64; do
-            stage="../dist-gui/encedo-wg-windows-$goarch"
-            mkdir -p "$stage"
-            # Renamed to the plain names on the way in.
-            #
-            # The component follows the bundle's architecture and the window
-            # does not: there is one window here, the x64 one, and on an arm64
-            # machine it runs emulated. The comment above this step says why.
-            # wintun.dll follows the component, since the component is what
-            # creates the adapter.
-            cp "../dist-gui/wg-hem-windows-$goarch.exe"       "$stage/wg-hem.exe"
-            cp "../dist-gui/encedo-wg-gui-windows-amd64.exe"  "$stage/encedo-wg-gui.exe"
-            cp "$work/x/wintun/bin/$goarch/wintun.dll"                "$stage/wintun.dll"
-            cp ../packaging/windows/install.ps1                        "$stage/"
-            # The icon as a file as well as a resource: the installer points the
-            # notification registration at it, and Windows wants an image there
-            # rather than an executable.
-            cp packaging/icon.ico                                      "$stage/"
-            cp ../packaging/windows/uninstall.ps1                      "$stage/"
-            cp ../LICENSE                                              "$stage/LICENSE.txt"
-            cp "$work/x/wintun/LICENSE.txt"                          "$stage/WINTUN-LICENSE.txt"
-          done
-
-          # Out of the way before the upload: it lives under dist-gui so that it
-          # is ignored by git and cleaned by the same rule as everything else
-          # here, not so that it ships.
-          rm -rf "$work"
-          ls -R ../dist-gui
-
-      # The Debian package, for the same reason the MSI exists: one file, and
-      # built where both halves are, from one tree and one stamp.
-      #
-      # It was not built here at all until now - only by hand on a developer's
-      # machine through reinstall.sh - which left Linux with nothing to download
-      # while Windows had an installer. build-deb.sh refuses a mismatched pair
-      # itself, so this is also a check on the two builds above.
-      #
-      # One package per architecture, from the job that built that architecture:
-      # the window is cgo and cannot be cross-compiled, so a .deb is only ever
-      # built where its own halves were.
-      - name: Package
-        if: inputs.package && (runner.os == 'Linux')
-        shell: bash
-        run: |
-          set -eu
-          case "${{ runner.arch }}" in
-            X64)   goarch=amd64 ;;
-            ARM64) goarch=arm64 ;;
-          esac
-          # No prepare here: the build step above has already laid down the
-          # patched upstream tree, because that is where the component is built.
-          sh packaging/linux/build-deb.sh "$goarch"
-          ls -l dist-deb/
-
-      - name: Upload the Debian packages
-        if: inputs.package && (runner.os == 'Linux')
-        uses: actions/upload-artifact@v4
-        with:
-          # The architecture is in the name for the reason it is in the window's:
-          # two Linux jobs would otherwise both upload as "encedo-wg-deb" and the
-          # second would be refused.
-          name: encedo-wg-deb-${{ runner.arch }}
-          path: dist-deb/
-          retention-days: 7
-
-      # The installer: one file to download and double-click. A script rather
-      # than a step, because the sign job builds it a second time once the
-      # binaries carry a signature and the two must not drift. The script says
-      # why this has to be Windows.
-      - name: Installer
-        if: inputs.package && (runner.os == 'Windows' && runner.arch == 'X64')
-        shell: bash
-        run: |
-          set -eu
-          for goarch in amd64 arm64; do
-            packaging/windows/build-msi.sh "$goarch" "${{ github.run_number }}"
-          done
+            -o "../dist-diag/encedo-wg-gui-windows-$TARGET_ARCH-console.exe" .
 
       # Windows 10 is one of the machines this ships to, and "will it start
-      # there" is answered by the PE header rather than by where it was built.
-      # Two fields say it: the minimum operating system version and the
-      # subsystem version, both in the optional header. Go asks for 6.1 today -
-      # Windows 7 - so there is enormous room, and that is exactly why this is
-      # worth pinning: a linker flag or a toolchain change could raise it, the
-      # artifact would still build and upload, and the first anyone would know is
-      # a machine refusing to run it with a message about the wrong version of
-      # Windows.
-      - name: The window must still start on Windows 10
-        if: runner.os == 'Windows'
+      # there" is answered by the PE header: the minimum OS version and the
+      # subsystem version. Go asks for 6.1 today, so there is room, and that
+      # is why it is pinned - a toolchain change could raise it, the build
+      # would still pass, and the first anyone would know is a machine
+      # refusing to run it.
+      - name: Everything must still start on Windows 10
+        if: matrix.goos == 'windows'
         shell: pwsh
         run: |
           $bad = $false
-          Get-ChildItem ../dist-gui/*.exe | ForEach-Object {
+          Get-ChildItem dist/*.exe, dist-gui/*.exe | ForEach-Object {
             $b = [IO.File]::ReadAllBytes($_.FullName)
             $pe = [BitConverter]::ToInt32($b, 0x3C)
             if ([Text.Encoding]::ASCII.GetString($b, $pe, 2) -ne 'PE') {
@@ -505,8 +249,6 @@ jobs:
             $ssMaj = [BitConverter]::ToUInt16($b, $opt + 48)
             $ssMin = [BitConverter]::ToUInt16($b, $opt + 50)
             "{0}: minimum OS {1}.{2}, subsystem {3}.{4}" -f $_.Name, $osMaj, $osMin, $ssMaj, $ssMin
-            # 10.0 is Windows 10. Anything above it is a binary that will not
-            # start on one of the machines this is for.
             foreach ($v in @(@($osMaj, $osMin), @($ssMaj, $ssMin))) {
               if ($v[0] -gt 10 -or ($v[0] -eq 10 -and $v[1] -gt 0)) {
                 Write-Error "$($_.Name) demands Windows $($v[0]).$($v[1]), later than Windows 10"
@@ -515,32 +257,75 @@ jobs:
             }
           }
           if ($bad) { exit 1 }
-        working-directory: gui
 
+      # The Debian package, from the cell that built both of its halves.
+      # build-deb.sh refuses a mismatched pair itself.
+      - name: Debian package
+        if: inputs.package && matrix.goos == 'linux'
+        shell: bash
+        run: |
+          set -eu
+          sh packaging/linux/build-deb.sh "$TARGET_ARCH"
+          ls -l dist-deb/
+
+      # A bundle somebody can install rather than four files and a paragraph,
+      # with the tunnel driver beside the component - without it the tunnel
+      # fails at the moment it is created. Every file is this cell's own.
+      - name: Windows bundle
+        if: inputs.package && matrix.goos == 'windows'
+        shell: bash
+        run: |
+          set -eu
+          # One source of truth for the driver, read out of the script that
+          # has always owned it.
+          ver="$(sed -n 's/^WINTUN_VERSION="\(.*\)"$/\1/p' package-windows.sh)"
+          sum="$(sed -n 's/^WINTUN_SHA256="\(.*\)"$/\1/p' package-windows.sh)"
+          # Relative, because this is bash and the extraction is PowerShell,
+          # and an absolute /tmp/... means a different place to each.
+          work=dist-gui/_wintun
+          rm -rf "$work"; mkdir -p "$work"
+          curl -sSLf -o "$work/wintun.zip" "https://www.wintun.net/builds/wintun-${ver}.zip"
+          # Redistributed to users: verified, not trusted.
+          echo "${sum}  $work/wintun.zip" | sha256sum -c -
+          powershell -NoProfile -Command "Expand-Archive -Force '$work/wintun.zip' '$work/x'"
+
+          stage="dist-gui/encedo-wg-windows-$TARGET_ARCH"
+          mkdir -p "$stage"
+          cp "dist/wg-hem-windows-$TARGET_ARCH.exe"            "$stage/wg-hem.exe"
+          cp "dist-gui/encedo-wg-gui-windows-$TARGET_ARCH.exe" "$stage/encedo-wg-gui.exe"
+          cp "$work/x/wintun/bin/$TARGET_ARCH/wintun.dll"      "$stage/wintun.dll"
+          cp packaging/windows/install.ps1                     "$stage/"
+          cp packaging/windows/uninstall.ps1                   "$stage/"
+          # The icon as a file too: the notification registration wants an
+          # image, not an executable.
+          cp gui/packaging/icon.ico                            "$stage/"
+          cp LICENSE                                           "$stage/LICENSE.txt"
+          cp "$work/x/wintun/LICENSE.txt"                      "$stage/WINTUN-LICENSE.txt"
+          rm -rf "$work"
+          ls -R dist-gui
+
+      # The installer, by a script because the sign job builds it again once
+      # the binaries in the stage carry a signature, and the two must not
+      # drift. On its own runner, so the component's stamp is checked by
+      # running it.
+      - name: Windows installer
+        if: inputs.package && matrix.goos == 'windows'
+        shell: bash
+        run: packaging/windows/build-msi.sh "$TARGET_ARCH" "${{ github.run_number }}"
+
+      # Not signed here. Signing needs an OIDC token Azure exchanges only for
+      # a job in the "release" environment, which waits for a reviewer - on
+      # this job that would put every push behind a person. release.yml signs
+      # what this uploads, on a tag or on request.
       - name: Upload
-        if: inputs.package && !(runner.os == 'Windows' && runner.arch == 'ARM64')
+        if: inputs.package
         uses: actions/upload-artifact@v4
         with:
-          # The architecture is in the name because two jobs of one operating
-          # system would otherwise upload under the same name and the second
-          # would be refused.
-          name: encedo-wg-gui-${{ runner.os }}-${{ runner.arch }}
-          path: dist-gui/
-          retention-days: 7
-
-      # The ARM job's output, under a name the signing job's pattern does not
-      # match, and deliberately so. Nothing here ships: the window it contains
-      # cannot open on the platform it was built for, and a signed copy of it
-      # would be a file somebody downloads, runs and watches do nothing. It is
-      # kept because the toolchain it proves is real and because this is what
-      # gets re-tested when Windows on ARM, Fyne or a driver changes - the
-      # console copy beside it is the one to run.
-      #
-      # What ships for arm64 is assembled by the x64 job: see the Bundle step.
-      - name: Upload the native ARM64 window, which does not ship
-        if: inputs.package && (runner.os == 'Windows' && runner.arch == 'ARM64')
-        uses: actions/upload-artifact@v4
-        with:
-          name: encedo-wg-gui-experimental-Windows-ARM64
-          path: dist-gui/
+          name: encedo-wg-${{ matrix.goos }}-${{ matrix.goarch }}
+          # Several roots, so the artifact keeps them as directories.
+          path: |
+            dist/
+            dist-gui/
+            dist-deb/
+            dist-diag/
           retention-days: 7
