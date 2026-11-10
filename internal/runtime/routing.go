@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,6 +67,37 @@ type Plan struct {
 	// endpoint this is not automatically routed around the tunnel: it may be a
 	// deliberate choice to protect HEM traffic, and it works - see ProbeHEM.
 	HEMInside bool
+
+	// resolved maps each peer endpoint as configured to the address:port it
+	// resolved to here. wireguard-go's UAPI takes an address and nothing else,
+	// so a hostname has to be settled before the peer is set - and settled
+	// once, so the address the tunnel sends to is the one that was pinned.
+	resolved map[string]netip.AddrPort
+}
+
+// UAPIEndpoint is the endpoint to hand wireguard-go for one configured as
+// endpoint: the address it resolved to while planning, or the value itself
+// when it was not a name (or was not planned).
+func (p *Plan) UAPIEndpoint(endpoint string) string {
+	if ap, ok := p.resolved[endpoint]; ok {
+		return ap.String()
+	}
+	return endpoint
+}
+
+// pick chooses the address a name is used at: the first IPv4 one when there
+// is any, because a host with both families published is not promised an IPv6
+// route from here, and the first one otherwise.
+func pick(addrs []netip.Addr) (netip.Addr, bool) {
+	for _, a := range addrs {
+		if a.Is4() {
+			return a, true
+		}
+	}
+	if len(addrs) > 0 {
+		return addrs[0], true
+	}
+	return netip.Addr{}, false
 }
 
 // PlanRouting resolves the endpoints and the HEM against the peers' AllowedIPs.
@@ -75,7 +107,7 @@ type Plan struct {
 // resolve now will not resolve better once the default route has moved - so this
 // fails rather than guessing.
 func PlanRouting(peers []Peer, hemURL string) (*Plan, error) {
-	p := &Plan{}
+	p := &Plan{resolved: map[string]netip.AddrPort{}}
 	for _, peer := range peers {
 		if peer.Endpoint == "" {
 			continue
@@ -84,6 +116,13 @@ func PlanRouting(peers []Peer, hemURL string) (*Plan, error) {
 		addrs, err := resolveHost(host)
 		if err != nil {
 			return nil, fmt.Errorf("resolving the endpoint %s: %w", host, err)
+		}
+		if _, portStr, perr := net.SplitHostPort(peer.Endpoint); perr == nil {
+			if port, cerr := strconv.ParseUint(portStr, 10, 16); cerr == nil {
+				if a, ok := pick(addrs); ok {
+					p.resolved[peer.Endpoint] = netip.AddrPortFrom(a, uint16(port))
+				}
+			}
 		}
 		for _, a := range addrs {
 			if covered(a, peers) && !containsAddr(p.Endpoints, a) {

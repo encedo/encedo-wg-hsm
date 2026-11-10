@@ -189,7 +189,7 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 9. Configure via IpcSet
-	if err := wgdev.IpcSet(buildUAPIConfig(cfg)); err != nil {
+	if err := wgdev.IpcSet(buildUAPIConfig(cfg, plan)); err != nil {
 		fatal("IpcSet: %v", err)
 	}
 
@@ -319,7 +319,7 @@ func runtimePeers(peers []Peer) []rt.Peer {
 
 // buildUAPIConfig builds the WireGuard UAPI set-operation string.
 // private_key is all-zeros - intercepted by HSM patch in SetPrivateKey.
-func buildUAPIConfig(cfg *Config) string {
+func buildUAPIConfig(cfg *Config, plan *rt.Plan) string {
 	var sb strings.Builder
 
 	sb.WriteString("private_key=" + strings.Repeat("0", 64) + "\n")
@@ -331,7 +331,7 @@ func buildUAPIConfig(cfg *Config) string {
 		peerRaw, _ := base64.StdEncoding.DecodeString(peer.PublicKey)
 		fmt.Fprintf(&sb, "public_key=%s\n", hex.EncodeToString(peerRaw))
 		if peer.Endpoint != "" {
-			fmt.Fprintf(&sb, "endpoint=%s\n", peer.Endpoint)
+			fmt.Fprintf(&sb, "endpoint=%s\n", plan.UAPIEndpoint(peer.Endpoint))
 		}
 		for _, cidr := range peer.AllowedIPs {
 			fmt.Fprintf(&sb, "allowed_ip=%s\n", cidr)

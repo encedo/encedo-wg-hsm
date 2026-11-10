@@ -32,6 +32,7 @@ import (
 	hem "github.com/encedo/hem-sdk-go"
 
 	"github.com/encedo/encedo-wg-hsm/internal/config"
+	"github.com/encedo/encedo-wg-hsm/internal/descr"
 	"github.com/encedo/encedo-wg-hsm/internal/paths"
 	"github.com/encedo/encedo-wg-hsm/internal/policy"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
@@ -404,12 +405,22 @@ func (t *Tunnel) usePeer(peer *config.Peer) error {
 		return fail(session.Fail(session.KindDevice, "%v", err))
 	}
 
-	uapi := uapiConfig(t.opts.Tree, peer, psk)
+	// The peer as wireguard-go is told it: the endpoint as the address the
+	// plan resolved and pinned, since the UAPI takes no names.
+	wire := *peer
+	if ep := plan.UAPIEndpoint(peer.Endpoint.String()); ep != peer.Endpoint.String() {
+		ap, perr := netip.ParseAddrPort(ep)
+		if perr != nil {
+			return fail(session.Fail(session.KindNetwork, "endpoint %s resolved to %q: %v", peer.Endpoint, ep, perr))
+		}
+		wire.Endpoint = descr.Endpoint{IP: ap.Addr(), Port: ap.Port()}
+	}
+	uapi := uapiConfig(t.opts.Tree, &wire, psk)
 	if t.peer != nil {
 		if msg := allowedIPsDiffer(t.peer, peer); msg != "" {
 			t.notify(News, "%s", msg)
 		}
-		uapi = uapiReplacePeer(peer, psk)
+		uapi = uapiReplacePeer(&wire, psk)
 		// Routes are added, never withdrawn: traffic is using the ones already
 		// there, and taking them back mid-flight is the more dangerous mistake.
 		if err := rt.AddRoutes(t.ifname, peer.AllowedIPs); err != nil {

@@ -242,3 +242,27 @@ func TestHostPrefix(t *testing.T) {
 		t.Errorf("hostPrefix(v6) = %s, want 2001:db8::1/128", got)
 	}
 }
+
+// wireguard-go's UAPI takes an address and nothing else: a peer stored as
+// blbx.pl:51820 failed with "ParseAddr: unexpected character" on the first run
+// against a hostname endpoint. The plan hands back the address it resolved, the
+// IPv4 one when the name has both, and leaves an address endpoint alone.
+func TestTheUAPIGetsTheResolvedAddress(t *testing.T) {
+	withResolver(t, map[string][]string{
+		"vpn.example.com": {"2001:db8::7", "198.51.100.7"},
+		"my.ence.do":      {"198.51.100.9"},
+	})
+	plan, err := PlanRouting([]Peer{
+		peer("vpn.example.com:51820", "10.99.0.0/24"),
+		peer("203.0.113.1:51821", "10.98.0.0/24"),
+	}, "https://my.ence.do")
+	if err != nil {
+		t.Fatalf("PlanRouting: %v", err)
+	}
+	if got := plan.UAPIEndpoint("vpn.example.com:51820"); got != "198.51.100.7:51820" {
+		t.Errorf("hostname endpoint = %q, want 198.51.100.7:51820", got)
+	}
+	if got := plan.UAPIEndpoint("203.0.113.1:51821"); got != "203.0.113.1:51821" {
+		t.Errorf("address endpoint = %q, want it unchanged", got)
+	}
+}
