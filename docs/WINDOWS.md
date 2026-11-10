@@ -211,7 +211,7 @@ them ported for free:
   code should say that rather than fall through a Linux-shaped check.
 - Close, minimise and the session. "The GUI is the session" holds; what a window
   manager does with the close button does not change across platforms, but the
-  minimise asymmetry recorded in `TODO.md` is a Fyne limit and will be present
+  minimise asymmetry is a Fyne limit and will be present
   here too.
 
 ## Phase 5 — packaging
@@ -448,7 +448,7 @@ downloads of the same program, one signed and one not, is worse than either.
 Also: any checksum published for these artifacts has to be taken after signing,
 because signing changes the file.
 
-**One thing gates it rather than following it.** `TODO.md` says to ask about the
+**One thing gates it rather than following it.** The plan was to ask about the
 names before the first signed release — `wg-quick-encedo` reads as a variant of
 upstream's `wg-quick`, the policy has an address for exactly that question, and
 such requests "will be trivially approved without debate". Signing a distribution

@@ -5,8 +5,7 @@ Status: settled on 2026-08-13, nothing built. Supersedes the split assumed by
 
 This describes where the tunnel runs, what crosses the boundary between an
 unprivileged window and a privileged component, and what each of the three
-platforms makes of that. It does not describe the interface itself, which is in
-`TODO.md` under *A graphical client*.
+platforms makes of that. It does not describe the interface itself.
 
 ## The rule that comes first
 
@@ -54,7 +53,7 @@ The order that follows is not a preference. `keymgmt:use:<if_kid>` **names one
 key**, so the token cannot be minted before the choice is made — enumeration
 happens first and needs only search (which a device with `allow_keysearch` answers
 without a token at all) or a read scope. The consequence for the everyday path is
-one more approval than the scope table in `TODO.md` counts, on any device holding
+one more approval than the everyday path would otherwise cost, on any device holding
 more than one identity, and that is a firmware question rather than something this
 design can arrange away.
 
@@ -88,7 +87,7 @@ the tunnel stops, the token's effective life is the session rather than its
 expiry, and the argument above stops depending on how long an expiry happens to
 be. This is a **firmware question before it is an SDK one**: the SDK has no such
 call, and neither does the endpoint table (§7) — there may be nothing to wrap. It
-is on the firmware list in `TODO.md` and unresolved. The tension to hold in view
+is a question for the firmware and unresolved. The tension to hold in view
 until it is: the interface wants eight-hour sessions so the tunnel stops dying
 mid-afternoon, and expiry is currently the *only* bound on a stolen token — those
 two pull in opposite directions, and no wording here resolves them. If revocation
@@ -206,7 +205,7 @@ This settles the one thing a capability could not cover. `resolvectl` is a
 privileged interface of its own, and a process holding `CAP_NET_ADMIN` and
 nothing else is one polkit asks a human about — an authentication dialogue in the
 middle of bringing a tunnel up. A polkit rule naming the service's user answers
-it, which is the first of the three options `TODO.md` recorded, chosen by the
+it, which is the first of the three options that were considered, chosen by the
 architecture rather than on its own merits.
 
 **Two directories, and which thing goes where has a reason on each side.**

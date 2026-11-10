@@ -332,7 +332,7 @@ func pickPeer(peers []config.Peer, choose func([]config.Peer) (string, error)) (
 // sessionLength is how long a token is asked for.
 //
 // An hour was the command line's default because a terminal is watched. A window
-// is not: TODO.md records that a session ending mid-afternoon is the complaint
+// is not: a session ending mid-afternoon is the complaint
 // this interface exists partly to answer, and the countdown it draws comes from
 // the token rather than from this number.
 var sessionLength = 8 * time.Hour

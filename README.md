@@ -106,7 +106,6 @@ carried a live tunnel. This page will say so until it has.
 - **[docs/ENCEDO-WG-CONFIGFREE-SPEC.md](docs/ENCEDO-WG-CONFIGFREE-SPEC.md)** — specification for the config-free client
 - **[docs/RELEASING.md](docs/RELEASING.md)** — build, sign, package, in that order
 - **[UPSTREAM.md](UPSTREAM.md)** — the wireguard-go relationship and how to raise the pin
-- **[TODO.md](TODO.md)** — what is left, and why each item is where it is
 
 ## Licence
 

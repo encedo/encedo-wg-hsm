@@ -1,6 +1,6 @@
 // Command gui is the skeleton of the graphical client: the flow, on a fake
 // session, so it can be run on all three platforms before any of it touches a
-// device. Nothing here talks to a HEM. See ../TODO.md, "A graphical client".
+// device. Nothing here talks to a HEM.
 package main
 
 import (

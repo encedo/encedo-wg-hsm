@@ -118,7 +118,6 @@ on Ctrl+C:  clean shutdown, interface removed
 encedo-wg-hsm/
   build.sh                        # clone upstream, apply the patch, build every binary
   UPSTREAM.md                     # the wireguard-go relationship, and how to raise the pin
-  TODO.md                         # what is left, and why each item is where it is
   hem-sdk-go/                     # git submodule -> github.com/encedo/hem-sdk-go
   _wireguard-go-encedo/           # our changes to wireguard-go, and nothing of theirs
                                   # leading _ keeps the go tool out: hsm.go references

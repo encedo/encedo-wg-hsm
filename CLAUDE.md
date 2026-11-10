@@ -340,11 +340,12 @@ identified as ANONYMOUS LOGON — the window and the probe ask for
 window runs a scripted stand-in unless given `-live`, which looked exactly like a
 working tunnel: it now says "(stand-in)" beside the state.
 
-**Still not tested:** full-tunnel routing, failover across more than one
-candidate (there is one peer in the repository), macOS, the natively built
-Windows on ARM binaries (see `docs/WINDOWS.md` on Fyne and WGL), and
-packaging for Windows — there is no installer, so the service is registered with
-`wg-hem service install` by hand. See `TODO.md` and `docs/WINDOWS.md`.
+**Full-tunnel routing and losing the device mid-tunnel were re-tested on
+firmware 1.3 on 2026-11-10.** Windows ships as a signed MSI for amd64 and arm64.
+
+**Still not tested:** failover across more than one candidate (there is one
+peer in the repository), macOS end to end, and the native arm64 window on
+Snapdragon hardware since it went into the installer. See `docs/WINDOWS.md`.
 
 ## Implemented
 
@@ -361,13 +362,22 @@ packaging for Windows — there is no installer, so the service is registered wi
 - Auth defaults: Enter = 8h + password
 - Zeroing of sensitive data (passBytes, seed, sharedSecret)
 
-## TODO
+## Open work
 
-In `TODO.md`, with the reasoning that makes each item resumable. Two entries
-there are decisions rather than omissions and are worth knowing before proposing
-either as an oversight: token refresh (expiry ends the tunnel; refreshing would
-need the passphrase to outlive the auth step) and daemonising (`up` holds the
-foreground because a daemon that restarts cannot re-authenticate).
+`TODO.md` was removed on 2026-11-10; its history is in git. What was still open:
+
+- the interactive `provision` wizard, the last missing piece of spec §10.1;
+- failover v2: a periodic health check with hysteresis (§6.4), and the
+  three-peer integration test (§9.7);
+- multi-scope tokens (firmware 1.3, DEV-436): one approval per command instead
+  of one per scope;
+- the N1 key mode with firmware 1.4.x, see `docs/KEY-MODES.md`;
+- the invite/enrolment channel for an administrator (parked).
+
+Two things are decisions rather than omissions; do not propose either as an
+oversight: token refresh (expiry ends the tunnel; refreshing would need the
+passphrase to outlive the auth step) and daemonising (`up` holds the foreground
+because a daemon that restarts cannot re-authenticate).
 
 ---
 
