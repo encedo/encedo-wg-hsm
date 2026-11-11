@@ -162,6 +162,7 @@ Flags:
 		ExpSecs:    *expHours * 3600,
 		Passphrase: readPassphrase,
 		Notify:     func(msg string) { fmt.Fprintln(os.Stderr, msg) },
+		Expect:     provision.Expect(params),
 	}.Connect(ctx)
 	if err != nil {
 		return exitFrom(err)

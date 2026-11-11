@@ -24,6 +24,10 @@ type deviceFlags struct {
 	insecure *bool
 	expHours *int
 	identity *string
+
+	// expect is what the command will ask for besides the configuration's own
+	// scopes; see session.Device.Expect. Set before load or connect.
+	expect []string
 }
 
 func addDeviceFlags(fs *flag.FlagSet) *deviceFlags {
@@ -60,6 +64,7 @@ func (d *deviceFlags) device() session.Device {
 		ExpSecs:    *d.expHours * 3600,
 		Passphrase: readPassphrase,
 		Notify:     func(msg string) { fmt.Fprintln(os.Stderr, msg) },
+		Expect:     d.expect,
 	}
 }
 

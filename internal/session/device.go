@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	hem "github.com/encedo/hem-sdk-go"
@@ -47,19 +49,33 @@ type Device struct {
 	// device, and each prod at a phone that has not answered yet. A terminal
 	// prints it, a window puts it in a status line, and a daemon logs it.
 	Notify func(string)
+
+	// Expect names the scopes the command is going to need besides the one it
+	// asks for first. Firmware 1.3 issues one token for up to eight scopes
+	// (DEV-436), so the first request carries them all: one passphrase and,
+	// with Mobile, one approval on the phone instead of one per scope. Later
+	// requests for any of them are answered from the SDK's cache.
+	//
+	// A scope that depends on a key the command has not found yet - the
+	// identity's keymgmt:use:<kid> on most paths - cannot be listed here; the
+	// configuration loader asks for it first instead, so it opens the request.
+	Expect []string
 }
 
 // Auth hands out scoped tokens, asking for the passphrase once.
 //
-// Provisioning needs four different scopes and the device issues one token per
-// scope. The SDK caches the key derived from the passphrase, so only the first
-// call pays for the passphrase and for PBKDF2; the rest are a single round trip
-// each. Wipe releases that cached key, which is why provisioning defers it.
+// Provisioning needs five different scopes. Since firmware 1.3 one token can
+// hold up to eight, so the first request carries every scope the command said
+// it would need (Device.Expect) and the SDK's cache answers the rest. The SDK
+// also caches the key derived from the passphrase, so only the first call pays
+// for the passphrase and for PBKDF2. Wipe releases that cached key, which is
+// why provisioning defers it.
 type Auth struct {
 	client  *hem.Client
 	dev     Device
 	asked   bool
 	expSecs int
+	pending []string // Device.Expect, until the first request has carried it
 }
 
 // remotePoll is how long a mobile authorisation is waited on, and how often the
@@ -78,7 +94,8 @@ func (d Device) Connect(ctx context.Context) (*hem.Client, *Auth, error) {
 	if err := client.Checkin(ctx); err != nil {
 		return nil, nil, Classify(err, KindNetwork, "checkin")
 	}
-	return client, &Auth{client: client, dev: d, expSecs: d.ExpSecs}, nil
+	return client, &Auth{client: client, dev: d, expSecs: d.ExpSecs,
+		pending: append([]string(nil), d.Expect...)}, nil
 }
 
 // Load connects and returns the authenticated configuration. Every command that
@@ -108,18 +125,32 @@ func (d Device) say(msg string) {
 
 // Token returns a token for one scope, asking whoever is watching to prove who
 // they are the first time it is needed.
+//
+// The first request also carries Device.Expect, so it may come back holding
+// more than scope; whatever the phone did not approve is asked for again, on
+// its own, when it is actually needed.
 func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
+	scopes := a.bundle(scope)
+	what := strings.Join(scopes, ", ")
+
 	if a.dev.Mobile {
-		a.dev.say("Approve on your phone: " + scope)
-		tok, err := a.client.AuthRemote(ctx, scope, hem.RemoteOpts{
+		a.dev.say("Approve on your phone: " + what)
+		opts := hem.RemoteOpts{
 			PollInterval: remotePoll,
 			PollTimeout:  remoteTimeout,
 			OnPending:    func() { a.dev.say("waiting for the phone") },
-		})
-		if err != nil {
-			return "", Classify(err, KindAuth, "authorizing %s", scope)
 		}
-		return tok, nil
+		var tok string
+		var err error
+		if len(scopes) == 1 {
+			tok, err = a.client.AuthRemote(ctx, scope, opts)
+		} else {
+			tok, err = a.client.AuthRemoteScopes(ctx, scopes, opts)
+		}
+		if err != nil {
+			return "", Classify(err, KindAuth, "authorizing %s", what)
+		}
+		return a.check(tok, scope)
 	}
 
 	var pass []byte
@@ -137,11 +168,57 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 	}
 
 	// A nil passphrase on later calls reuses the key derived for the first one.
-	tok, err := a.client.AuthPassword(ctx, pass, scope, a.expSecs)
-	if err != nil {
-		return "", Classify(err, KindAuth, "authorizing %s", scope)
+	var tok string
+	var err error
+	if len(scopes) == 1 {
+		tok, err = a.client.AuthPassword(ctx, pass, scope, a.expSecs)
+	} else {
+		tok, err = a.client.AuthPasswordScopes(ctx, pass, scopes, a.expSecs)
 	}
-	return tok, nil
+	if err != nil {
+		return "", Classify(err, KindAuth, "authorizing %s", what)
+	}
+	return a.check(tok, scope)
+}
+
+// bundle is what to ask for: scope, then on the first request everything the
+// command said it would need. A keymgmt:use: value goes first, because the
+// device attaches that key's label to the first one and the phone shows it.
+func (a *Auth) bundle(scope string) []string {
+	out := []string{scope}
+	for _, s := range a.pending {
+		if len(out) == hem.MaxScopes {
+			break
+		}
+		dup := false
+		for _, o := range out {
+			dup = dup || o == s
+		}
+		if !dup {
+			out = append(out, s)
+		}
+	}
+	a.pending = nil
+	sort.SliceStable(out, func(i, j int) bool {
+		return strings.HasPrefix(out[i], "keymgmt:use:") && !strings.HasPrefix(out[j], "keymgmt:use:")
+	})
+	return out
+}
+
+// check refuses a token that does not hold the scope it was asked for, which
+// happens when the phone approved only part of a request. The device would
+// answer the call with a 403 that names nothing; this names the scope.
+func (a *Auth) check(tok, scope string) (string, error) {
+	held := hem.TokenScopes(tok)
+	if held == nil {
+		return tok, nil // unreadable: let the device decide
+	}
+	for _, h := range held {
+		if h == scope {
+			return tok, nil
+		}
+	}
+	return "", Fail(KindAuth, "the approval did not include %s", scope)
 }
 
 // Wipe drops the derived key. A session is short-lived next to a tunnel, but it

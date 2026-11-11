@@ -232,8 +232,10 @@ func TestVerifyNeedsNoTokenWhenSearchIsOpen(t *testing.T) {
 	if strings.Contains(scopes, "keymgmt:search") {
 		t.Errorf("a device that answers an open search should not be asked for a search token: %s", scopes)
 	}
-	if !strings.Contains(scopes, "keymgmt:get") || !strings.Contains(scopes, "keymgmt:use:"+f.ifKID) {
-		t.Errorf("scopes = %s, want keymgmt:get and keymgmt:use:<if>", scopes)
+	// One request for both, the identity's scope first so the phone shows
+	// which key it is being asked about.
+	if want := "keymgmt:use:" + f.ifKID + "+keymgmt:get"; scopes != want {
+		t.Errorf("scopes = %s, want the single request %s", scopes, want)
 	}
 }
 

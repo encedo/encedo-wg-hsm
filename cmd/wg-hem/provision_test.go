@@ -180,11 +180,19 @@ func (f *fakeHEM) serve(w http.ResponseWriter, r *http.Request) {
 		if ejwt, ok := body["auth"].(string); ok {
 			if parts := strings.Split(ejwt, "."); len(parts) == 3 {
 				if payload, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
+					// One entry per request: a multi-scope request
+					// (DEV-436) is recorded as its values joined by '+'.
 					var claims struct {
-						Scope string `json:"scope"`
+						Scope json.RawMessage `json:"scope"`
 					}
 					_ = json.Unmarshal(payload, &claims)
-					f.scopes = append(f.scopes, claims.Scope)
+					var one string
+					var many []string
+					if json.Unmarshal(claims.Scope, &one) == nil {
+						f.scopes = append(f.scopes, one)
+					} else if json.Unmarshal(claims.Scope, &many) == nil {
+						f.scopes = append(f.scopes, strings.Join(many, "+"))
+					}
 				}
 			}
 		}
@@ -460,10 +468,13 @@ func TestProvisionWritesAnAuthenticatedTree(t *testing.T) {
 		t.Errorf("%d hmac/verify calls, want 1 - the written tree must be read back", len(f.verifies))
 	}
 
-	// Only the authorities the job needs, one token each.
-	// keymgmt:get pays for the check that a peer is not already in the device,
-	// which has to happen before an import that would be refused anyway.
-	wantScopes := []string{"keymgmt:gen", "keymgmt:use:" + f.ifKID, "keymgmt:get", "keymgmt:imp", "keymgmt:upd"}
+	// Only the authorities the job needs, in two requests (DEV-436): the first
+	// carries everything known up front, the second the new key's own scope,
+	// whose KID is the device's answer to the first. keymgmt:get pays for the
+	// check that a peer is not already in the device, which has to happen
+	// before an import that would be refused anyway. No keymgmt:del: that is
+	// asked for only to clean up a run that failed.
+	wantScopes := []string{"keymgmt:gen+keymgmt:get+keymgmt:imp+keymgmt:upd", "keymgmt:use:" + f.ifKID}
 	if strings.Join(f.scopes, ",") != strings.Join(wantScopes, ",") {
 		t.Errorf("scopes = %v, want %v", f.scopes, wantScopes)
 	}

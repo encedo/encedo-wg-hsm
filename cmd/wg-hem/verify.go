@@ -38,6 +38,7 @@ Flags:
 	}
 
 	ctx := context.Background()
+	dev.expect = []string{"keymgmt:get"}
 	_, auth, tree, err := dev.load(ctx)
 	if err != nil {
 		return err

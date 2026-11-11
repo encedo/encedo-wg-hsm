@@ -60,6 +60,7 @@ A peer that never answers is reported and another is offered.
 	}
 
 	ctx := context.Background()
+	dev.expect = []string{"keymgmt:get"}
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {
 		return err

@@ -59,6 +59,23 @@ type Params struct {
 	Adopt bool
 }
 
+// Expect is what a run with these parameters will ask the device for, so that
+// one approval can cover it (session.Device.Expect): the peers' keys read and
+// imported, the identity key created or - when it is named - used, and the
+// records written. keymgmt:del is left out on purpose: it is asked for only to
+// remove an identity key this run created and could not finish, and a token
+// that can delete keys should not exist on the chance of that.
+//
+// A new identity key's own keymgmt:use:<kid> cannot be in it, since the KID is
+// the device's answer to keymgmt:gen; that is the second approval.
+func Expect(p Params) []string {
+	scopes := []string{"keymgmt:get", "keymgmt:imp", "keymgmt:upd"}
+	if p.KID == "" {
+		return append(scopes, "keymgmt:gen")
+	}
+	return append([]string{"keymgmt:use:" + p.KID}, scopes...)
+}
+
 // Result is what a caller has to do something with afterwards: hand the public
 // key to whoever runs the server, and show the pre-shared key once if there is
 // one to show.

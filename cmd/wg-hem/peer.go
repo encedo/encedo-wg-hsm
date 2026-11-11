@@ -78,6 +78,8 @@ func peerAdd(args []string) error {
 	defer zero(pskBytes)
 
 	ctx := context.Background()
+	// Reads the keys, may import the new one, re-signs the tree.
+	dev.expect = []string{"keymgmt:get", "keymgmt:imp", "keymgmt:upd"}
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {
 		return err
@@ -174,6 +176,10 @@ func peerRemove(args []string) error {
 	}
 
 	ctx := context.Background()
+	dev.expect = []string{"keymgmt:get", "keymgmt:upd"}
+	if *deleteKey {
+		dev.expect = append(dev.expect, "keymgmt:del")
+	}
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {
 		return err
@@ -245,6 +251,7 @@ func peerUpdate(args []string) error {
 	}
 
 	ctx := context.Background()
+	dev.expect = []string{"keymgmt:get", "keymgmt:upd"}
 	client, auth, tree, err := dev.load(ctx)
 	if err != nil {
 		return err

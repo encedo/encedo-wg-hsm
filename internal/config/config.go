@@ -90,7 +90,17 @@ func Load(ctx context.Context, c *hem.Client, tok TokenFunc, choose ChooseFunc) 
 // on, which is why the choosing lives entirely above it.
 func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEntry, ring keyring) (*Tree, error) {
 	t := &Tree{IfKID: entry.KID, IfLabel: entry.Label}
-	var err error
+
+	// The identity's own scope is asked for first, before the public keys are
+	// read, although it is used last. This is the first point at which its KID
+	// is known, and the first token request is the one that carries whatever
+	// else the command expects (session.Device.Expect): asking here makes one
+	// approval cover the key, the reads and the command's own writes, and puts
+	// keymgmt:use:<kid> at the head of it, where the phone shows the key's label.
+	useTok, err := tok(ctx, "keymgmt:use:"+t.IfKID)
+	if err != nil {
+		return nil, err
+	}
 
 	// What the device actually returns, kept because it is the evidence for the
 	// one failure nobody diagnoses correctly on their own - see explainSizes.
@@ -160,10 +170,6 @@ func loadFrom(ctx context.Context, c *hem.Client, tok TokenFunc, entry hem.KeyEn
 		records = append(records, mac.PeerRecord{PubKey: p.PubKey, Descr: p.Raw})
 	}
 
-	useTok, err := tok(ctx, "keymgmt:use:"+t.IfKID)
-	if err != nil {
-		return nil, err
-	}
 	if err := mac.Verify(ctx, c, useTok, t.IfKID, t.IfPubKey, t.IfRaw, records); err != nil {
 		// The one place where the cause can be named rather than guessed at.
 		// mac.Verify can only offer "if the appliance stores the other size";

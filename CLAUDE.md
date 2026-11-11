@@ -369,8 +369,6 @@ Snapdragon hardware since it went into the installer. See `docs/WINDOWS.md`.
 - the interactive `provision` wizard, the last missing piece of spec §10.1;
 - failover v2: a periodic health check with hysteresis (§6.4), and the
   three-peer integration test (§9.7);
-- multi-scope tokens (firmware 1.3, DEV-436): one approval per command instead
-  of one per scope;
 - the N1 key mode with firmware 1.4.x, see `docs/KEY-MODES.md`;
 - the invite/enrolment channel for an administrator (parked).
 
@@ -423,6 +421,15 @@ because a daemon that restarts cannot re-authenticate).
   public key, `keymgmt:use:<KID>` grants use of that one key, `keymgmt:upd` changes a
   descr, `keymgmt:del` removes a key. Provisioning holds the first three and asks for the
   fourth only to remove an identity key its own run created and could not finish.
+- **One token holds up to eight scopes (firmware 1.3, DEV-436), so a command costs
+  one approval.** Each command lists what it will need in `session.Device.Expect`,
+  and the first token request carries all of it; the loader asks for
+  `keymgmt:use:<identity>` first so it leads the array and the phone shows the key's
+  label. `up`, `verify` and `peer` are one approval; `provision` is two, because a
+  new key's KID is the device's answer to `keymgmt:gen`. A phone may approve part of
+  a request: the token says what it holds and `Auth` refuses one without the scope
+  asked for. The window is unchanged - it has no phone path, and the token it hands
+  the privileged component stays `keymgmt:use:<kid>` alone.
 - **Firmware 1.3 returns the raw ECDH secret only with the `raw_ecdh_enabled`
   policy**, set once at initialisation (Encedo Manager) and never changeable
   afterwards; without it `POST /api/crypto/ecdh` with no `alg` answers 403.
