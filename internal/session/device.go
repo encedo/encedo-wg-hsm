@@ -78,6 +78,7 @@ type Auth struct {
 	asked   bool
 	expSecs int
 	pending []string // Device.Expect, until the first request has carried it
+	held    []string // tokens this Auth has been given, newest last
 }
 
 // remotePoll is how long a mobile authorisation is waited on, and how often the
@@ -196,6 +197,13 @@ func (d Device) say(msg string) {
 // more than scope; whatever the phone did not approve is asked for again, on
 // its own, when it is actually needed.
 func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
+	// A token already in hand that holds the scope is the answer, and nobody
+	// is asked anything. The SDK would find it in its cache too, but only after
+	// the line below had told the user to approve on their phone - which on the
+	// first Mac run read as three approvals for one.
+	if tok := a.holding(scope); tok != "" {
+		return tok, nil
+	}
 	scopes := a.bundle(scope)
 	what := strings.Join(scopes, ", ")
 
@@ -227,7 +235,7 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 			return "", Classify(err, KindAuth, "authorizing %s", what)
 		}
 		a.sayExpiry(tok)
-		return a.check(tok, scope)
+		return a.keep(a.check(tok, scope))
 	}
 
 	var pass []byte
@@ -255,7 +263,32 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 	if err != nil {
 		return "", Classify(err, KindAuth, "authorizing %s", what)
 	}
-	return a.check(tok, scope)
+	return a.keep(a.check(tok, scope))
+}
+
+// holding returns a token this Auth was given that holds scope and has not
+// expired by this computer's clock, with the same margin the SDK keeps.
+func (a *Auth) holding(scope string) string {
+	for i := len(a.held) - 1; i >= 0; i-- {
+		tok := a.held[i]
+		if exp := hem.TokenExpiry(tok); !exp.IsZero() && time.Until(exp) < 5*time.Second {
+			continue
+		}
+		for _, s := range hem.TokenScopes(tok) {
+			if s == scope {
+				return tok
+			}
+		}
+	}
+	return ""
+}
+
+// keep remembers a token that was accepted, for holding.
+func (a *Auth) keep(tok string, err error) (string, error) {
+	if err == nil {
+		a.held = append(a.held, tok)
+	}
+	return tok, err
 }
 
 // sayExpiry says how long the phone approved the session for. The phone sets
@@ -322,6 +355,9 @@ func (a *Auth) check(tok, scope string) (string, error) {
 func (a *Auth) Wipe() {
 	if a != nil && a.client != nil {
 		a.client.ClearKeys()
+	}
+	if a != nil {
+		a.held = nil
 	}
 }
 

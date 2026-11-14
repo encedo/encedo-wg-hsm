@@ -3,8 +3,11 @@ package session
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	hem "github.com/encedo/hem-sdk-go"
 )
@@ -144,5 +147,45 @@ func TestMobileWithoutAPairedApp(t *testing.T) {
 	dev.Passphrase = nil
 	if _, err := dev.settleMobile(pairingNone); err == nil || KindOf(err) != KindAuth || !errors.Is(err, ErrNoPhone) {
 		t.Errorf("no app and no passphrase: %v, want an authentication fault", err)
+	}
+}
+
+// fakeJWT is enough of a token for TokenScopes and TokenExpiry to read.
+func fakeJWT(t *testing.T, scopes []string, exp time.Time) string {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"scope": scopes, "exp": exp.Unix()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc := base64.RawURLEncoding.EncodeToString
+	return enc([]byte(`{"alg":"none"}`)) + "." + enc(payload) + ".sig"
+}
+
+// A scope a token in hand already holds is answered from it: no passphrase, no
+// "approve on your phone", no request. On the first Mac run the line went out
+// for every scope of a token the phone had approved once, and read as three
+// approvals.
+func TestAHeldScopeAsksNobody(t *testing.T) {
+	var said []string
+	a := deadAuth(Device{Mobile: true, Notify: func(s string) { said = append(said, s) },
+		Passphrase: func() ([]byte, error) { t.Error("the passphrase was asked for"); return nil, nil }})
+	tok := fakeJWT(t, []string{"keymgmt:use:abc", "keymgmt:get"}, time.Now().Add(time.Hour))
+	a.held = []string{tok}
+
+	for _, scope := range []string{"keymgmt:get", "keymgmt:use:abc"} {
+		got, err := a.Token(context.Background(), scope)
+		if err != nil || got != tok {
+			t.Errorf("%s: got %q, %v - want the held token", scope, got, err)
+		}
+	}
+	if len(said) != 0 {
+		t.Errorf("said %q for scopes already held", said)
+	}
+
+	// Expired, it is not an answer: the request goes out (and fails here, at a
+	// dead address).
+	a.held = []string{fakeJWT(t, []string{"keymgmt:get"}, time.Now().Add(-time.Minute))}
+	if _, err := a.Token(context.Background(), "keymgmt:get"); err == nil {
+		t.Error("an expired token was handed out")
 	}
 }

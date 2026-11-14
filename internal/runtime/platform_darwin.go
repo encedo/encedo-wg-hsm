@@ -53,7 +53,13 @@ func Up(ifname string, addrs []netip.Prefix) error {
 	return run("ifconfig", ifname, "up")
 }
 
+// Down takes the link down. A utun exists only while the descriptor that
+// created it is open, so once the tunnel has closed it there is nothing left to
+// take down - and asking printed "interface utun4 does not exist" at every exit.
 func Down(ifname string) error {
+	if _, err := net.InterfaceByName(ifname); err != nil {
+		return nil
+	}
 	return run("ifconfig", ifname, "down")
 }
 

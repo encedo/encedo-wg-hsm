@@ -444,6 +444,12 @@ because a daemon that restarts cannot re-authenticate).
   token handed to the privileged component holds both (decided 2026-11-14, see
   docs/ARCHITECTURE-GUI.md, "How many tokens: one"). Import is two approvals,
   Renew one. While a phone is asked, `Notify` counts down the seconds left.
+  **A phone-approved session lasts what the phone grants, not `--exp`**: one hour
+  on 2026-11-14 (the Authenticator sets `exp` in its reply), so a tunnel started
+  with `--mobile` ends after an hour. The client says "Approved until ..." after
+  each approval. A scope a held token already covers is answered from it with no
+  prompt - the first Mac run printed "Approve on your phone" three times for one
+  approval.
 - **Firmware 1.3 returns the raw ECDH secret only with the `raw_ecdh_enabled`
   policy**, set once at initialisation (Encedo Manager) and never changeable
   afterwards; without it `POST /api/crypto/ecdh` with no `alg` answers 403.
