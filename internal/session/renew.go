@@ -18,10 +18,10 @@ import (
 // session nobody renews still ends when the device said it would. The window
 // has done the same since its Renew button; this is the terminal's version.
 //
-// It matters most for the phone. The Authenticator app grants an hour
-// (the firmware sets it, see CLAUDE.md, "A phone-approved session"), and without
-// this a tunnel started with --mobile ended after sixty minutes however long
-// it had been asked to run.
+// It matters most for the phone. The session lasts the period picked on the
+// phone's request screen, an hour unless somebody taps another (see CLAUDE.md,
+// "A phone-approved session"), and without this a tunnel started with --mobile
+// ended then, however long it had been asked to run.
 type Renewal struct {
 	// Ask gets a new token from the person, the same way the first was got.
 	Ask func(ctx context.Context) (string, error)

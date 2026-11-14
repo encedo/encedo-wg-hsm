@@ -54,9 +54,9 @@ On startup you will be prompted for:
 - With the password: session duration in hours — press Enter for default **8h**
 
 Just pressing Enter twice starts a standard 8h password session. With mobile
-push there is no duration to give: the phone decides how long the session it
-approves lasts (an hour, as the Encedo Authenticator answered on 2026-11-14), and
-the client prints when it ends. One approval covers both scopes. The same holds
+push there is no duration to give: the Encedo Authenticator asks on its request
+screen, "For how long" - 15 min, 1 h (preselected), 8 h or 24 h - and the client
+prints when the session ends. Tap 8 h for a working day. One approval covers both scopes. The same holds
 for `wg-hem --mobile`, whose `--session` applies to the passphrase only.
 
 Five minutes before a session ends, both clients ask again the same way: a new

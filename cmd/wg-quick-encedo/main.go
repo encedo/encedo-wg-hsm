@@ -466,7 +466,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 			return tokenPair{}, err
 		}
 		if exp := hem.TokenExpiry(tok); !exp.IsZero() {
-			fmt.Fprintf(os.Stderr, "Approved until %s - the phone sets how long a session lasts.\n",
+			fmt.Fprintf(os.Stderr, "Approved until %s - the period picked on the phone.\n",
 				exp.Local().Format("15:04:05"))
 		}
 		pair := tokenPair{ecdh: tok, mobile: true}

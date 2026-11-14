@@ -450,9 +450,12 @@ let it end. With no terminal and no phone the session still just ends.
   token handed to the privileged component holds both (decided 2026-11-14, see
   docs/ARCHITECTURE-GUI.md, "How many tokens: one"). Import is two approvals,
   Renew one. While a phone is asked, `Notify` counts down the seconds left.
-  **A phone-approved session lasts what the phone grants, not `--exp`**: one hour
-  on 2026-11-14 (the firmware sets `exp` in ext/request), so a tunnel started
-  with `--mobile` asks the phone again five minutes before the hour is up. The client says "Approved until ..." after
+  **A phone-approved session lasts the period picked on the phone, not `--session`**:
+  the Authenticator's request screen offers 15 min, 1 h (preselected), 8 h and 24 h,
+  puts `exp` in its authreply, and ext/token copies it into the token. The client
+  cannot ask for a length (ext/request reads no `exp`; docs/FIRMWARE-REQUESTS.md
+  item 1), so a tunnel started with `--mobile` asks the phone again five minutes
+  before the end. The client says "Approved until ..." after
   each approval. A scope a held token already covers is answered from it with no
   prompt - the first Mac run printed "Approve on your phone" three times for one
   approval.
