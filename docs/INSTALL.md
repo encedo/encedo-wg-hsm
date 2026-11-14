@@ -8,16 +8,23 @@ client that keeps a file. For `wg-hem`, which keeps no file at all, see
 ## Option A — download a pre-built binary
 
 From the [releases page](https://github.com/encedo/encedo-wg-hsm/releases). Each
-release carries both clients for six platforms:
+release carries two downloads for each of six platforms:
+`wg-hem-gui-<platform>` - the window with both clients, as a `.deb`, `.msi` or,
+on macOS, a `.zip` - and `wg-hem-cli-<platform>`, the two clients alone, as a
+`.tar.gz` (a `.zip` on Windows). This page is about the second.
 
-| Suffix | Platform |
+| Platform | Suffix |
 |---|---|
-| `-linux-amd64` | Linux x86\_64 |
-| `-linux-arm64` | Linux ARM64 (Raspberry Pi, Graviton) |
-| `-darwin-amd64` | macOS Intel |
-| `-darwin-arm64` | macOS Apple Silicon |
-| `-windows-amd64.exe` | Windows x86\_64 |
-| `-windows-arm64.exe` | Windows ARM64 |
+| Linux x86\_64 | `-linux-amd64` |
+| Linux ARM64 (Raspberry Pi, Graviton) | `-linux-arm64` |
+| macOS Intel | `-darwin-amd64` |
+| macOS Apple Silicon | `-darwin-arm64` |
+| Windows x86\_64 | `-windows-amd64` |
+| Windows ARM64 | `-windows-arm64` |
+
+```bash
+tar xzf wg-hem-cli-linux-arm64.tar.gz    # wg-hem-cli-linux-arm64/{wg-hem,wg-quick-encedo}
+```
 
 **Firmware 1.3 or later.** The configuration records are 128 bytes, and the
 module has to be initialised with raw ECDH enabled (the `raw_ecdh_enabled`
@@ -27,7 +34,7 @@ checks it before it writes anything. A configuration written by an older build
 for the 64-byte firmware can not be read; remove it with `wg-hem wipe` and
 provision again.
 
-**Windows comes as a bundle.** `encedo-wg-windows-<arch>.zip` holds both clients,
+**Windows comes with its driver.** `wg-hem-cli-windows-<arch>.zip` holds both clients,
 the `wintun.dll` they need, and the licences of both — unpack it and everything
 is in one directory, which is where the DLL has to be. Wintun is redistributed
 unmodified and with its licence, as clause 3(d) of that licence provides for
@@ -59,7 +66,7 @@ and the commit it came from.
 **1. Place the binary**
 
 ```bash
-sudo cp wg-quick-encedo-linux-amd64 /usr/local/bin/wg-quick-encedo
+sudo cp wg-hem-cli-linux-amd64/wg-quick-encedo /usr/local/bin/wg-quick-encedo
 sudo chmod +x /usr/local/bin/wg-quick-encedo
 ```
 
@@ -118,7 +125,7 @@ wg-quick-encedo up wg1 /etc/wireguard/wg1.conf
 **1. Place the binary**
 
 ```bash
-sudo cp wg-quick-encedo-darwin-arm64 /usr/local/bin/wg-quick-encedo
+sudo cp wg-hem-cli-darwin-arm64/wg-quick-encedo /usr/local/bin/wg-quick-encedo
 sudo chmod +x /usr/local/bin/wg-quick-encedo
 ```
 
@@ -143,7 +150,7 @@ sudo wg-quick-encedo up wg1 /etc/wireguard/wg1.conf
 
 **1. Unpack the bundle**
 
-`encedo-wg-windows-amd64.zip` from the releases page already contains both
+`wg-hem-cli-windows-amd64.zip` from the releases page already contains both
 clients and `wintun.dll`. Extract it to `C:\WireGuard` and skip to step 3 —
 nothing else is needed.
 
@@ -155,9 +162,9 @@ executable, or run the WireGuard installer from
 [wireguard.com](https://www.wireguard.com/install/), which registers it
 system-wide; the GUI application itself is not needed.
 
-**2. Place the binary** (only if you did not use the bundle)
+**2. Place the binary** (only if you built it yourself)
 
-Copy `wg-quick-encedo-windows-amd64.exe` to `C:\WireGuard\wg-quick-encedo.exe`
+Copy `dist/wg-quick-encedo-windows-amd64.exe` to `C:\WireGuard\wg-quick-encedo.exe`
 (or any location in PATH).
 
 **3. Create config** — same format as Linux, save to `C:\WireGuard\wg1.conf`

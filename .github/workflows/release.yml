@@ -279,6 +279,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      # For LICENSE, which goes into every archive. Nothing is built here.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: LICENSE
+          sparse-checkout-cone-mode: false
+
       # Linux and macOS go out as built; nothing on them is signed yet.
       - name: Download the Linux builds
         uses: actions/download-artifact@v8
@@ -300,28 +307,62 @@ jobs:
           name: encedo-wg-windows-signed
           path: in/windows
 
+      # Two kinds of download, one name each, the same on every platform:
+      #
+      #   wg-hem-gui-<os>-<arch>.<ext>   the window with both command-line
+      #                                  clients: .deb, .msi, and on macOS a
+      #                                  .zip until there is a .pkg
+      #   wg-hem-cli-<os>-<arch>.<ext>   wg-hem and wg-quick-encedo alone:
+      #                                  .tar.gz, or .zip on Windows with
+      #                                  wintun.dll beside them
+      #
+      # No version in the names: it is inside every package, and a name that
+      # does not change is a link that does not break. Windows files are the
+      # signed ones. An artifact loses the executable bit, so it is put back
+      # before anything is archived.
       - name: Attach
         run: |
           set -euo pipefail
-          mkdir out
-          # What a release carries, by name, for each of the six cells: the
-          # GUI as a package (.deb, .msi) or, on macOS, as the program itself,
-          # and the command-line clients loose. Windows files are the signed
-          # ones; the Windows window ships only inside its installer.
-          cp in/dist-deb/encedo-wg_*_amd64.deb             out/
-          cp in/dist-deb/encedo-wg_*_arm64.deb             out/
-          cp in/dist-gui/encedo-wg-gui-darwin-amd64        out/
-          cp in/dist-gui/encedo-wg-gui-darwin-arm64        out/
-          cp in/windows/encedo-wg-amd64.msi                out/
-          cp in/windows/encedo-wg-arm64.msi                out/
-          for cmd in wg-hem wg-quick-encedo; do
-            for p in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64; do
-              cp "in/dist/$cmd-$p"                         out/
+          mkdir out stage
+          one() { # exactly one file matches, or the release is not what it says
+            set -- $1
+            [ $# -eq 1 ] && [ -f "$1" ] || { echo "want one file, got: $*" >&2; exit 1; }
+            echo "$1"
+          }
+          cli() { # cli <os> <arch> <dir holding the two clients> <suffix>
+            local d="stage/wg-hem-cli-$1-$2"
+            mkdir -p "$d"
+            cp "$3/wg-hem-$1-$2$4"          "$d/wg-hem$4"
+            cp "$3/wg-quick-encedo-$1-$2$4" "$d/wg-quick-encedo$4"
+            cp LICENSE "$d/"
+            chmod 755 "$d"/wg-*
+          }
+          for a in amd64 arm64; do
+            cp "$(one "in/dist-deb/encedo-wg_*_$a.deb")" "out/wg-hem-gui-linux-$a.deb"
+            cp "in/windows/encedo-wg-$a.msi"             "out/wg-hem-gui-windows-$a.msi"
+
+            d="stage/wg-hem-gui-darwin-$a"
+            mkdir -p "$d"
+            cp "in/dist-gui/encedo-wg-gui-darwin-$a"    "$d/encedo-wg-gui"
+            cp "in/dist/wg-hem-darwin-$a"               "$d/wg-hem"
+            cp "in/dist/wg-quick-encedo-darwin-$a"      "$d/wg-quick-encedo"
+            cp LICENSE "$d/"
+            chmod 755 "$d"/encedo-wg-gui "$d"/wg-*
+            ( cd stage && zip -qry "../out/wg-hem-gui-darwin-$a.zip" "wg-hem-gui-darwin-$a" )
+
+            for os in linux darwin; do
+              cli "$os" "$a" in/dist ""
+              tar -C stage -czf "out/wg-hem-cli-$os-$a.tar.gz" "wg-hem-cli-$os-$a"
             done
-            for a in amd64 arm64; do
-              cp "in/windows/$cmd-windows-$a.exe"          out/
-            done
+            cli windows "$a" in/windows .exe
+            # Without the driver beside them the clients fail the moment the
+            # tunnel is created. WireGuard LLC's, unmodified, with its licence.
+            cp "in/windows/encedo-wg-windows-$a/wintun.dll"         "stage/wg-hem-cli-windows-$a/"
+            cp "in/windows/encedo-wg-windows-$a/WINTUN-LICENSE.txt" "stage/wg-hem-cli-windows-$a/"
+            ( cd stage && zip -qr "../out/wg-hem-cli-windows-$a.zip" "wg-hem-cli-windows-$a" )
           done
+          ls -l out
+          [ "$(ls out | wc -l)" -eq 12 ] || { echo "expected 12 files in the release" >&2; exit 1; }
           ( cd out && sha256sum * > SHA256SUMS && cat SHA256SUMS )
           gh release upload "$GITHUB_REF_NAME" out/* --clobber --repo "$GITHUB_REPOSITORY"
           echo "attached to the draft for $GITHUB_REF_NAME - publish it by hand"

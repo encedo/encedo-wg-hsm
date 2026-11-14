@@ -29,17 +29,21 @@ cannot be mistaken for a tunnel.</sub></p>
 
 ## Install in three steps
 
-**Windows.** Download `encedo-wg-<arch>.msi` from the
+Every platform has two downloads: `wg-hem-gui-<os>-<arch>` is the window with
+both command-line clients, `wg-hem-cli-<os>-<arch>` the command-line clients
+alone.
+
+**Windows.** Download `wg-hem-gui-windows-<arch>.msi` from the
 [releases page](https://github.com/encedo/encedo-wg-hsm/releases), run it, plug
 in the module. The installer places the window, the privileged service and
 `wintun.dll` together, which is where they have to be.
 
-**Linux.** Download the `.deb` from the same page and install it, plug in the
+**Linux.** Download `wg-hem-gui-linux-<arch>.deb` from the same page and install it, plug in the
 module, and start `encedo-wg` from the desktop menu. The package brings the
 service, the tmpfiles entry and the polkit rule that lets the tunnel set DNS.
 
 ```bash
-sudo apt install ./encedo-wg_<version>_<arch>.deb
+sudo apt install ./wg-hem-gui-linux-<arch>.deb
 ```
 
 Packages are built for both `amd64` and `arm64`.

@@ -22,7 +22,11 @@ DEBVER="$(printf '%s' "$VERSION" | tr '+' '~')"
 
 CLI="dist/wg-hem-linux-${ARCH}"
 GUI="dist-gui/encedo-wg-gui-linux-${ARCH}"
-for f in "$CLI" "$GUI"; do
+# The config-file client rides along: whoever installs the window has both
+# command-line clients too, as on every platform. It has no stamp check of its
+# own - it talks to no other half - so it is only required to exist.
+QUICK="dist/wg-quick-encedo-linux-${ARCH}"
+for f in "$CLI" "$GUI" "$QUICK"; do
 	[ -f "$ROOT/$f" ] || { echo "missing $f - see the comment at the top" >&2; exit 1; }
 done
 
@@ -61,6 +65,7 @@ trap 'rm -rf "$PKG"' EXIT
 
 install -Dm755 "$ROOT/$CLI" "$PKG/usr/bin/wg-hem"
 install -Dm755 "$ROOT/$GUI" "$PKG/usr/bin/encedo-wg-gui"
+install -Dm755 "$ROOT/$QUICK" "$PKG/usr/bin/wg-quick-encedo"
 
 install -Dm644 "$ROOT/packaging/linux/encedo-wg.service"        "$PKG/lib/systemd/system/encedo-wg.service"
 install -Dm644 "$ROOT/packaging/linux/wireguard.conf"           "$PKG/usr/lib/tmpfiles.d/wireguard.conf"

@@ -17,16 +17,19 @@ Three workflows, in the shape encedo-chat uses:
   Release, builds everything, signs Windows behind a reviewer, and attaches
   the release's files to the draft. Publishing the draft is done by hand.
 
-What the draft gets, for each of the six cells:
+What the draft gets: two downloads per platform, named by one scheme.
 
-| | amd64 | arm64 |
+| | GUI: the window and both clients | CLI: `wg-hem` and `wg-quick-encedo` |
 |---|---|---|
-| Linux | `.deb`, `wg-hem`, `wg-quick-encedo` | the same |
-| macOS | `encedo-wg-gui-darwin-*`, `wg-hem`, `wg-quick-encedo` | the same |
-| Windows | `encedo-wg-amd64.msi`, `wg-hem`, `wg-quick-encedo` (`.exe`, signed) | the same, arm64 |
+| Linux | `wg-hem-gui-linux-<arch>.deb` | `wg-hem-cli-linux-<arch>.tar.gz` |
+| macOS | `wg-hem-gui-darwin-<arch>.zip` | `wg-hem-cli-darwin-<arch>.tar.gz` |
+| Windows | `wg-hem-gui-windows-<arch>.msi` | `wg-hem-cli-windows-<arch>.zip`, with `wintun.dll` |
 
-and `SHA256SUMS` over all of it. The Windows window ships only inside its
-installer; every Windows file in a release is signed.
+`<arch>` is `amd64` or `arm64`, so twelve files, and `SHA256SUMS` over them.
+The names carry no version - it is inside every package - so a link to a file
+stays the same from one release to the next. The Debian package is still called
+`encedo-wg` to `apt`; only the file is named for the download. Every Windows
+file in a release is signed. macOS is a `.zip` until there is a signed `.pkg`.
 
 ## The order, which matters more than it looks
 

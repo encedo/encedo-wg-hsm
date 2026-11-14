@@ -109,6 +109,15 @@
       </Component>
 
       <!--
+        The config-file client, so that the installer carries both command-line
+        clients as the packages on the other platforms do. Not on PATH, like
+        wg-hem beside it; it needs an elevated prompt to bring a tunnel up.
+      -->
+      <Component Id="QuickClient" Guid="*">
+        <File Id="wg_quick" Source="$(var.Payload)/wg-quick-encedo.exe" KeyPath="yes" />
+      </Component>
+
+      <!--
         Redistributed unmodified and deliberately not signed by us: it arrives
         signed by WireGuard LLC carrying Microsoft's attestation for the driver
         inside it, and re-signing would both modify the Software, which its

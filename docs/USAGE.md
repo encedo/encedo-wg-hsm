@@ -185,7 +185,7 @@ touches neither interfaces nor disk; everything after it does.
 **Linux**
 
 ```bash
-sudo install -m755 wg-hem-linux-amd64 /usr/local/bin/wg-hem
+sudo install -m755 wg-hem-cli-linux-amd64/wg-hem /usr/local/bin/wg-hem
 
 wg-hem provision \
   --address 10.99.0.7/32 \
@@ -205,7 +205,7 @@ for root and look like a regression.
 **macOS**
 
 ```bash
-sudo install -m755 wg-hem-darwin-arm64 /usr/local/bin/wg-hem
+sudo install -m755 wg-hem-cli-darwin-arm64/wg-hem /usr/local/bin/wg-hem
 
 wg-hem provision --address 10.99.0.7/32 --peer 'pubkey=…,endpoint=…,allowed-ips=…'
 

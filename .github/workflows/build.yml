@@ -296,6 +296,7 @@ jobs:
           stage="dist-gui/encedo-wg-windows-$TARGET_ARCH"
           mkdir -p "$stage"
           cp "dist/wg-hem-windows-$TARGET_ARCH.exe"            "$stage/wg-hem.exe"
+          cp "dist/wg-quick-encedo-windows-$TARGET_ARCH.exe"   "$stage/wg-quick-encedo.exe"
           cp "dist-gui/encedo-wg-gui-windows-$TARGET_ARCH.exe" "$stage/encedo-wg-gui.exe"
           cp "$work/x/wintun/bin/$TARGET_ARCH/wintun.dll"      "$stage/wintun.dll"
           cp packaging/windows/install.ps1                     "$stage/"

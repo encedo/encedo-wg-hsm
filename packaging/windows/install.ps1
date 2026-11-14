@@ -23,7 +23,7 @@ $service = 'encedo-wg'
 
 # Named rather than globbed: a glob installs whatever else happens to be lying
 # in the directory.
-$files = @('wg-hem.exe', 'encedo-wg-gui.exe', 'wintun.dll', 'icon.ico')
+$files = @('wg-hem.exe', 'wg-quick-encedo.exe', 'encedo-wg-gui.exe', 'wintun.dll', 'icon.ico')
 
 foreach ($f in $files) {
     if (-not (Test-Path (Join-Path $source $f))) {
