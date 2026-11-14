@@ -381,9 +381,13 @@ peer in the repository), DNS on macOS (a stub), and the window on macOS.
 - the invite/enrolment channel for an administrator (parked).
 
 Two things are decisions rather than omissions; do not propose either as an
-oversight: token refresh (expiry ends the tunnel; refreshing would need the
-passphrase to outlive the auth step) and daemonising (`up` holds the foreground
-because a daemon that restarts cannot re-authenticate).
+oversight: token refresh that keeps the passphrase (refreshing on its own would
+need it to outlive the auth step) and daemonising (`up` holds the foreground
+because a daemon that restarts cannot re-authenticate). Renewal by asking the
+person again is not that refresh and exists: the window's Renew, and since
+2026-11-14 both CLIs ask again (phone or passphrase at the terminal) five
+minutes before the session ends - `internal/session/renew.go`, `--no-renew` to
+let it end. With no terminal and no phone the session still just ends.
 
 ---
 
@@ -447,8 +451,8 @@ because a daemon that restarts cannot re-authenticate).
   docs/ARCHITECTURE-GUI.md, "How many tokens: one"). Import is two approvals,
   Renew one. While a phone is asked, `Notify` counts down the seconds left.
   **A phone-approved session lasts what the phone grants, not `--exp`**: one hour
-  on 2026-11-14 (the Authenticator sets `exp` in its reply), so a tunnel started
-  with `--mobile` ends after an hour. The client says "Approved until ..." after
+  on 2026-11-14 (the firmware sets `exp` in ext/request), so a tunnel started
+  with `--mobile` asks the phone again five minutes before the hour is up. The client says "Approved until ..." after
   each approval. A scope a held token already covers is answered from it with no
   prompt - the first Mac run printed "Approve on your phone" three times for one
   approval.

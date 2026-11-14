@@ -27,6 +27,7 @@ import (
 	// from the standard library's runtime wherever both might be read for one.
 	"github.com/encedo/encedo-wg-hsm/internal/policy"
 	rt "github.com/encedo/encedo-wg-hsm/internal/runtime"
+	"github.com/encedo/encedo-wg-hsm/internal/session"
 	"github.com/encedo/encedo-wg-hsm/internal/version"
 )
 
@@ -287,6 +288,8 @@ func cmdUp(ifname, cfgPath string) {
 	// 12. Wait for signal or device close
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	renewCtx, stopRenew := context.WithCancel(context.Background())
+	restoreTerm := startRenewal(renewCtx, client, ecdhScope, tokens, hsm)
 	select {
 	case <-stop:
 	case <-errs:
@@ -300,8 +303,10 @@ func cmdUp(ifname, cfgPath string) {
 	}
 
 	// 13. Cleanup
+	stopRenew()
 	uapiListener.Close()
 	teardown()
+	restoreTerm()
 	fmt.Fprintf(os.Stderr, "Interface %s down.\n", ifname)
 }
 
@@ -348,6 +353,78 @@ func buildUAPIConfig(cfg *Config, plan *rt.Plan) string {
 type tokenPair struct {
 	lookup string // keymgmt:get - startup only, resolves peer pubkeys
 	ecdh   string // keymgmt:use:<KID> - runtime ECDH
+
+	// How the ECDH token was got, so a renewal asks the same way.
+	mobile  bool
+	expSecs int // with the password
+}
+
+// phoneOpts polls the phone for a minute and counts the time left down.
+func phoneOpts() hem.RemoteOpts {
+	start := time.Now()
+	waiting := func() {
+		left := (60*time.Second - time.Since(start) + time.Second/2) / time.Second
+		if left < 0 {
+			left = 0
+		}
+		fmt.Fprintf(os.Stderr, "Waiting for the phone - %d s left\n", left)
+	}
+	return hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
+}
+
+// startRenewal asks again a few minutes before the session ends, the same way
+// it was asked the first time, and swaps the new token into the handshake
+// path. Nothing from the first time is kept: the SDK's cache was cleared when
+// authInteractive returned, and the password is typed again. See
+// session.Renewal. It returns what restores the terminal: a password prompt
+// still waiting when the tunnel goes down has echo turned off.
+func startRenewal(ctx context.Context, client *hem.Client, scope string, pair tokenPair, hsm *rt.HSM) func() {
+	say := func(s string) { fmt.Fprintln(os.Stderr, s) }
+	r := session.Renewal{
+		Apply: func(tok string) error { hsm.SetToken(tok); return nil },
+		Say:   say,
+	}
+	restore := func() {}
+	if pair.mobile {
+		r.Ask = func(ctx context.Context) (string, error) {
+			client.ClearKeys()
+			if err := client.Checkin(ctx); err != nil {
+				return "", err
+			}
+			say("Approve on your phone (Ctrl+C ends the tunnel)...")
+			return client.AuthRemote(ctx, scope, phoneOpts())
+		}
+	} else {
+		fd := int(os.Stdin.Fd())
+		if !term.IsTerminal(fd) {
+			if exp := hem.TokenExpiry(pair.ecdh); !exp.IsZero() {
+				say(fmt.Sprintf("No terminal to ask for the password again, so the session ends at %s.",
+					exp.Local().Format("15:04:05")))
+			}
+			return restore
+		}
+		if st, err := term.GetState(fd); err == nil {
+			restore = func() { _ = term.Restore(fd, st) }
+		}
+		r.Before = "\aType the HEM password to renew it (Ctrl+C ends the tunnel)."
+		r.Ask = func(ctx context.Context) (string, error) {
+			client.ClearKeys()
+			if err := client.Checkin(ctx); err != nil {
+				return "", err
+			}
+			fmt.Fprint(os.Stderr, "HEM password: ")
+			p, err := term.ReadPassword(fd)
+			fmt.Fprintln(os.Stderr)
+			if err != nil {
+				return "", err
+			}
+			defer session.Zero(p)
+			defer client.ClearKeys()
+			return client.AuthPassword(ctx, p, scope, pair.expSecs)
+		}
+	}
+	go r.Run(ctx, pair.ecdh)
+	return restore
 }
 
 // authInteractive asks for the auth method, and for a session length only where
@@ -372,15 +449,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 	case "m":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		start := time.Now()
-		waiting := func() {
-			left := (60*time.Second - time.Since(start) + time.Second/2) / time.Second
-			if left < 0 {
-				left = 0
-			}
-			fmt.Fprintf(os.Stderr, "Waiting for the phone - %d s left\n", left)
-		}
-		opts := hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
+		opts := phoneOpts()
 
 		// One approval for both scopes since firmware 1.3: the ECDH scope
 		// first, so the phone shows the key's label, and keymgmt:get beside it
@@ -400,7 +469,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 			fmt.Fprintf(os.Stderr, "Approved until %s - the phone sets how long a session lasts.\n",
 				exp.Local().Format("15:04:05"))
 		}
-		pair := tokenPair{ecdh: tok}
+		pair := tokenPair{ecdh: tok, mobile: true}
 		if needsLookup {
 			pair.lookup = tok
 		}
@@ -449,7 +518,7 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 		if err != nil {
 			return tokenPair{}, err
 		}
-		return tokenPair{lookup: lookupToken, ecdh: ecdhToken}, nil
+		return tokenPair{lookup: lookupToken, ecdh: ecdhToken, expSecs: expSeconds}, nil
 	}
 }
 

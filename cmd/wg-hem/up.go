@@ -27,6 +27,7 @@ func cmdUp(args []string) error {
 	peerKey := fs.String("peer-pubkey", "", "connect to the peer whose base64 public key starts with this prefix")
 	debug := fs.Bool("debug", false, "trace every handshake ECDH on stderr (no key material: values are shown head...tail)")
 	autoFailover := fs.Bool("auto-failover", false, "on a peer that never answers, try the next stored one instead of asking (section 6.4)")
+	noRenew := fs.Bool("no-renew", false, "let the session end when it expires instead of asking again a few minutes before")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem up - bring the tunnel up from the configuration in the device
 
@@ -35,6 +36,10 @@ func cmdUp(args []string) error {
 With more than one peer and neither selection flag, the peer is asked for; the
 order is the one the interface record stores, which is the failover priority.
 A peer that never answers is reported and another is offered.
+
+A few minutes before the session ends it is renewed by asking again: a new
+request to the phone with --mobile, otherwise the passphrase at this terminal.
+Nothing is kept from the first time. --no-renew lets it end instead.
 
 `)
 		fs.PrintDefaults()
@@ -74,10 +79,15 @@ A peer that never answers is reported and another is offered.
 
 	// One scope covers the rest of the run: the ECDH at every handshake, the
 	// unwrap of each pre-shared key, and reading the interface's own public key.
-	useTok, err := auth.Token(ctx, "keymgmt:use:"+tree.IfKID)
+	useScope := "keymgmt:use:" + tree.IfKID
+	useTok, err := auth.Token(ctx, useScope)
 	if err != nil {
 		return err
 	}
+	// Everything authenticated from here on uses useTok, so the key derived
+	// from the passphrase goes now rather than when the tunnel ends. A renewal
+	// asks for the passphrase again instead of keeping it.
+	auth.Wipe()
 
 	// Asking is the default here because there is somebody to ask. The same
 	// walk the privileged component has no alternative to is available on
@@ -93,6 +103,12 @@ A peer that never answers is reported and another is offered.
 		SelectNext: selectNext,
 		Notify:     func(_ tunnel.Note, line string) { fmt.Fprintln(os.Stderr, line) },
 	})
+	if !*noRenew {
+		renewCtx, stopRenew := context.WithCancel(ctx)
+		restore := startRenewal(renewCtx, auth, t, useScope, useTok)
+		defer restore()
+		defer stopRenew()
+	}
 	if err := t.Run(peer); err != nil {
 		return exitFrom(err)
 	}

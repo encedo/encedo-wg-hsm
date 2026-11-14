@@ -110,6 +110,10 @@ type Tunnel struct {
 	peer *config.Peer
 	psk  []byte
 
+	// st is the state file this run wrote, kept so that a renewed session can
+	// put its new expiry where `status` reads it. Guarded by mu.
+	st *session.State
+
 	// hemInside is whether the current peer's AllowedIPs cover the HEM. The
 	// probe that acts on it waits until the routes are actually in.
 	hemInside bool
@@ -156,6 +160,15 @@ func (t *Tunnel) Refresh(token string) error {
 		return session.Fail(session.KindDevice, "the tunnel is not up yet")
 	}
 	t.hsm.SetToken(token)
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.st != nil {
+		t.st.TokenExpiry = hem.TokenExpiry(token)
+		if err := t.st.Save(); err != nil {
+			t.notify(News, "WARNING: the state file still shows the old session end: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -206,6 +219,9 @@ func (t *Tunnel) Run(peer *config.Peer) error {
 		t.teardown()
 		return session.Fail(session.KindDevice, "recording the interface state: %v", err)
 	}
+	t.mu.Lock()
+	t.st = st
+	t.mu.Unlock()
 
 	// The UAPI listener is how anything outside this process sees the tunnel:
 	// `wg show`, `wg-hem status`, and the handshake watch that failover depends
@@ -317,8 +333,13 @@ func (t *Tunnel) hold(st *session.State, ending <-chan struct{}) error {
 		// walk that moves silently leaves somebody looking at a tunnel that is
 		// working through a peer they did not pick.
 		t.notify(News, "Moved to %q - %q did not answer within %s.", next.Label, failed.Label, FailoverTimeout)
+		// Under mu: a renewal may be writing the same file from another
+		// goroutine.
+		t.mu.Lock()
 		st.PeerKID, st.PeerLabel, st.Endpoint = next.KID, next.Label, next.Endpoint.String()
-		if err := st.Save(); err != nil {
+		err = st.Save()
+		t.mu.Unlock()
+		if err != nil {
 			t.notify(News, "WARNING: the state file no longer names the active peer: %v", err)
 		}
 	}

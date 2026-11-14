@@ -59,6 +59,14 @@ approves lasts (an hour, as the Encedo Authenticator answered on 2026-11-14), an
 the client prints when it ends. One approval covers both scopes. The same holds
 for `wg-hem --mobile`, whose `--session` applies to the passphrase only.
 
+Five minutes before a session ends, both clients ask again the same way: a new
+request to the phone, or the password at the terminal (with a bell). Approve it
+and the tunnel carries on without dropping; ignore it and the tunnel ends when
+the session does, as before. A failed or declined renewal is asked again a
+minute later while there is time. Nothing from the first authentication is
+kept for this. Started without a terminal, a password session cannot be asked
+again and just ends; `wg-hem up --no-renew` chooses that on purpose.
+
 > **Note:** `wg show` does not display the interface public key — WireGuard
 > derives it from the private key, which is intentionally zero in this setup. Use
 > `wg-quick-encedo pubkey wg1` instead.

@@ -266,6 +266,31 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 	return a.keep(a.check(tok, scope))
 }
 
+// Renew asks again for a scope this Auth has already handed out, so that a
+// session about to end can be replaced by a new one. The person is asked again
+// - the phone gets a new request, the passphrase is typed again - because
+// nothing from the first time is kept: Wipe has dropped the derived key, and
+// the SDK's cache and this Auth's own tokens are cleared here, or the
+// expiring token would be the answer.
+//
+// The checkin goes first, as it does for every session: a device that has been
+// running for hours may have drifted from the time a token is checked against.
+func (a *Auth) Renew(ctx context.Context, scope string) (string, error) {
+	a.client.ClearKeys()
+	a.held = nil
+	a.asked = false
+	a.pending = nil
+	if err := a.client.Checkin(ctx); err != nil {
+		return "", Classify(err, KindNetwork, "checkin")
+	}
+	return a.Token(ctx, scope)
+}
+
+// Mobile says whether this Auth asks the phone. Connect may have settled a
+// request for the phone into the passphrase, so the flag the caller set is not
+// the answer.
+func (a *Auth) Mobile() bool { return a.dev.Mobile }
+
 // holding returns a token this Auth was given that holds scope and has not
 // expired by this computer's clock, with the same margin the SDK keeps.
 func (a *Auth) holding(scope string) string {
