@@ -343,9 +343,15 @@ working tunnel: it now says "(stand-in)" beside the state.
 **Full-tunnel routing and losing the device mid-tunnel were re-tested on
 firmware 1.3 on 2026-11-10.** Windows ships as a signed MSI for amd64 and arm64.
 
+**macOS, command line, end to end on 2026-11-14**: `wg-hem up --mobile` on Apple
+silicon against the PPA, a utun interface, a tunnel to blbx. It took two fixes
+the first run found: the default interface name (`utun`, not `wg0`) and
+`ifconfig inet` where the code passed `-inet`. The window on macOS still runs
+its stand-in - there is no privileged component there (docs/MACOS.md). The
+native arm64 window on Snapdragon was confirmed on hardware with rc2.
+
 **Still not tested:** failover across more than one candidate (there is one
-peer in the repository), macOS end to end, and the native arm64 window on
-Snapdragon hardware since it went into the installer. See `docs/WINDOWS.md`.
+peer in the repository), DNS on macOS (a stub), and the window on macOS.
 
 ## Implemented
 
