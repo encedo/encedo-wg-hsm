@@ -36,7 +36,7 @@ func addDeviceFlags(fs *flag.FlagSet) *deviceFlags {
 		broker:   fs.String("broker", "", "notification broker URL (default is the SDK's)"),
 		mobile:   fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase"),
 		insecure: fs.Bool("insecure", false, "still TLS, but the certificate is not validated: expired, self-signed or the wrong name are all accepted"),
-		expHours: fs.Int("session", defaultSessionHours, "token lifetime in hours"),
+		expHours: fs.Int("session", defaultSessionHours, "token lifetime in hours, with the passphrase; with --mobile the phone decides"),
 		identity: fs.String("identity", "", "which interface key to use, by KID or a unique prefix (only asked when the device holds several)"),
 	}
 }

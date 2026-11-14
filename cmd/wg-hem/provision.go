@@ -60,7 +60,7 @@ func cmdProvision(args []string) error {
 	adoptPeers := fs.Bool("adopt", false, "reuse a peer already in the device even if its stored settings differ from the flags")
 	mobile := fs.Bool("mobile", false, "authorize with a mobile push instead of the passphrase")
 	insecure := fs.Bool("insecure", false, "still TLS, but the certificate is not validated: expired, self-signed or the wrong name are all accepted")
-	expHours := fs.Int("session", defaultSessionHours, "token lifetime in hours")
+	expHours := fs.Int("session", defaultSessionHours, "token lifetime in hours, with the passphrase; with --mobile the phone decides")
 
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `Usage: wg-hem provision [flags]

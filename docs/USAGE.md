@@ -49,17 +49,21 @@ wg show wg1
 ```
 
 On startup you will be prompted for:
-- Session duration in hours — press Enter for default **8h**
 - Auth method — press Enter for default **password** (`p`), or type `m` for
   mobile push
+- With the password: session duration in hours — press Enter for default **8h**
 
-Just pressing Enter twice starts a standard 8h password session.
+Just pressing Enter twice starts a standard 8h password session. With mobile
+push there is no duration to give: the phone decides how long the session it
+approves lasts (an hour, as the Encedo Authenticator answered on 2026-11-14), and
+the client prints when it ends. One approval covers both scopes. The same holds
+for `wg-hem --mobile`, whose `--session` applies to the passphrase only.
 
 > **Note:** `wg show` does not display the interface public key — WireGuard
 > derives it from the private key, which is intentionally zero in this setup. Use
 > `wg-quick-encedo pubkey wg1` instead.
 
-When peers use `HEM_KID`, two auth prompts appear with a single password entry:
+When peers use `HEM_KID` and the password is used, two tokens are issued from a single password entry:
 1. `keymgmt:get` token — resolves peer public keys at startup (120s fixed)
 2. `keymgmt:use:<KID>` token — used for all ECDH operations at runtime
 

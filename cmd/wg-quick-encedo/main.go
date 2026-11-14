@@ -350,21 +350,18 @@ type tokenPair struct {
 	ecdh   string // keymgmt:use:<KID> - runtime ECDH
 }
 
-// authInteractive asks for session duration and auth method once, returns two tokens.
-// If needsLookup is false, lookup token is not requested (no peer HEM_KID in config).
+// authInteractive asks for the auth method, and for a session length only where
+// this client sets one, then returns the two tokens. If needsLookup is false,
+// the lookup token is not requested (no peer HEM_KID in config).
+//
+// The method comes first because the length is the passphrase's question only:
+// a phone answers with the lifetime it grants (an hour, measured 2026-11-14),
+// so asking for hours and then ignoring them told somebody a session would last
+// eight hours that ended after one.
 func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (tokenPair, error) {
-	fmt.Fprint(os.Stderr, "Session duration in hours [8]: ")
-	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	line = strings.TrimSpace(line)
-	expSeconds := 8 * 3600
-	if line != "" {
-		if h, err := strconv.Atoi(line); err == nil && h > 0 {
-			expSeconds = h * 3600
-		}
-	}
-
+	in := bufio.NewReader(os.Stdin)
 	fmt.Fprint(os.Stderr, "Auth method: [p]assword / [m]obile push [p]: ")
-	choice, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	choice, _ := in.ReadString('\n')
 	choice = strings.TrimSpace(strings.ToLower(choice))
 
 	// Both tokens are held for the life of the process, so nothing is gained by
@@ -375,28 +372,50 @@ func authInteractive(client *hem.Client, ecdhScope string, needsLookup bool) (to
 	case "m":
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
-		waiting := func() { fmt.Fprintln(os.Stderr, "Waiting for mobile confirmation...") }
-		opts := hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
-		var lookupToken string
-		if needsLookup {
-			fmt.Fprintln(os.Stderr, "Mobile auth #1 - peer key lookup (Ctrl+C = cancel)...")
-			var err error
-			lookupToken, err = client.AuthRemote(ctx, "keymgmt:get", opts)
-			if err != nil {
-				return tokenPair{}, err
+		start := time.Now()
+		waiting := func() {
+			left := (60*time.Second - time.Since(start) + time.Second/2) / time.Second
+			if left < 0 {
+				left = 0
 			}
+			fmt.Fprintf(os.Stderr, "Waiting for the phone - %d s left\n", left)
 		}
+		opts := hem.RemoteOpts{PollInterval: 2 * time.Second, PollTimeout: 60 * time.Second, OnPending: waiting}
+
+		// One approval for both scopes since firmware 1.3: the ECDH scope
+		// first, so the phone shows the key's label, and keymgmt:get beside it
+		// when peers are looked up. The same token then serves both.
+		fmt.Fprintln(os.Stderr, "Approve on your phone (Ctrl+C = cancel)...")
+		var tok string
+		var err error
 		if needsLookup {
-			fmt.Fprintln(os.Stderr, "Mobile auth #2 - ECDH (Ctrl+C = cancel)...")
+			tok, err = client.AuthRemoteScopes(ctx, []string{ecdhScope, "keymgmt:get"}, opts)
 		} else {
-			fmt.Fprintln(os.Stderr, "Mobile auth - ECDH (Ctrl+C = cancel)...")
+			tok, err = client.AuthRemote(ctx, ecdhScope, opts)
 		}
-		ecdhToken, err := client.AuthRemote(ctx, ecdhScope, opts)
 		if err != nil {
 			return tokenPair{}, err
 		}
-		return tokenPair{lookup: lookupToken, ecdh: ecdhToken}, nil
+		if exp := hem.TokenExpiry(tok); !exp.IsZero() {
+			fmt.Fprintf(os.Stderr, "Approved until %s - the phone sets how long a session lasts.\n",
+				exp.Local().Format("15:04:05"))
+		}
+		pair := tokenPair{ecdh: tok}
+		if needsLookup {
+			pair.lookup = tok
+		}
+		return pair, nil
 	default:
+		fmt.Fprint(os.Stderr, "Session duration in hours [8]: ")
+		line, _ := in.ReadString('\n')
+		line = strings.TrimSpace(line)
+		expSeconds := 8 * 3600
+		if line != "" {
+			if h, err := strconv.Atoi(line); err == nil && h > 0 {
+				expSeconds = h * 3600
+			}
+		}
+
 		fmt.Fprint(os.Stderr, "HEM password: ")
 		passBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Fprintln(os.Stderr)
