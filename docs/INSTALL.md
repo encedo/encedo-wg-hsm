@@ -10,7 +10,7 @@ client that keeps a file. For `wg-hem`, which keeps no file at all, see
 From the [releases page](https://github.com/encedo/encedo-wg-hsm/releases). Each
 release carries two downloads for each of six platforms:
 `wg-hem-gui-<platform>` - the window with both clients, as a `.deb`, `.msi` or,
-on macOS, a `.zip` - and `wg-hem-cli-<platform>`, the two clients alone, as a
+on macOS, an unsigned `.pkg` - and `wg-hem-cli-<platform>`, the two clients alone, as a
 `.tar.gz` (a `.zip` on Windows). This page is about the second.
 
 | Platform | Suffix |

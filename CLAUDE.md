@@ -346,14 +346,15 @@ firmware 1.3 on 2026-11-10.** Windows ships as a signed MSI for amd64 and arm64.
 **macOS, command line, end to end on 2026-11-14**: `wg-hem up --mobile` on Apple
 silicon against the PPA, a utun interface, a tunnel to blbx. It took two fixes
 the first run found: the default interface name (`utun`, not `wg0`) and
-`ifconfig inet` where the code passed `-inet`. The window on macOS still runs
-its stand-in in released builds; a launchd daemon and an unsigned `.pkg`
-(packaging/macos) were built the same day and ride only in run artifacts until
-signing (docs/MACOS.md, "Where it stands"). The
+`ifconfig inet` where the code passed `-inet`. The window too, the same day,
+from the unsigned `.pkg` (packaging/macos): launchd daemon, app from
+Applications, phone sign-in, tunnel, uninstall - after the bundle was signed ad
+hoc so Local Network permission sticks. Since 0.9.4 a release ships that `.pkg`
+in place of the window's `.zip` (docs/MACOS.md, "Where it stands"). The
 native arm64 window on Snapdragon was confirmed on hardware with rc2.
 
 **Still not tested:** failover across more than one candidate (there is one
-peer in the repository), DNS on macOS (written, never run), and the window on macOS.
+peer in the repository), DNS on macOS (written, never run), and a Mac restart with the daemon installed.
 
 ## Implemented
 

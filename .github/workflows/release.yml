@@ -310,8 +310,8 @@ jobs:
       # Two kinds of download, one name each, the same on every platform:
       #
       #   wg-hem-gui-<os>-<arch>.<ext>   the window with both command-line
-      #                                  clients: .deb, .msi, and on macOS a
-      #                                  .zip until there is a .pkg
+      #                                  clients: .deb, .msi, .pkg (the
+      #                                  macOS one unsigned, see MACOS.md)
       #   wg-hem-cli-<os>-<arch>.<ext>   wg-hem and wg-quick-encedo alone:
       #                                  .tar.gz, or .zip on Windows with
       #                                  wintun.dll beside them
@@ -341,14 +341,7 @@ jobs:
             cp "$(one "in/dist-deb/encedo-wg_*_$a.deb")" "out/wg-hem-gui-linux-$a.deb"
             cp "in/windows/encedo-wg-$a.msi"             "out/wg-hem-gui-windows-$a.msi"
 
-            d="stage/wg-hem-gui-darwin-$a"
-            mkdir -p "$d"
-            cp "in/dist-gui/encedo-wg-gui-darwin-$a"    "$d/encedo-wg-gui"
-            cp "in/dist/wg-hem-darwin-$a"               "$d/wg-hem"
-            cp "in/dist/wg-quick-encedo-darwin-$a"      "$d/wg-quick-encedo"
-            cp LICENSE "$d/"
-            chmod 755 "$d"/encedo-wg-gui "$d"/wg-*
-            ( cd stage && zip -qry "../out/wg-hem-gui-darwin-$a.zip" "wg-hem-gui-darwin-$a" )
+            cp "in/dist-pkg/wg-hem-gui-darwin-$a.pkg"    "out/wg-hem-gui-darwin-$a.pkg"
 
             for os in linux darwin; do
               cli "$os" "$a" in/dist ""

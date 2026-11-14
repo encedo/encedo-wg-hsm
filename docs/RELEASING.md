@@ -22,14 +22,16 @@ What the draft gets: two downloads per platform, named by one scheme.
 | | GUI: the window and both clients | CLI: `wg-hem` and `wg-quick-encedo` |
 |---|---|---|
 | Linux | `wg-hem-gui-linux-<arch>.deb` | `wg-hem-cli-linux-<arch>.tar.gz` |
-| macOS | `wg-hem-gui-darwin-<arch>.zip` | `wg-hem-cli-darwin-<arch>.tar.gz` |
+| macOS | `wg-hem-gui-darwin-<arch>.pkg` | `wg-hem-cli-darwin-<arch>.tar.gz` |
 | Windows | `wg-hem-gui-windows-<arch>.msi` | `wg-hem-cli-windows-<arch>.zip`, with `wintun.dll` |
 
 `<arch>` is `amd64` or `arm64`, so twelve files, and `SHA256SUMS` over them.
 The names carry no version - it is inside every package - so a link to a file
 stays the same from one release to the next. The Debian package is still called
 `encedo-wg` to `apt`; only the file is named for the download. Every Windows
-file in a release is signed. macOS is a `.zip` until there is a signed `.pkg`.
+file in a release is signed. The macOS `.pkg` is not: there is no Apple
+Developer account yet. Since 0.9.4 it replaces the `.zip` of the window, which
+talks to the launchd daemon only the `.pkg` installs.
 
 ## The order, which matters more than it looks
 

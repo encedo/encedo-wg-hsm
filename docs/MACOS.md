@@ -8,15 +8,18 @@
   against the PPA. The first run found two defects in `platform_darwin.go`: the
   interface name (macOS takes only `utun`, now the default) and `ifconfig -inet`
   where ifconfig wants `inet`.
-- **Phases 3 and 4 are built, not yet run:** `wg-hem daemon` under launchd
+- **Phases 3 and 4 are built and run once:** `wg-hem daemon` under launchd
   (`packaging/macos/com.encedo.wg.plist`), the caller identified by
   `LOCAL_PEERCRED`, the socket at `/var/run/encedo-wg/wg-hem.sock`, 0660
   root:staff - staff is every ordinary account, the answer to the open question
   below about a group. The window dials that path by default. The installer is
   `packaging/macos/build-pkg.sh`: `Encedo WG.app`, both clients in
   `/usr/local/bin`, the job, and `sudo encedo-wg-uninstall`. The darwin cells
-  build it when packaging; it rides in the run's artifact and is **not attached
-  to releases** until it is signed.
+  build it when packaging, and since 0.9.4 a release attaches it **unsigned**,
+  in place of the window's `.zip`. Run on an arm64 Mac 2026-11-14: install,
+  daemon under launchd, window from Applications, phone sign-in, tunnel,
+  uninstall. Install it with `sudo installer -pkg <file> -target /`; a
+  double-click meets Gatekeeper.
 - **DNS, written 2026-11-14 and not yet run on a Mac:** the `wg-quick` way,
   `networksetup -setdnsservers` on every enabled service, with what each had
   written to `/var/run/wireguard/macos-dns.json` first. Ctrl+C or Disconnect
