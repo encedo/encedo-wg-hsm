@@ -1,5 +1,25 @@
 # macOS: the plan, and the one decision it turns on
 
+## Where it stands, 2026-11-14
+
+- **Decided: the launchd daemon** (the owner, after the table of both designs).
+  ARCHITECTURE-GUI.md is amended to say so.
+- **Phase 1 is done.** `wg-hem up --mobile` ran end to end on Apple silicon
+  against the PPA. The first run found two defects in `platform_darwin.go`: the
+  interface name (macOS takes only `utun`, now the default) and `ifconfig -inet`
+  where ifconfig wants `inet`.
+- **Phases 3 and 4 are built, not yet run:** `wg-hem daemon` under launchd
+  (`packaging/macos/com.encedo.wg.plist`), the caller identified by
+  `LOCAL_PEERCRED`, the socket at `/var/run/encedo-wg/wg-hem.sock`, 0660
+  root:staff - staff is every ordinary account, the answer to the open question
+  below about a group. The window dials that path by default. The installer is
+  `packaging/macos/build-pkg.sh`: `Encedo WG.app`, both clients in
+  `/usr/local/bin`, the job, and `sudo encedo-wg-uninstall`. The darwin cells
+  build it when packaging; it rides in the run's artifact and is **not attached
+  to releases** until it is signed.
+- **Still open:** DNS (phase 2, a stub), signing and notarisation (phase 5, the
+  Apple account).
+
 Written 2026-09-18, after Windows shipped and before any macOS work. Nothing
 here has been run on a Mac against hardware. It is written now because the
 expensive parts are decisions and waiting, not typing, and both can start before

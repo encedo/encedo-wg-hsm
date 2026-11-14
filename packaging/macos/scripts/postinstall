@@ -1,0 +1,9 @@
+#!/bin/sh
+# Start the component now and at every boot. It idles until a window asks for
+# a tunnel; nothing here starts one.
+plist=/Library/LaunchDaemons/com.encedo.wg.plist
+chown root:wheel "$plist"
+chmod 644 "$plist"
+launchctl bootout system/com.encedo.wg 2>/dev/null || true
+launchctl bootstrap system "$plist"
+exit 0

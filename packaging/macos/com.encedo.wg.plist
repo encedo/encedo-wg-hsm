@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The privileged component on macOS: the counterpart of encedo-wg.service on
+  Linux and of the encedo-wg Windows service. It holds no credential and starts
+  no tunnel by itself - the window hands it one scoped token per tunnel, and
+  the tunnel ends when the window lets go.
+
+  Root, because macOS has no equivalent of CAP_NET_ADMIN: creating a utun and
+  installing routes is root's work. docs/MACOS.md says what that costs.
+
+  The socket is 0660 root:staff. staff is every ordinary account on a Mac, so
+  any local user may ask for a tunnel - with their own token, and only they may
+  stop or renew it (LOCAL_PEERCRED, internal/daemon/peercred_darwin.go).
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.encedo.wg</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/wg-hem</string>
+		<string>daemon</string>
+		<string>--socket-group</string>
+		<string>staff</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>/var/log/encedo-wg.log</string>
+	<key>StandardOutPath</key>
+	<string>/var/log/encedo-wg.log</string>
+</dict>
+</plist>

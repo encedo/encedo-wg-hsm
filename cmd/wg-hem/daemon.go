@@ -129,7 +129,7 @@ func openTunnel(ctx context.Context, req ipc.Request) (daemon.Tunnel, error) {
 	dt.t = tunnel.New(ctx, tunnel.Opts{
 		Client: client, Tree: tree,
 		UseTok: req.Token, HEMURL: req.HEMURL,
-		Ifname: "wg0",
+		Ifname: defaultInterface(),
 		// Nobody to ask, so it walks the stored order and reports what it did.
 		SelectNext: tunnel.WalkPeers(),
 		// The tunnel is built here and run later, so what it says goes to a

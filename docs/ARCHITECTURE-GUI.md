@@ -138,9 +138,11 @@ This is where the security went once the boundary moved, and it is authorisation
 rather than encryption.
 
 Every platform hands over the peer's identity, authenticated by the kernel, for
-free: `SO_PEERCRED` on Linux, the client token's SID on Windows, a code-signature
-check on macOS — which is stronger than the other two, since it says *this signed
-application* rather than *this user*.
+free: `SO_PEERCRED` on Linux, the client token's SID on Windows, and
+`LOCAL_PEERCRED` on macOS, where the component is a launchd daemon on a unix
+socket like Linux's. A system extension would get a code-signature check
+instead, which is stronger, since it says *this signed application* rather than
+*this user*.
 
 A key pair over the channel was considered and rejected. The window's private key
 would live in a file the user can read, so the boundary it buys is "the same
@@ -199,10 +201,10 @@ The window is still the session. The component could now run without one — it 
 its own device calls — so this is enforced rather than inherent, and has to be
 written as a rule.
 
-On Linux and Windows the open channel *is* the signal: the socket or pipe closing
-is observable, and teardown follows. macOS is the exception and needs a
-heartbeat, because an application sends to an extension and receives a reply
-rather than holding a connection.
+On Linux, Windows and macOS the open channel *is* the signal: the socket or pipe
+closing is observable, and teardown follows. Only a system extension on macOS
+would need a heartbeat, because an application sends to an extension and
+receives a reply rather than holding a connection.
 
 ## Linux
 
@@ -313,14 +315,14 @@ Fewest unknowns of the three.
 
 ## macOS
 
-**A plan and a competing design live in [MACOS.md](MACOS.md), written
-2026-09-18.** It argues for a launchd daemon instead of what follows, on the
-grounds that it reuses `internal/ipc` and `platform_darwin.go` whole and removes
-both the heartbeat and the dead System Settings toggle described below, at the
-cost of running as root. Nothing is settled: whoever starts the work picks one,
-and then one of the two documents is wrong and should say so.
+**Decided 2026-11-14: a launchd daemon**, as [MACOS.md](MACOS.md) recommends. It
+reuses `internal/ipc` and `platform_darwin.go` whole, needs no heartbeat and
+draws no System Settings toggle, and it runs as root - the price, stated there.
+What follows is the design that was *not* chosen first, kept because MACOS.md
+leaves it open as a later replacement of the privileged half behind the same
+channel.
 
-The privileged component is not ours: it is a **system extension**.
+The system-extension design: the privileged component is not ours.
 `NEPacketTunnelProvider` in Swift with the Go core linked as a `c-archive`, which
 is how the official client is built — its "Go backend version" string is
 wireguard-go reporting from inside a Swift application. Developer ID, notarised,

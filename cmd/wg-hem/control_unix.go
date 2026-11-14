@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 )
@@ -25,6 +26,11 @@ const (
 func defaultSocket() string {
 	if dir := os.Getenv("RUNTIME_DIRECTORY"); dir != "" {
 		return filepath.Join(dir, "wg-hem.sock")
+	}
+	// macOS has no /run; /var/run is where its daemons keep sockets, and the
+	// window looks there (gui/control_unix.go).
+	if runtime.GOOS == "darwin" {
+		return "/var/run/encedo-wg/wg-hem.sock"
 	}
 	return "/run/encedo-wg/wg-hem.sock"
 }

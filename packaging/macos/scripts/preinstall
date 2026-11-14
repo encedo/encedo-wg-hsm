@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stop a running component before its binary is replaced. A tunnel it holds
+# ends here, which an upgrade has to do anyway.
+launchctl bootout system/com.encedo.wg 2>/dev/null || true
+exit 0

@@ -6,12 +6,21 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime"
 )
 
 // defaultControl is where the privileged component listens, and it is only a
 // default: -live takes a path, because a person debugging a component they
 // started by hand needs to point the window at it.
-const defaultControl = "/run/encedo-wg/wg-hem.sock"
+//
+// macOS has no /run, so its component listens under /var/run - see
+// cmd/wg-hem/control_unix.go, which has to agree with this.
+var defaultControl = func() string {
+	if runtime.GOOS == "darwin" {
+		return "/var/run/encedo-wg/wg-hem.sock"
+	}
+	return "/run/encedo-wg/wg-hem.sock"
+}()
 
 // Built from the constant rather than repeating it, so the help text cannot
 // come to name a path the window would not dial.

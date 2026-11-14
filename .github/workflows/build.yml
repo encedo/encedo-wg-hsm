@@ -25,6 +25,7 @@ name: Build
 #              encedo-wg-windows-<arch>/ and the .msi        (windows)
 #   dist-deb/  encedo-wg_<version>_<arch>.deb                (linux)
 #   dist-diag/ the window linked as a console program        (windows)
+#   dist-pkg/  wg-hem-gui-darwin-<arch>.pkg, unsigned         (darwin)
 on:
   workflow_call:
     inputs:
@@ -262,6 +263,15 @@ jobs:
           }
           if ($bad) { exit 1 }
 
+      # The macOS installer: the window as an app bundle, both clients, and the
+      # launchd job that runs the privileged component. Unsigned until there is
+      # an Apple Developer account, so it is uploaded with the run for testing
+      # and release.yml does not attach it - the release keeps the .zip.
+      - name: macOS installer
+        if: inputs.package && matrix.goos == 'darwin'
+        shell: bash
+        run: packaging/macos/build-pkg.sh "$TARGET_ARCH"
+
       # The Debian package, from the cell that built both of its halves.
       # build-deb.sh refuses a mismatched pair itself.
       - name: Debian package
@@ -333,4 +343,5 @@ jobs:
             dist-gui/
             dist-deb/
             dist-diag/
+            dist-pkg/
           retention-days: 7
