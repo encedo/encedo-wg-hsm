@@ -14,6 +14,13 @@ set -eu
 VERSION="$(sed -n 's/^var Version = "\(.*\)"$/\1/p' internal/version/version.go)"
 if git rev-parse --git-dir >/dev/null 2>&1; then
 	desc="$(git describe --always --dirty 2>/dev/null || true)"
-	[ -n "${desc}" ] && VERSION="${VERSION}+${desc}"
+	case "${desc}" in
+		# On this release's own tag, or past it: the tag already says the
+		# version, so it is the version - 0.9.3-rc3, 0.9.3-rc3-2-gabc1234 -
+		# rather than 0.9.3+v0.9.3-rc3, which repeated it.
+		"v${VERSION}" | "v${VERSION}"-*) VERSION="${desc#v}" ;;
+		"") ;;
+		*) VERSION="${VERSION}+${desc}" ;;
+	esac
 fi
 printf '%s\n' "${VERSION}"

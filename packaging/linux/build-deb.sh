@@ -17,8 +17,10 @@ ARCH="${1:-amd64}"
 
 ROOT="$(pwd)"
 VERSION="$(sh scripts/version.sh)"
-# Debian will not take a + or a dirty marker in a version the way git prints it.
-DEBVER="$(printf '%s' "$VERSION" | tr '+' '~')"
+# What follows the release number becomes a ~ suffix, so that it sorts before
+# the release itself: 0.9.3-rc3 is 0.9.3~rc3, below 0.9.3. The first + or - is
+# the ~; any further - would be read as a Debian revision, so it becomes a dot.
+DEBVER="$(printf '%s' "$VERSION" | sed 's/[+-]/~/; s/-/./g')"
 
 CLI="dist/wg-hem-linux-${ARCH}"
 GUI="dist-gui/encedo-wg-gui-linux-${ARCH}"

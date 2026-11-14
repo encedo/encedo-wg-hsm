@@ -69,7 +69,7 @@ fi
 # so the release goes in those and the build number in the fourth. Without the
 # build number every build of a release would look like the same version and an
 # upgrade would decline to replace it.
-release="${VERSION%%+*}"
+release="${VERSION%%[+-]*}"
 msiversion="$release.$build"
 
 export PATH="$PATH:$HOME/.dotnet/tools"
