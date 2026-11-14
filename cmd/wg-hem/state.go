@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"runtime"
 
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
@@ -18,6 +19,18 @@ import (
 type state = session.State
 
 func statePath(ifname string) string { return session.Path(ifname) }
+
+// defaultInterface is the interface name asked for when none is given. macOS
+// takes only utun names and numbers them itself - "utun" asks for the next free
+// one - so wg0 failed there with "Interface name must be utun[0-9]*". The name
+// the system hands back is the one the state file is written under, and down
+// and status find it without being told, as the only one running.
+func defaultInterface() string {
+	if runtime.GOOS == "darwin" {
+		return "utun"
+	}
+	return "wg0"
+}
 
 // loadState maps the package's errors onto this command's exit codes. Nothing
 // running is a usage error - the caller asked about something that is not there

@@ -21,7 +21,7 @@ import (
 // notices, and asking here means not waiting for the next startup to find out.
 func cmdStatus(args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	ifname := fs.String("interface", "wg0", "name of the tunnel interface")
+	ifname := fs.String("interface", defaultInterface(), "name of the tunnel interface")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, `wg-hem status - report on a running interface
 

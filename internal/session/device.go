@@ -226,6 +226,7 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 		if err != nil {
 			return "", Classify(err, KindAuth, "authorizing %s", what)
 		}
+		a.sayExpiry(tok)
 		return a.check(tok, scope)
 	}
 
@@ -255,6 +256,25 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 		return "", Classify(err, KindAuth, "authorizing %s", what)
 	}
 	return a.check(tok, scope)
+}
+
+// sayExpiry says how long the phone approved the session for. The phone sets
+// that, not this client, and the SDK reuses a token only while this computer's
+// clock says it is still valid - so a clock running ahead shows up as the phone
+// being asked again for scopes it has just approved. Said every time, because
+// it is also when a tunnel started on this approval will end.
+func (a *Auth) sayExpiry(tok string) {
+	exp := hem.TokenExpiry(tok)
+	if exp.IsZero() {
+		return
+	}
+	left := time.Until(exp).Round(time.Second)
+	msg := fmt.Sprintf("Approved until %s (%s from now by this computer's clock).",
+		exp.Local().Format("15:04:05"), left)
+	if left < 30*time.Second {
+		msg += " That is too soon to use - check this computer's clock."
+	}
+	a.dev.say(msg)
 }
 
 // bundle is what to ask for: scope, then on the first request everything the

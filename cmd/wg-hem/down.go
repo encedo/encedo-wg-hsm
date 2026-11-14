@@ -41,7 +41,7 @@ var (
 // underneath it would take the tunnel down and leave both behind.
 func cmdDown(args []string) error {
 	fs := flag.NewFlagSet("down", flag.ContinueOnError)
-	ifname := fs.String("interface", "wg0", "name of the tunnel interface")
+	ifname := fs.String("interface", defaultInterface(), "name of the tunnel interface")
 	fs.Usage = func() {
 		fmt.Fprint(os.Stderr, "wg-hem down [--interface wg0]\n\n")
 		fs.PrintDefaults()
