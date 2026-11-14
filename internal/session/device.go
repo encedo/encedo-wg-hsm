@@ -94,8 +94,60 @@ func (d Device) Connect(ctx context.Context) (*hem.Client, *Auth, error) {
 	if err := client.Checkin(ctx); err != nil {
 		return nil, nil, Classify(err, KindNetwork, "checkin")
 	}
+	if d.Mobile {
+		var err error
+		if d, err = d.settleMobile(probePaired(ctx, client)); err != nil {
+			return nil, nil, err
+		}
+	}
 	return client, &Auth{client: client, dev: d, expSecs: d.ExpSecs,
 		pending: append([]string(nil), d.Expect...)}, nil
+}
+
+// pairing is what the device says about a paired Authenticator app.
+type pairing int
+
+const (
+	pairingUnknown pairing = iota // the device would not say
+	pairingNone
+	pairingFound
+)
+
+// pairedMagic opens the descr of the key the Authenticator app leaves on the
+// device when it is paired. Asking for it is how encedo-oidc decides whether to
+// offer the phone, and it is the device's own answer: the broker's "paired" was
+// seen saying yes for a device with no app on it.
+const pairedMagic = "EXTAID"
+
+// probePaired searches for that key without a token. A device that does not
+// allow an anonymous search answers 401, and then nothing is known.
+func probePaired(ctx context.Context, c *hem.Client) pairing {
+	page, err := c.SearchKeys(ctx, "", []byte(pairedMagic), hem.SearchOpts{Match: hem.MatchPrefix, Limit: 1})
+	switch {
+	case err != nil:
+		return pairingUnknown
+	case len(page.Keys) > 0:
+		return pairingFound
+	default:
+		return pairingNone
+	}
+}
+
+// settleMobile decides what a request for the phone becomes once the device
+// has been asked. With no app paired, a push would be sent to nobody and the
+// broker would answer a bare 404 after the user had already been told to look
+// at their phone; so the passphrase is asked for instead, or, with no way to
+// ask it, the error says what is missing. Unknown leaves the phone in place.
+func (d Device) settleMobile(p pairing) (Device, error) {
+	if p != pairingNone {
+		return d, nil
+	}
+	if d.Passphrase == nil {
+		return d, Fail(KindAuth, "no Authenticator app is paired with this HEM - pair one, or use the passphrase")
+	}
+	d.say("No Authenticator app is paired with this HEM - using the passphrase instead.")
+	d.Mobile = false
+	return d, nil
 }
 
 // Load connects and returns the authenticated configuration. Every command that

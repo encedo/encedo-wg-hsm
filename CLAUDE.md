@@ -428,7 +428,11 @@ because a daemon that restarts cannot re-authenticate).
   label. `up`, `verify` and `peer` are one approval; `provision` is two, because a
   new key's KID is the device's answer to `keymgmt:gen`. A phone may approve part of
   a request: the token says what it holds and `Auth` refuses one without the scope
-  asked for. The window is unchanged - it has no phone path, and the token it hands
+  asked for. Before any push, `Connect` searches anonymously for the key the
+  Authenticator app leaves when paired (descr prefix `EXTAID`, as encedo-oidc does);
+  none means the passphrase instead, with a line saying so. The broker's own
+  `paired` flag is not trusted - it said yes for a device with no app.
+  The window is unchanged - it has no phone path, and the token it hands
   the privileged component stays `keymgmt:use:<kid>` alone.
 - **Firmware 1.3 returns the raw ECDH secret only with the `raw_ecdh_enabled`
   policy**, set once at initialisation (Encedo Manager) and never changeable

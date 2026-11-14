@@ -114,3 +114,35 @@ func TestWipeSurvivesNothingToWipe(t *testing.T) {
 	a.Wipe() // must not panic: teardown runs on paths where connecting never happened
 	(&Auth{}).Wipe()
 }
+
+// A phone asked for on a device with no Authenticator app paired becomes the
+// passphrase, with a line saying so - not a push to nobody and a bare 404 from
+// the broker. Without a way to ask, the error names what is missing.
+func TestMobileWithoutAPairedApp(t *testing.T) {
+	var said []string
+	dev := Device{Mobile: true, Notify: func(s string) { said = append(said, s) },
+		Passphrase: func() ([]byte, error) { return []byte("x"), nil }}
+
+	for _, p := range []pairing{pairingFound, pairingUnknown} {
+		got, err := dev.settleMobile(p)
+		if err != nil || !got.Mobile {
+			t.Errorf("pairing %d: mobile=%v err=%v, want the phone kept", p, got.Mobile, err)
+		}
+	}
+	if len(said) != 0 {
+		t.Errorf("said %q with an app paired or unknown", said)
+	}
+
+	got, err := dev.settleMobile(pairingNone)
+	if err != nil || got.Mobile {
+		t.Fatalf("no app paired: mobile=%v err=%v, want the passphrase", got.Mobile, err)
+	}
+	if len(said) != 1 {
+		t.Errorf("said %q, want one line about the fallback", said)
+	}
+
+	dev.Passphrase = nil
+	if _, err := dev.settleMobile(pairingNone); err == nil || KindOf(err) != KindAuth {
+		t.Errorf("no app and no passphrase: %v, want an authentication fault", err)
+	}
+}
