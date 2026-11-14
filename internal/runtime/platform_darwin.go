@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"golang.zx2c4.com/wireguard/ipc"
 
@@ -122,17 +124,100 @@ func SetMTU(ifname string, mtu int) error {
 	return run("ifconfig", ifname, "mtu", strconv.Itoa(mtu))
 }
 
-func SetDNS(_ string, servers []string) error {
+// SetDNS gives every enabled network service the tunnel's servers, after
+// writing down what each had; see macdns.go for why it is done this way and
+// why the record is a file.
+//
+// A record already there is a previous tunnel's. If that process is still
+// running it owns the setting and this one does not take it over; if it is
+// gone, it died with its DNS in place, and what it wrote down is put back
+// before anything else is read - otherwise the tunnel's servers would be
+// recorded as the host's own.
+func SetDNS(ifname string, servers []string) error {
 	if len(servers) == 0 {
 		return nil
 	}
-	// macOS DNS requires networksetup with a service name, not interface name.
-	// Service name lookup from utun interface name is non-trivial - not implemented yet.
-	fmt.Printf("WARNING: DNS configuration not supported on macOS yet (servers: %v)\n", servers)
+	if prev, err := readMacDNS(); err == nil {
+		if prev.PID != os.Getpid() && processAlive(prev.PID) {
+			return fmt.Errorf("DNS is already set by another tunnel (%s, pid %d); if that process is not a tunnel, remove %s",
+				prev.Interface, prev.PID, macDNSFile)
+		}
+		restoreMacDNS(prev)
+	}
+
+	out, err := exec.Command("networksetup", "-listallnetworkservices").Output()
+	if err != nil {
+		return fmt.Errorf("networksetup -listallnetworkservices: %w", err)
+	}
+	saved := &macDNSSaved{PID: os.Getpid(), Interface: ifname}
+	for _, svc := range parseServices(string(out)) {
+		cur, err := exec.Command("networksetup", "-getdnsservers", svc).Output()
+		if err != nil {
+			return fmt.Errorf("networksetup -getdnsservers %q: %w", svc, err)
+		}
+		saved.Services = append(saved.Services, macDNSEntry{Service: svc, Servers: parseDNSServers(string(cur))})
+	}
+	if len(saved.Services) == 0 {
+		return errors.New("no enabled network service to give the DNS servers to")
+	}
+	if err := writeMacDNS(saved); err != nil {
+		return fmt.Errorf("recording the DNS settings before changing them: %w", err)
+	}
+	for _, e := range saved.Services {
+		if err := run(macDNSEntry{Service: e.Service, Servers: servers}.setArgs()...); err != nil {
+			restoreMacDNS(saved)
+			return fmt.Errorf("setting DNS on %q: %w", e.Service, err)
+		}
+	}
+	flushMacDNS()
 	return nil
 }
 
-func RevertDNS(_ string) {}
+// RevertDNS puts back what SetDNS wrote down. Best effort: it runs while the
+// tunnel is being dismantled, where a failure has nowhere better to go than
+// one line on stderr. The record stays when a service could not be restored,
+// so the next tunnel tries again.
+func RevertDNS(_ string) {
+	saved, err := readMacDNS()
+	if err != nil {
+		return
+	}
+	restoreMacDNS(saved)
+}
+
+func restoreMacDNS(saved *macDNSSaved) {
+	ok := true
+	for _, e := range saved.Services {
+		if out, err := exec.Command(e.setArgs()[0], e.setArgs()[1:]...).CombinedOutput(); err != nil {
+			ok = false
+			fmt.Fprintf(os.Stderr, "WARNING: could not give %q its DNS servers back: %s\n",
+				e.Service, strings.TrimSpace(string(out)))
+		}
+	}
+	if ok {
+		_ = os.Remove(macDNSFile)
+	}
+	flushMacDNS()
+}
+
+// flushMacDNS drops answers cached from the resolver that has just been
+// replaced. Best effort.
+func flushMacDNS() {
+	_ = exec.Command("dscacheutil", "-flushcache").Run()
+	_ = exec.Command("killall", "-HUP", "mDNSResponder").Run()
+}
+
+// processAlive says whether pid is a running process, by the signal-0 probe.
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
+}
 
 func UAPIListen(ifname string) (net.Listener, error) {
 	f, err := ipc.UAPIOpen(ifname)

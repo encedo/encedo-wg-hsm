@@ -17,8 +17,16 @@
   `/usr/local/bin`, the job, and `sudo encedo-wg-uninstall`. The darwin cells
   build it when packaging; it rides in the run's artifact and is **not attached
   to releases** until it is signed.
-- **Still open:** DNS (phase 2, a stub), signing and notarisation (phase 5, the
-  Apple account).
+- **DNS, written 2026-11-14 and not yet run on a Mac:** the `wg-quick` way,
+  `networksetup -setdnsservers` on every enabled service, with what each had
+  written to `/var/run/wireguard/macos-dns.json` first. Ctrl+C or Disconnect
+  puts it back; a process killed with DNS in place leaves the file, and the
+  next tunnel restores from it before reading anything. Not done: putting it
+  back at the moment of the kill, and split DNS (all queries go to the
+  tunnel's servers). The phase 2 note below asked for a test before choosing;
+  this is the choice that needs no daemon of its own, and the test is still
+  owed.
+- **Still open:** signing and notarisation (phase 5, the Apple account).
 
 Written 2026-09-18, after Windows shipped and before any macOS work. Nothing
 here has been run on a Mac against hardware. It is written now because the
@@ -37,8 +45,8 @@ routes that pin an endpoint outside the tunnel, plus `UAPIListen` and
 
 Two holes in that, and only two:
 
-- **DNS is a stub.** `SetDNS` prints a warning and returns; `RevertDNS` does
-  nothing. The comment says why: macOS wants a *network service* name and the
+- **DNS is a stub** (as of 2026-09-18; written since, see the top). `SetDNS`
+  prints a warning and returns; `RevertDNS` does nothing. The comment says why: macOS wants a *network service* name and the
   client has a `utun` interface name, and mapping one to the other is not
   obvious.
 - **There is no privileged component.** `cmd/wg-hem/service_other.go` is a

@@ -353,7 +353,7 @@ signing (docs/MACOS.md, "Where it stands"). The
 native arm64 window on Snapdragon was confirmed on hardware with rc2.
 
 **Still not tested:** failover across more than one candidate (there is one
-peer in the repository), DNS on macOS (a stub), and the window on macOS.
+peer in the repository), DNS on macOS (written, never run), and the window on macOS.
 
 ## Implemented
 
@@ -364,7 +364,9 @@ peer in the repository), DNS on macOS (a stub), and the window on macOS.
   works from inside the tunnel (rekey overlap), so the client reports it and
   continues, and refuses only if the HEM stops answering once the routes are up.
 - MTU (netlink/ifconfig/netsh)
-- DNS (resolvectl on Linux, no-op on macOS with warning, netsh on Windows)
+- DNS (resolvectl on Linux, netsh on Windows; on macOS networksetup on every enabled
+  service, the way wg-quick does it, with the previous settings in
+  /var/run/wireguard/macos-dns.json until restored - written 2026-11-14, not yet run on a Mac)
 - HEM_BROKER_URL in [Interface] (fallback to `https://api.encedo.com`)
 - `pubkey <ifname>` -- reads public key from `/var/run/wireguard/<ifname>.pub`
 - Auth defaults: Enter = 8h + password
