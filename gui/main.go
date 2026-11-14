@@ -26,6 +26,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	hem "github.com/encedo/hem-sdk-go"
+
 	"github.com/encedo/encedo-wg-hsm/internal/ipc"
 	"github.com/encedo/encedo-wg-hsm/internal/session"
 )
@@ -107,7 +109,10 @@ type ui struct {
 	// It is not a debug detail: a stand-in draws "Connected", a byte counter, a
 	// countdown and a desktop notification, and none of it is a tunnel. Somebody
 	// who believes that has no VPN and thinks they do.
-	faked  bool
+	faked bool
+	// phone is whether the module last seen Ready has an Authenticator app
+	// paired with it, which is when an empty passphrase means the phone.
+	phone  bool
 	hasTr  bool
 	latest Event
 	// heard records whether the session has ever reported. Without it the first
@@ -326,6 +331,13 @@ func (u *ui) build() {
 	u.pass = widget.NewPasswordEntry()
 	u.pass.SetPlaceHolder("HEM passphrase")
 	u.pass.OnSubmitted = func(string) { u.onAction() }
+	// The button says which of the two it will do, so that leaving the field
+	// empty is a choice somebody can see rather than a rule they have to know.
+	u.pass.OnChanged = func(string) {
+		if u.latest.State == Ready {
+			u.readyAction()
+		}
+	}
 	u.action = widget.NewButton("Connect", u.onAction)
 	u.actionBox = outlined(u.action)
 
@@ -506,11 +518,33 @@ func outlined(b *widget.Button) fyne.CanvasObject {
 	return container.NewStack(r, b)
 }
 
+// readyAction names what Connect will do: with a phone paired and nothing typed,
+// it asks the phone. The placeholder says the same thing to somebody who has
+// not looked at the button.
+func (u *ui) readyAction() {
+	if u.phone {
+		u.pass.SetPlaceHolder("HEM passphrase, or leave empty for the phone")
+	} else {
+		u.pass.SetPlaceHolder("HEM passphrase")
+	}
+	if u.phone && u.pass.Text == "" {
+		u.action.SetText("Connect with phone")
+	} else {
+		u.action.SetText("Connect")
+	}
+	u.action.Refresh()
+}
+
 // onAction is the single button: what it does depends on the state, so nobody
 // has to decide which of several controls applies.
 func (u *ui) onAction() {
 	switch u.latest.State {
 	case Ready:
+		if u.pass.Text == "" && !u.phone {
+			u.setNotice("Type the module passphrase to connect.", false)
+			u.win.Canvas().Focus(u.pass)
+			return
+		}
 		pass := []byte(u.pass.Text)
 		u.pass.SetText("")
 
@@ -624,7 +658,8 @@ func (u *ui) render(e Event) {
 	// button goes quiet once there is a tunnel to lose.
 	switch e.State {
 	case Ready:
-		u.action.SetText("Connect")
+		u.phone = e.Phone
+		u.readyAction()
 		u.action.Importance = widget.HighImportance
 		u.action.Enable()
 	case Connected:
@@ -785,10 +820,14 @@ func (u *ui) askToRenew() {
 
 	pass := widget.NewPasswordEntry()
 	pass.SetPlaceHolder("HEM passphrase")
+	ask := "Type the passphrase to authorise another one - the tunnel stays up."
+	if u.phone {
+		pass.SetPlaceHolder("HEM passphrase, or leave empty for the phone")
+		ask = "Type the passphrase, or leave it empty and approve on your\nphone, to authorise another one - the tunnel stays up."
+	}
 
 	body := container.NewVBox(
-		widget.NewLabel("This session is about to end and the tunnel will close.\n"+
-			"Type the passphrase to authorise another one - the tunnel stays up."),
+		widget.NewLabel("This session is about to end and the tunnel will close.\n"+ask),
 		pass,
 	)
 	d := dialog.NewCustomConfirm("Stay connected?", "Stay connected", "Let it end", body,
@@ -812,7 +851,7 @@ func (u *ui) askToRenew() {
 // button that extended it unattended would remove the end while appearing to
 // keep it.
 func (u *ui) renew(pass []byte) {
-	if len(pass) == 0 {
+	if len(pass) == 0 && !u.phone {
 		u.setNotice("No passphrase given, so the session was not renewed.", false)
 		return
 	}
@@ -1066,6 +1105,22 @@ func humanError(err error) string {
 	// answer "not now" to a question the window asked.
 	if errors.Is(err, errNoProfileChosen) {
 		return "No profile chosen. Connect again to pick one."
+	}
+	// The phone's own answers. Without this a declined push would be met with
+	// "that passphrase was not accepted", about a passphrase nobody typed.
+	var phone viaPhone
+	if errors.As(err, &phone) {
+		var he *hem.HemError
+		switch {
+		case errors.Is(err, session.ErrNoPhone):
+			return "No Authenticator app is paired with this module - type the passphrase instead."
+		case errors.As(err, &he) && he.Code == "denied":
+			return "The request was declined on the phone."
+		case errors.As(err, &he) && he.Code == "timeout":
+			return "The phone did not answer in time - try again."
+		case session.KindOf(err) == session.KindAuth:
+			return "The approval on the phone was not accepted - try again, or type the passphrase."
+		}
 	}
 	switch session.KindOf(err) {
 	case session.KindAuth:

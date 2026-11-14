@@ -68,6 +68,10 @@ type Event struct {
 	LastHandshake time.Time
 	Rx, Tx        uint64
 
+	// Phone is whether the module has an Authenticator app paired with it, so
+	// that an empty passphrase can mean "approve on the phone". Set on Ready.
+	Phone bool
+
 	// Reach is why the device did not answer, when it did not. Empty otherwise.
 	//
 	// It is deliberately not a Notice: the presence check runs every three

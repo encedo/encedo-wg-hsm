@@ -432,8 +432,12 @@ because a daemon that restarts cannot re-authenticate).
   Authenticator app leaves when paired (descr prefix `EXTAID`, as encedo-oidc does);
   none means the passphrase instead, with a line saying so. The broker's own
   `paired` flag is not trusted - it said yes for a device with no app.
-  The window is unchanged - it has no phone path, and the token it hands
-  the privileged component stays `keymgmt:use:<kid>` alone.
+  The window offers the phone when that search finds the app: an empty passphrase
+  field turns the button into "Connect with phone" (Connect, Renew and Import).
+  Connect there sets no `Expect`, deliberately: the token it hands the privileged
+  component stays `keymgmt:use:<kid>` alone (docs/ARCHITECTURE-GUI.md, "How many
+  tokens: one"), so a phone approves twice - `use`, then `get` for the window's
+  own read. Import is two approvals, Renew one.
 - **Firmware 1.3 returns the raw ECDH secret only with the `raw_ecdh_enabled`
   policy**, set once at initialisation (Encedo Manager) and never changeable
   afterwards; without it `POST /api/crypto/ecdh` with no `alg` answers 403.

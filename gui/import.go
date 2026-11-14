@@ -129,6 +129,9 @@ func (u *ui) previewImport(name string, r io.Reader) *importPreview {
 	// having happened at all - and whether it had was exactly the question.
 	pass := widget.NewPasswordEntry()
 	pass.SetPlaceHolder("HEM passphrase")
+	if u.phone {
+		pass.SetPlaceHolder("or leave empty for the phone")
+	}
 
 	// Progress and failure are said in the dialogue that caused them, which
 	// stays open until the module has answered.
@@ -174,7 +177,7 @@ func (u *ui) previewImport(name string, r io.Reader) *importPreview {
 			say(err.Error(), widget.DangerImportance)
 			return
 		}
-		if pass.Text == "" {
+		if pass.Text == "" && !u.phone {
 			say("Type the module passphrase - importing writes to it.", widget.WarningImportance)
 			u.win.Canvas().Focus(pass)
 			return
@@ -191,7 +194,11 @@ func (u *ui) previewImport(name string, r io.Reader) *importPreview {
 		// and a dialogue dismissed halfway would leave somebody with a new key
 		// in the module and nobody told what to send the server.
 		busy(true)
-		say("Importing - this takes a few seconds while the module works.", widget.MediumImportance)
+		if len(secret) == 0 {
+			say("Approve on your phone - two requests, one after the other.", widget.MediumImportance)
+		} else {
+			say("Importing - this takes a few seconds while the module works.", widget.MediumImportance)
+		}
 
 		// Off this goroutine for the same reason connecting is: deriving the key
 		// from the passphrase is 600,000 rounds of PBKDF2, and doing that here

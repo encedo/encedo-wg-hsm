@@ -142,7 +142,7 @@ func TestMobileWithoutAPairedApp(t *testing.T) {
 	}
 
 	dev.Passphrase = nil
-	if _, err := dev.settleMobile(pairingNone); err == nil || KindOf(err) != KindAuth {
+	if _, err := dev.settleMobile(pairingNone); err == nil || KindOf(err) != KindAuth || !errors.Is(err, ErrNoPhone) {
 		t.Errorf("no app and no passphrase: %v, want an authentication fault", err)
 	}
 }

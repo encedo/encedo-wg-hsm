@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -119,6 +121,18 @@ const (
 // seen saying yes for a device with no app on it.
 const pairedMagic = "EXTAID"
 
+// ErrNoPhone is a request for the phone on a device no Authenticator app is
+// paired with. Named so that a window can say it in its own words: it is an
+// authentication failure, but not a refused passphrase.
+var ErrNoPhone = errors.New("no Authenticator app is paired with this HEM")
+
+// PhonePaired says whether the device has an Authenticator app paired with it,
+// for a window deciding whether to offer the phone at all. Only a yes is a yes:
+// a device that would not say is treated as one without.
+func PhonePaired(ctx context.Context, c *hem.Client) bool {
+	return probePaired(ctx, c) == pairingFound
+}
+
 // probePaired searches for that key without a token. A device that does not
 // allow an anonymous search answers 401, and then nothing is known.
 func probePaired(ctx context.Context, c *hem.Client) pairing {
@@ -143,7 +157,7 @@ func (d Device) settleMobile(p pairing) (Device, error) {
 		return d, nil
 	}
 	if d.Passphrase == nil {
-		return d, Fail(KindAuth, "no Authenticator app is paired with this HEM - pair one, or use the passphrase")
+		return d, &Error{Kind: KindAuth, Err: fmt.Errorf("%w - pair one, or use the passphrase", ErrNoPhone)}
 	}
 	d.say("No Authenticator app is paired with this HEM - using the passphrase instead.")
 	d.Mobile = false

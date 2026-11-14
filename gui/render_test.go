@@ -86,6 +86,7 @@ func TestRenderStates(t *testing.T) {
 	}{
 		{"1-no-module", Event{State: NoModule, HEM: "https://my.ence.do"}, false},
 		{"2-ready", Event{State: Ready}, false},
+		{"2b-ready-phone", Event{State: Ready, Phone: true}, false},
 		{"3-connecting", Event{State: Connecting}, false},
 		{"4-connected", Event{
 			State: Connected, Peer: "head office", Addrs: []string{"10.99.0.7/32"},

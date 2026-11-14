@@ -48,6 +48,11 @@ type liveSession struct {
 	// names it: keymgmt:use:<kid> is one key's worth of permission and means
 	// nothing without knowing which.
 	ifKID string
+
+	// phone is whether the module has an Authenticator app paired with it, asked
+	// each time the module appears. Carried on every Ready event, since that is
+	// the screen that offers it.
+	phone bool
 }
 
 func newLiveSession(hemURL, socket string) *liveSession {
@@ -72,20 +77,17 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 
 	s.emit(Event{State: Connecting, HEM: s.hemURL})
 
-	dev := session.Device{
-		URL:     s.hemURL,
-		ExpSecs: int(sessionLength.Seconds()),
-		// Handed over rather than read: the reading was done by a password
-		// field, and this is only where it is spent.
-		Passphrase: func() ([]byte, error) { return passphrase, nil },
-		Notify:     func(msg string) { s.emit(Event{State: Connecting, HEM: s.hemURL, Notice: msg}) },
-	}
+	dev := s.device(passphrase, sessionLength,
+		func(msg string) { s.emit(Event{State: Connecting, HEM: s.hemURL, Notice: msg}) })
 
 	client, auth, err := dev.Connect(ctx)
 	if err != nil {
-		return s.failed(err)
+		return s.failed(byPhone(dev, err))
 	}
 	defer auth.Wipe()
+	// Settled by Connect: a phone asked for with no app paired is an error
+	// there, so from here on the two paths are what they say they are.
+	fail := func(err error) error { return s.failed(byPhone(dev, err)) }
 
 	// The first token is where the passphrase is spent, and spending it means
 	// 600,000 rounds of PBKDF2 before anything reaches the network.
@@ -104,12 +106,14 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 	// real-time scanner examining a newly built and unsigned executable. Until
 	// somebody times it there, this sentence is what the window can honestly say
 	// about a wait it cannot explain.
-	s.emit(Event{State: Connecting, HEM: s.hemURL,
-		Notice: "Working out the key from your passphrase. On some machines this takes a few seconds."})
+	if !dev.Mobile {
+		s.emit(Event{State: Connecting, HEM: s.hemURL,
+			Notice: "Working out the key from your passphrase. On some machines this takes a few seconds."})
+	}
 
 	ids, err := config.Identities(ctx, client, auth.Token)
 	if err != nil {
-		return s.failed(err)
+		return fail(err)
 	}
 	ifKID, err := pickIdentity(ids, s.ChooseIdentity)
 	if err != nil {
@@ -121,7 +125,7 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 			s.emit(Event{State: Ready, HEM: s.hemURL, Notice: humanError(err)})
 			return err
 		}
-		return s.failed(err)
+		return fail(err)
 	}
 
 	// Read and check the whole tree here as well as in the component. It is one
@@ -130,16 +134,16 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 	// not authenticate should not first become a failed tunnel.
 	tree, err := config.LoadIdentity(ctx, client, auth.Token, ifKID)
 	if err != nil {
-		return s.failed(err)
+		return fail(err)
 	}
 	peerKID, err := pickPeer(tree.Peers, s.ChoosePeer)
 	if err != nil {
-		return s.failed(err)
+		return fail(err)
 	}
 
 	useTok, err := auth.Token(ctx, "keymgmt:use:"+ifKID)
 	if err != nil {
-		return s.failed(err)
+		return fail(err)
 	}
 
 	conn, err := dialControl(ctx, s.socket)
@@ -283,6 +287,9 @@ func (s *liveSession) emit(e Event) {
 		s.mu.Unlock()
 		return
 	}
+	if e.State == Ready {
+		e.Phone = s.phone
+	}
 	s.last = e
 	s.mu.Unlock()
 
@@ -397,6 +404,7 @@ func (s *liveSession) watch(ctx context.Context) {
 		if now != present || reason != why {
 			present, why = now, reason
 			if present {
+				s.askPhone(ctx)
 				s.emit(Event{State: Ready, HEM: s.hemURL})
 			} else {
 				s.emit(Event{State: NoModule, HEM: s.hemURL, Reach: reason})
@@ -408,6 +416,54 @@ func (s *liveSession) watch(ctx context.Context) {
 		case <-tick.C:
 		}
 	}
+}
+
+// askPhone finds out whether the module that has just appeared has an
+// Authenticator app paired with it: the device's own answer, from an anonymous
+// search for the key the app leaves behind. Asked on appearance rather than on
+// every poll - pairing is done once, and a module plugged out and in again is
+// asked again.
+func (s *liveSession) askPhone(ctx context.Context) {
+	s.mu.Lock()
+	url := s.hemURL
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, presenceTimeout)
+	defer cancel()
+	paired := session.PhonePaired(ctx, hem.NewClient(url, hem.Config{}))
+	s.mu.Lock()
+	s.phone = paired
+	s.mu.Unlock()
+}
+
+// device is how each of Connect, Renew and Import reaches the module. An empty
+// passphrase means the phone: the window offers that only when an app is
+// paired, and if it is not after all, session.Device says so rather than
+// sending a push to nobody.
+func (s *liveSession) device(passphrase []byte, length time.Duration, notify func(string)) session.Device {
+	d := session.Device{URL: s.hemURL, ExpSecs: int(length.Seconds()), Notify: notify}
+	if len(passphrase) == 0 {
+		d.Mobile = true
+	} else {
+		// Handed over rather than read: the reading was done by a password
+		// field, and this is only where it is spent.
+		d.Passphrase = func() ([]byte, error) { return passphrase, nil }
+	}
+	return d
+}
+
+// viaPhone marks an error from an attempt approved on the phone, so that the
+// window does not answer a declined push with "that passphrase was not
+// accepted".
+type viaPhone struct{ error }
+
+func (e viaPhone) Unwrap() error { return e.error }
+
+// byPhone wraps err when the attempt was a phone's to approve.
+func byPhone(d session.Device, err error) error {
+	if err == nil || !d.Mobile {
+		return err
+	}
+	return viaPhone{err}
 }
 
 // tunnelUp says whether the component is holding a tunnel for this session.
@@ -497,6 +553,7 @@ func reachReason(err error) string {
 func (s *liveSession) setHEM(url string) {
 	s.mu.Lock()
 	s.hemURL = url
+	s.phone = false
 	s.mu.Unlock()
 }
 
@@ -519,26 +576,25 @@ const (
 func (s *liveSession) Import(ctx context.Context, passphrase []byte, p provision.Params) (provision.Result, error) {
 	defer session.Zero(passphrase)
 
-	dev := session.Device{
-		URL: s.hemURL,
-		// Long enough to write a configuration and no longer. Provisioning is
-		// a handful of round trips; the eight hours a tunnel asks for would be
-		// eight hours of a token that can create and delete keys.
-		ExpSecs:    int(importSessionLength.Seconds()),
-		Passphrase: func() ([]byte, error) { return passphrase, nil },
-		Notify:     func(msg string) { s.emit(Event{State: s.state(), HEM: s.hemURL, Notice: msg}) },
-	}
+	// Long enough to write a configuration and no longer. Provisioning is a
+	// handful of round trips; the eight hours a tunnel asks for would be eight
+	// hours of a token that can create and delete keys.
+	dev := s.device(passphrase, importSessionLength,
+		func(msg string) { s.emit(Event{State: s.state(), HEM: s.hemURL, Notice: msg}) })
+	// Everything provisioning will ask for, in the first request: two
+	// approvals on a phone rather than one per scope, as on the command line.
+	dev.Expect = provision.Expect(p)
 
 	client, auth, err := dev.Connect(ctx)
 	if err != nil {
-		return provision.Result{}, err
+		return provision.Result{}, byPhone(dev, err)
 	}
 	defer auth.Wipe()
 
 	res, cleanup, err := provision.Run(ctx, client, auth, p,
 		func(msg string) { s.emit(Event{State: s.state(), HEM: s.hemURL, Notice: msg}) })
 	if err != nil {
-		return provision.Result{}, importFailure(err, cleanup)
+		return provision.Result{}, importFailure(byPhone(dev, err), cleanup)
 	}
 	return res, nil
 }
@@ -602,21 +658,17 @@ func (s *liveSession) Renew(ctx context.Context, passphrase []byte) error {
 
 	s.emit(Event{State: Connected, HEM: s.hemURL, Notice: "Renewing the session..."})
 
-	dev := session.Device{
-		URL:        s.hemURL,
-		ExpSecs:    int(sessionLength.Seconds()),
-		Passphrase: func() ([]byte, error) { return passphrase, nil },
-		Notify:     func(msg string) { s.emit(Event{State: Connected, HEM: s.hemURL, Notice: msg}) },
-	}
+	dev := s.device(passphrase, sessionLength,
+		func(msg string) { s.emit(Event{State: Connected, HEM: s.hemURL, Notice: msg}) })
 	_, auth, err := dev.Connect(ctx)
 	if err != nil {
-		return err
+		return byPhone(dev, err)
 	}
 	defer auth.Wipe()
 
 	tok, err := auth.Token(ctx, "keymgmt:use:"+kid)
 	if err != nil {
-		return err
+		return byPhone(dev, err)
 	}
 	if err := ipc.WriteMsg(conn, ipc.Request{Op: ipc.OpRefresh, Token: tok}); err != nil {
 		return session.Classify(err, session.KindNetwork, "asking the component to take the new token")
