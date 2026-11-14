@@ -23,26 +23,34 @@ import (
 // boundary already says rt.RunDir.
 const RunDir = paths.RunDir
 
-// Up configures a utun point-to-point interface. The first address is the
-// primary one, the rest are aliases; each brings its own subnet route.
+// Up configures a utun point-to-point interface: every address as an alias, the
+// way wg-quick does it on macOS, then the link up.
+//
+// ifconfig names the family without a dash (inet, inet6) where route takes one
+// (-inet, -inet6). This used inetFlag for both, and the first run on a Mac
+// stopped at "ifconfig: -inet: bad value". A point-to-point IPv4 address also
+// needs a destination, which is the address itself.
+//
+// The subnet route an address implies is added best effort and only for a
+// prefix wider than one host: the routes that carry traffic are AllowedIPs',
+// added by AddRoutes, and a /32 has no subnet to route.
 func Up(ifname string, addrs []netip.Prefix) error {
-	for i, a := range addrs {
-		ip := a.Addr().String()
-		args := []string{"ifconfig", ifname, inetFlag(a.Addr().Is6()), ip, ip}
-		if i == 0 {
-			args = append(args, "up")
+	for _, a := range addrs {
+		var args []string
+		if a.Addr().Is6() {
+			args = []string{"ifconfig", ifname, "inet6", a.String(), "alias"}
 		} else {
-			args = append(args, "alias")
+			args = []string{"ifconfig", ifname, "inet", a.String(), a.Addr().String(), "alias"}
 		}
 		if err := run(args...); err != nil {
 			return err
 		}
-		if err := run("route", "-q", "-n", "add", inetFlag(a.Addr().Is6()),
-			a.Masked().String(), "-interface", ifname); err != nil {
-			return err
+		if a.Bits() < a.Addr().BitLen() {
+			_ = run("route", "-q", "-n", "add", inetFlag(a.Addr().Is6()),
+				a.Masked().String(), "-interface", ifname)
 		}
 	}
-	return nil
+	return run("ifconfig", ifname, "up")
 }
 
 func Down(ifname string) error {
