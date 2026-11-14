@@ -201,10 +201,20 @@ func (a *Auth) Token(ctx context.Context, scope string) (string, error) {
 
 	if a.dev.Mobile {
 		a.dev.say("Approve on your phone: " + what)
+		// The time left, on every poll: a window shows it where it shows
+		// progress, so a person can see how long the request will still wait
+		// rather than finding out when it stops.
+		start := time.Now()
 		opts := hem.RemoteOpts{
 			PollInterval: remotePoll,
 			PollTimeout:  remoteTimeout,
-			OnPending:    func() { a.dev.say("waiting for the phone") },
+			OnPending: func() {
+				left := (remoteTimeout - time.Since(start) + time.Second/2) / time.Second
+				if left < 0 {
+					left = 0
+				}
+				a.dev.say(fmt.Sprintf("Waiting for the phone - %d s left", left))
+			},
 		}
 		var tok string
 		var err error

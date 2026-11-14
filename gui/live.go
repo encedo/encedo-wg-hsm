@@ -79,6 +79,11 @@ func (s *liveSession) Connect(ctx context.Context, passphrase []byte) error {
 
 	dev := s.device(passphrase, sessionLength,
 		func(msg string) { s.emit(Event{State: Connecting, HEM: s.hemURL, Notice: msg}) })
+	// keymgmt:get rides in the first request, beside keymgmt:use:<kid>: one
+	// approval on a phone rather than two. The token the component is handed is
+	// then that one, holding both - decided on 2026-11-14, see
+	// docs/ARCHITECTURE-GUI.md, "How many tokens: one".
+	dev.Expect = []string{"keymgmt:get"}
 
 	client, auth, err := dev.Connect(ctx)
 	if err != nil {

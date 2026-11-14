@@ -117,6 +117,16 @@ while dropping a credential.
 Search itself needs no token on a device with `allow_keysearch`, which is what
 makes the count exactly one rather than two.
 
+**Since firmware 1.3 that one token carries `keymgmt:get` as well** (decided
+2026-11-14). One token may hold up to eight scopes, and a phone approves a
+request, not a scope: asking for `use` alone for the component and `get` for the
+window's own read was two pushes for every Connect. The window now asks for both
+in one request and hands the component that token. What it adds is the right to
+read public keys, which are not secret and which the component is given anyway;
+the scope worth stealing is `use`, and it was there already. The component still
+reads records by anonymous search and still takes the keys from `start`; it
+uses `get` for nothing.
+
 **TLS is verified, always.** There is no `--insecure` in this design and there
 must not be: a request that tells a root process to skip certificate
 verification is a different thing from a flag a person types about their own

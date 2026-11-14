@@ -101,7 +101,8 @@ type Request struct {
 	Identity string `json:"identity,omitempty"` // interface key id
 	Peer     string `json:"peer,omitempty"`     // peer key id
 
-	// Token is the session's credential, scoped keymgmt:use:<Identity>, and the
+	// Token is the session's credential - keymgmt:use:<Identity>, and from the
+	// window also keymgmt:get, since one approval on a phone covers both - and the
 	// only one. It is what the component acts with at every handshake, for as
 	// long as the tunnel is up, and it is the one whose theft the threat model
 	// is about.
