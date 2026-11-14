@@ -54,6 +54,15 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$iconset" -o "$app/Resources/icon.icns"
 
+# Seal the bundle with an ad-hoc signature until there is a Developer ID. The Go
+# linker signs the executable alone, so the bundle had no identity tying the
+# Info.plist to it, and macOS listed the app under Local Network with the switch
+# on while still refusing its connections ("no route to the address"). Launched
+# from Terminal it worked, on Terminal's permission. Re-signing the installed
+# bundle this way fixed it on the first Mac, 2026-11-14.
+codesign --force --sign - "$app/.."
+codesign --verify --strict "$app/.."
+
 mkdir -p "$root/usr/local/bin" "$root/Library/LaunchDaemons"
 install -m 755 "$cli"   "$root/usr/local/bin/wg-hem"
 install -m 755 "$quick" "$root/usr/local/bin/wg-quick-encedo"

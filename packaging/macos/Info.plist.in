@@ -20,6 +20,8 @@
 	<string>@STAMP@</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>11.0</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Encedo WG talks to your Encedo HEM, which is a device on the local network or on USB.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 </dict>
