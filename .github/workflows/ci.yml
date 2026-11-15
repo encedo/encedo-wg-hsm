@@ -1,20 +1,20 @@
 name: CI
 
-# Every push to main and gui, and every pull request: test, and compile
+# Every push to any branch, and every pull request: test, and compile
 # everything on every platform. Nothing is packaged and nothing is uploaded -
 # that is release.yml's, on a tag. A push used to leave some 550 MB of
 # artifacts behind it, fifty-four of them by one afternoon, none of which
 # anybody downloaded; the packages a push produced were never the ones a
 # release was made from.
 #
-# gui is here as well as main. Everything this workflow checks that the window
-# build does not - gofmt over cmd and internal, go vet and go test -race,
-# and the rule that everything is plain ASCII - had not
-# run once during the whole of the Windows work, because that work happens on
-# a branch this did not name.
+# Every branch, not a list of them. Everything this workflow checks that the
+# window build does not - gofmt over cmd and internal, go vet and go test -race,
+# and the rule that everything is plain ASCII - once did not run during the
+# whole of the Windows work, because that work happened on a branch the list
+# did not name. Tags are left to release.yml.
 on:
   push:
-    branches: [main, gui]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
